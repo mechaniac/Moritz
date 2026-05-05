@@ -125,10 +125,11 @@ describe('stroke', () => {
     expect(hasOuter2).toBe(true);
   });
 
-  it('outlineStroke: bevel anchor does NOT self-intersect on the inside', () => {
-    // Bevel must apply only on the OUTSIDE of the bend. The inside should
-    // still collapse to the single miter point (95, 5) — no perpendicular
-    // endpoints on the inside, which would overlap each other.
+  it('outlineStroke: bevel anchor produces a chord on BOTH sides of the bend', () => {
+    // With bevelAmount=1 (default) and corner=bevel, both sides should keep
+    // their perpendicular endpoints and join them with an implicit chord.
+    // Outside (left): (100, -5) → (105, 0).
+    // Inside  (right): (100, 5) → (95, 0).
     const flatStyle: StyleSettings = { ...style, capStart: 'flat', capEnd: 'flat' };
     const s: Stroke = {
       id: 'beveled',
@@ -139,21 +140,17 @@ describe('stroke', () => {
       ],
     };
     const poly = outlineStroke(s, flatStyle);
-    // Inside corner must contain (95, 5) once (the trimmed miter), and
-    // NEITHER of the perpendicular endpoints (100, 5) or (95, 0) — those
-    // would extend the inside polyline past the meeting point.
-    const hasMiter = poly.some(
-      (p) => Math.abs(p.x - 95) < 0.01 && Math.abs(p.y - 5) < 0.01,
-    );
-    const hasInner1 = poly.some(
-      (p) => Math.abs(p.x - 100) < 0.01 && Math.abs(p.y - 5) < 0.01,
-    );
-    const hasInner2 = poly.some(
-      (p) => Math.abs(p.x - 95) < 0.01 && Math.abs(p.y) < 0.01,
-    );
-    expect(hasMiter).toBe(true);
-    expect(hasInner1).toBe(false);
-    expect(hasInner2).toBe(false);
+    const has = (x: number, y: number): boolean =>
+      poly.some((p) => Math.abs(p.x - x) < 0.01 && Math.abs(p.y - y) < 0.01);
+    // Outside chord endpoints.
+    expect(has(100, -5)).toBe(true);
+    expect(has(105, 0)).toBe(true);
+    // Inside chord endpoints.
+    expect(has(100, 5)).toBe(true);
+    expect(has(95, 0)).toBe(true);
+    // No miter point on EITHER side at bevelAmount=1.
+    expect(has(105, -5)).toBe(false);
+    expect(has(95, 5)).toBe(false);
   });
 
   it('outlineStroke: bevelAmount=0 collapses bevel to a sharp miter', () => {

@@ -370,27 +370,10 @@ function buildSides(
           return { trimmedPrev: prevCopy, trimmedNext: nextCopy };
         }
 
-        // Decide inside vs outside on THIS side: the perpendicular endpoint
-        // lies past mp along the segment tangent on the OUTSIDE of the bend
-        // (so a bevel chord cuts off a triangle), and lies before mp on the
-        // INSIDE (so the offset polylines actually overshoot mp). Inside is
-        // always trimmed to mp regardless of corner style — putting the
-        // perpendicular endpoints there would self-intersect.
-        const perpPrev = prevCopy[prevCopy.length - 1]!;
-        const perpNext = nextCopy[0]!;
-        const kPrev =
-          (mp.x - perpPrev.x) * seg.tangentEnd.x +
-          (mp.y - perpPrev.y) * seg.tangentEnd.y;
-        const kNext =
-          (perpNext.x - mp.x) * next.tangentStart.x +
-          (perpNext.y - mp.y) * next.tangentStart.y;
-        // Outside iff both are positive (mp lies past perp_prev along prev
-        // tangent AND perp_next lies past mp along next tangent). Otherwise
-        // it's the inside.
-        const isOutside = kPrev > 0 && kNext > 0;
-
-        if (!isOutside || cornerJoin === 'miter' || bevelAmount <= 0) {
-          // Sharp miter: replace both endpoint samples with the single mp.
+        // For sharp miter (or bevelAmount=0) just collapse to mp on both
+        // sides. Always trim any samples that overshoot mp along the
+        // segment tangent so the inside corner stays clean.
+        if (cornerJoin === 'miter' || bevelAmount <= 0) {
           prevCopy.pop();
           trimTail(prevCopy, mp, seg.tangentEnd);
           prevCopy.push(mp);
@@ -399,12 +382,24 @@ function buildSides(
           return { trimmedPrev: prevCopy, trimmedNext: nextCopy };
         }
 
-        // Outside bevel: the prev side ends at mp - amount*kPrev*tangentEnd
-        // and the next side starts at mp + amount*kNext*tangentStart. The
-        // implicit chord between them is the bevel face. With amount > 1 the
-        // bevel endpoints walk PAST the original perpendicular samples into
-        // the interior of the prev / next polylines, so trim any samples that
-        // would now lie on the wrong side of the new endpoint.
+        // Bevel: walk back from mp along each segment's tangent by
+        // amount × |perp_endpoint − mp| (signed). The sign of `kPrev` /
+        // `kNext` differs on the inside vs outside of the bend, so this
+        // formula automatically produces a symmetric bevel on BOTH sides:
+        //  - outside (k>0): bevel endpoint lies between mp and perp_endpoint,
+        //    cutting off the outer triangle.
+        //  - inside  (k<0): bevel endpoint lies on the OTHER side of mp, so
+        //    the inside polyline keeps the overshoot up to the bevel point.
+        // Either way the chord between bevPrev and bevNext is the bevel face.
+        const perpPrev = prevCopy[prevCopy.length - 1]!;
+        const perpNext = nextCopy[0]!;
+        const kPrev =
+          (mp.x - perpPrev.x) * seg.tangentEnd.x +
+          (mp.y - perpPrev.y) * seg.tangentEnd.y;
+        const kNext =
+          (perpNext.x - mp.x) * next.tangentStart.x +
+          (perpNext.y - mp.y) * next.tangentStart.y;
+
         const bevPrev: Vec2 = {
           x: mp.x - bevelAmount * kPrev * seg.tangentEnd.x,
           y: mp.y - bevelAmount * kPrev * seg.tangentEnd.y,
