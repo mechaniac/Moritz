@@ -561,27 +561,77 @@ function segIntersect(
  */
 function softenSpikes(poly: Vec2[], bevelAmount: number): Vec2[] {
   if (bevelAmount <= 0 || poly.length < 4) return poly;
-  const f = Math.min(1, bevelAmount / 20);
-  // Lookahead window grows with strictness: 4 edges (lax) → 16 edges (strict).
-  const window = Math.max(4, Math.round(4 + 12 * f));
-  // Weld distance grows with strictness: 0.05 (lax) → 1.0 (strict) units.
-  const weldEps = 0.05 + 0.95 * f;
+  // Weld threshold ramps from 0 (at amount ≤ 1) to 1.5 × avgEdge (at amount=20).
+  // At amount=1 (the default "perpendicular bevel") we MUST NOT weld real
+  // bevel chord points away.
+  const f = Math.min(1, Math.max(0, (bevelAmount - 1) / 19));
+  const weldFrac = 1.5 * f;
+
+  const avgEdge = (pts: Vec2[]): number => {
+    let total = 0;
+    const n = pts.length;
+    for (let i = 0; i < n; i++) {
+      const a = pts[i]!;
+      const b = pts[(i + 1) % n]!;
+      total += Math.hypot(b.x - a.x, b.y - a.y);
+    }
+    return total / Math.max(1, n);
+  };
+
+  const weldOnce = (pts: Vec2[], eps: number): { out: Vec2[]; changed: boolean } => {
+    const n = pts.length;
+    const out: Vec2[] = [];
+    let changed = false;
+    for (let i = 0; i < n; i++) {
+      const p = pts[i]!;
+      const q = out[out.length - 1] ?? null;
+      if (q && Math.hypot(p.x - q.x, p.y - q.y) <= eps) {
+        out[out.length - 1] = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+        changed = true;
+      } else {
+        out.push(p);
+      }
+    }
+    if (out.length >= 2) {
+      const first = out[0]!;
+      const last = out[out.length - 1]!;
+      if (Math.hypot(first.x - last.x, first.y - last.y) <= eps) {
+        out[0] = { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 };
+        out.pop();
+        changed = true;
+      }
+    }
+    return { out, changed };
+  };
 
   let cur: Vec2[] = poly.slice();
   for (let pass = 0; pass < 16; pass++) {
     const n = cur.length;
     if (n < 4) break;
+    const eps = avgEdge(cur) * weldFrac;
 
-    // 1. Find the first self-intersection within the lookahead window and
-    //    snip the loop. Restart the scan from the snip point next pass.
+    // 1. Pre-weld: collapse already-overlapping neighbors so further bevel
+    //    propagation has fewer degrees of freedom in stressed regions.
+    if (eps > 0) {
+      const pre = weldOnce(cur, eps);
+      if (pre.changed) {
+        cur = pre.out;
+        continue;
+      }
+    }
+
+    // 2. Snip the FIRST true self-intersection (full O(n²) pair scan since
+    //    the polygons here are small — at most a few hundred points). Only
+    //    runs above bevelAmount=1, where bevels start extending past the
+    //    perpendicular and can genuinely cross themselves.
+    if (f <= 0) return cur;
     let snipped = false;
     outer: for (let i = 0; i < n; i++) {
       const a = cur[i]!;
       const b = cur[(i + 1) % n]!;
-      for (let k = 2; k <= window; k++) {
+      for (let k = 2; k < n - 1; k++) {
         const j = (i + k) % n;
         const jNext = (j + 1) % n;
-        // Skip if the forward edge wraps to touch i (adjacent edges).
         if (jNext === i) continue;
         const c = cur[j]!;
         const d = cur[jNext]!;
@@ -589,59 +639,22 @@ function softenSpikes(poly: Vec2[], bevelAmount: number): Vec2[] {
         if (!hit) continue;
         // Snip vertices (i+1 … j) inclusive, replace with hit.p.
         const next: Vec2[] = [];
-        // Walk from (i+1)%n forward to j, those go away. Keep everything
-        // else; insert hit.p in their place.
-        let idx = (i + 1) % n;
-        // Add vertices BEFORE the snipped range, starting just after j.
-        let kept = jNext;
-        // We'll rebuild: start at i, push cur[i], push hit.p, then continue
-        // from jNext to (i in cyclic order back), avoiding the snipped span.
         next.push(a);
         next.push(hit.p);
         let cursor = jNext;
-        // Walk until we loop back to i (exclusive).
         while (cursor !== i) {
           next.push(cur[cursor]!);
           cursor = (cursor + 1) % n;
         }
         cur = next;
         snipped = true;
-        // Avoid unused-var warnings from idx/kept (kept for readability).
-        void idx;
-        void kept;
         break outer;
       }
     }
     if (snipped) continue;
 
-    // 2. No more self-intersections — weld neighboring vertices that have
-    //    collapsed within weldEps. Welded pairs become one anchor and stop
-    //    the bevel chain at that point.
-    const welded: Vec2[] = [];
-    let weldedAny = false;
-    for (let i = 0; i < n; i++) {
-      const p = cur[i]!;
-      const q = welded[welded.length - 1] ?? null;
-      if (q && Math.hypot(p.x - q.x, p.y - q.y) <= weldEps) {
-        // Merge into the existing tail at the midpoint.
-        welded[welded.length - 1] = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
-        weldedAny = true;
-      } else {
-        welded.push(p);
-      }
-    }
-    // Wrap-around weld between last and first.
-    if (welded.length >= 2) {
-      const first = welded[0]!;
-      const last = welded[welded.length - 1]!;
-      if (Math.hypot(first.x - last.x, first.y - last.y) <= weldEps) {
-        welded[0] = { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 };
-        welded.pop();
-        weldedAny = true;
-      }
-    }
-    if (!weldedAny) return cur;
-    cur = welded;
+    // 3. No more loops, no more welds — we're done.
+    return cur;
   }
   return cur;
 }
