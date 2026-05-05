@@ -1,104 +1,103 @@
 /**
- * Simple-polygon ear-clipping triangulator. Pure function; no DOM, no deps.
+ * Polygon triangulation for the debug overlay. Uses Mapbox's `earcut`,
+ * which handles non-convex polygons and polygons with holes robustly.
  *
- * Used for the debug overlay so we can visualize the triangulation that the
- * (browser / canvas / GPU) rasterizer would conceptually do for a filled
- * polygon. Inputs are assumed to be a single closed simple polygon (no
- * holes, no self-intersections). Polygon orientation is auto-detected.
- *
- * Returns an array of triangles, each as `[a, b, c]` indices into the input.
+ * For a closed stroke (first vertex coincides with last vertex), the
+ * outline produced by `outlineStroke` is topologically an annulus that
+ * self-touches at the cap. We detect that "pinch point" and split the
+ * polygon into an outer ring + an inner hole, then triangulate with a
+ * proper hole — otherwise the band collapses on itself and ear-clipping
+ * cannot proceed past the touch.
  */
 
+import earcut from 'earcut';
 import type { Vec2 } from './types.js';
 
 export type Triangle = readonly [number, number, number];
 
-const EPS = 1e-9;
+const PINCH_EPS = 1e-6;
 
-function signedArea(poly: readonly Vec2[]): number {
-  let a = 0;
+/**
+ * Find a pair of non-adjacent vertex indices `i < j` that share the same
+ * position. Returns the FIRST such pair, which corresponds to the cap
+ * junction of a closed stroke. Returns null if the polygon is simple.
+ */
+function findPinch(poly: readonly Vec2[]): { i: number; j: number } | null {
   const n = poly.length;
   for (let i = 0; i < n; i++) {
-    const p = poly[i]!;
-    const q = poly[(i + 1) % n]!;
-    a += p.x * q.y - q.x * p.y;
+    const a = poly[i]!;
+    for (let j = i + 2; j < n; j++) {
+      // Skip the wrap-around adjacency (last → first).
+      if (i === 0 && j === n - 1) continue;
+      const b = poly[j]!;
+      if (Math.abs(a.x - b.x) < PINCH_EPS && Math.abs(a.y - b.y) < PINCH_EPS) {
+        return { i, j };
+      }
+    }
   }
-  return a * 0.5;
+  return null;
 }
 
-function triArea2(a: Vec2, b: Vec2, c: Vec2): number {
-  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+function flatten(rings: readonly (readonly Vec2[])[]): {
+  coords: number[];
+  holes: number[];
+} {
+  const coords: number[] = [];
+  const holes: number[] = [];
+  for (let r = 0; r < rings.length; r++) {
+    if (r > 0) holes.push(coords.length / 2);
+    for (const p of rings[r]!) {
+      coords.push(p.x, p.y);
+    }
+  }
+  return { coords, holes };
 }
 
-function pointInTri(p: Vec2, a: Vec2, b: Vec2, c: Vec2): boolean {
-  const d1 = triArea2(p, a, b);
-  const d2 = triArea2(p, b, c);
-  const d3 = triArea2(p, c, a);
-  const hasNeg = d1 < -EPS || d2 < -EPS || d3 < -EPS;
-  const hasPos = d1 > EPS || d2 > EPS || d3 > EPS;
-  return !(hasNeg && hasPos);
+function runEarcut(
+  poly: readonly Vec2[],
+  rings: readonly (readonly number[])[],
+): Triangle[] {
+  const ringPts = rings.map((idxs) => idxs.map((k) => poly[k]!));
+  const { coords, holes } = flatten(ringPts);
+  const flat = earcut(coords, holes);
+  const localToGlobal: number[] = [];
+  for (const idxs of rings) localToGlobal.push(...idxs);
+  const out: Triangle[] = [];
+  for (let k = 0; k < flat.length; k += 3) {
+    out.push([
+      localToGlobal[flat[k]!]!,
+      localToGlobal[flat[k + 1]!]!,
+      localToGlobal[flat[k + 2]!]!,
+    ]);
+  }
+  return out;
 }
 
 /**
- * Triangulate a simple polygon using ear clipping. Returns triangles as
- * triplets of indices into the original polygon. Empty / degenerate input
- * yields an empty result.
+ * Triangulate a polygon (possibly self-touching at one point, i.e. an
+ * annulus produced by a closed stroke). Returns triangles as triplets of
+ * indices into the original `poly` array.
  */
 export function triangulatePolygon(poly: readonly Vec2[]): Triangle[] {
   const n = poly.length;
   if (n < 3) return [];
 
-  // Build an index ring oriented CCW so the "ear convex" test is consistent.
-  const ccw = signedArea(poly) > 0;
-  const indices: number[] = [];
-  if (ccw) {
-    for (let i = 0; i < n; i++) indices.push(i);
-  } else {
-    for (let i = n - 1; i >= 0; i--) indices.push(i);
+  const pinch = findPinch(poly);
+  if (!pinch) {
+    const allIdx = poly.map((_, k) => k);
+    return runEarcut(poly, [allIdx]);
   }
 
-  const triangles: Triangle[] = [];
-  let guard = indices.length * indices.length;
+  const { i, j } = pinch;
+  const outerIdx: number[] = [];
+  const innerIdx: number[] = [];
+  for (let k = i; k < j; k++) outerIdx.push(k);
+  for (let k = j; k < n; k++) innerIdx.push(k);
+  for (let k = 0; k < i; k++) innerIdx.push(k);
 
-  while (indices.length > 3 && guard-- > 0) {
-    let earFound = false;
-    for (let i = 0; i < indices.length; i++) {
-      const i0 = indices[(i - 1 + indices.length) % indices.length]!;
-      const i1 = indices[i]!;
-      const i2 = indices[(i + 1) % indices.length]!;
-      const a = poly[i0]!;
-      const b = poly[i1]!;
-      const c = poly[i2]!;
-
-      // Convex corner in CCW polygon → cross product positive.
-      if (triArea2(a, b, c) <= EPS) continue;
-
-      // No other polygon vertex lies inside (or on) this triangle.
-      let contains = false;
-      for (let j = 0; j < indices.length; j++) {
-        const ij = indices[j]!;
-        if (ij === i0 || ij === i1 || ij === i2) continue;
-        if (pointInTri(poly[ij]!, a, b, c)) {
-          contains = true;
-          break;
-        }
-      }
-      if (contains) continue;
-
-      triangles.push([i0, i1, i2]);
-      indices.splice(i, 1);
-      earFound = true;
-      break;
-    }
-    if (!earFound) {
-      // Degenerate polygon (self-intersecting or zero-area). Bail with what
-      // we have rather than spin forever.
-      break;
-    }
+  if (outerIdx.length < 3 || innerIdx.length < 3) {
+    const allIdx = poly.map((_, k) => k);
+    return runEarcut(poly, [allIdx]);
   }
-
-  if (indices.length === 3) {
-    triangles.push([indices[0]!, indices[1]!, indices[2]!]);
-  }
-  return triangles;
+  return runEarcut(poly, [outerIdx, innerIdx]);
 }

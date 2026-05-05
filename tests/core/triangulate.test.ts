@@ -48,4 +48,27 @@ describe('triangulatePolygon', () => {
     ];
     expect(triangulatePolygon(cw)).toHaveLength(2);
   });
+
+  it('triangulates a self-touching annulus (closed-stroke outline)', () => {
+    // Outer square CCW, then a "pinch point" back to start, then inner
+    // square CW (the hole), then back to the pinch — exactly the shape
+    // produced by outlineStroke for a closed stroke whose start/end caps
+    // collapse to a point.
+    const poly = [
+      { x: 0, y: 0 },   // 0  start of outer
+      { x: 10, y: 0 },  // 1
+      { x: 10, y: 10 }, // 2
+      { x: 0, y: 10 },  // 3
+      { x: 0, y: 0 },   // 4  pinch (== 0)
+      { x: 2, y: 2 },   // 5  start of inner
+      { x: 2, y: 8 },   // 6
+      { x: 8, y: 8 },   // 7
+      { x: 8, y: 2 },   // 8
+    ];
+    const tris = triangulatePolygon(poly);
+    // An annulus with 4 outer + 4 inner verts triangulates into 8 quads = 8
+    // triangles (or thereabouts); demand at least 6 to verify earcut ran on
+    // the hole rather than bailing at the pinch.
+    expect(tris.length).toBeGreaterThanOrEqual(6);
+  });
 });
