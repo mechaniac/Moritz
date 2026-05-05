@@ -65,8 +65,14 @@ export function tangentAt(seg: CubicSegment, t: number): Vec2 {
     6 * u * t * (seg.c2.y - seg.c1.y) +
     3 * t * t * (seg.p1.y - seg.c2.y);
   const len = Math.hypot(dx, dy);
-  if (len < 1e-9) return { x: 1, y: 0 };
-  return { x: dx / len, y: dy / len };
+  if (len >= 1e-9) return { x: dx / len, y: dy / len };
+  // Degenerate: handles collapse the derivative (typical for corner anchors
+  // with zero handles → straight line). Fall back to the chord direction.
+  const cx = seg.p1.x - seg.p0.x;
+  const cy = seg.p1.y - seg.p0.y;
+  const clen = Math.hypot(cx, cy);
+  if (clen >= 1e-9) return { x: cx / clen, y: cy / clen };
+  return { x: 1, y: 0 };
 }
 
 /** Approximate arc length using bezier-js (used for width-profile mapping). */

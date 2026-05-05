@@ -47,4 +47,29 @@ describe('stroke', () => {
     expect(maxAbsY).toBeGreaterThan(4);
     expect(maxAbsY).toBeLessThan(6);
   });
+
+  it('outlineStroke miter-joins a 90° corner (no overshoot)', () => {
+    // Two segments meeting at (100, 0): horizontal then vertical going down.
+    // Width 10 → outer corner should be at (105, -5), inner at (95, 5).
+    const flatStyle: StyleSettings = { ...style, capStart: 'flat', capEnd: 'flat' };
+    const s: Stroke = {
+      id: 'corner',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 100), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const poly = outlineStroke(s, flatStyle);
+    // Outside corner (left side, top-right of the bend): exactly one point at (105, -5).
+    const outerHits = poly.filter(
+      (p) => Math.abs(p.x - 105) < 0.01 && Math.abs(p.y + 5) < 0.01,
+    );
+    expect(outerHits).toHaveLength(1);
+    // Inside corner (right side, top-left of the bend): exactly one point at (95, 5).
+    const innerHits = poly.filter(
+      (p) => Math.abs(p.x - 95) < 0.01 && Math.abs(p.y - 5) < 0.01,
+    );
+    expect(innerHits).toHaveLength(1);
+  });
 });
