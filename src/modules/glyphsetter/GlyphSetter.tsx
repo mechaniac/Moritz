@@ -10,6 +10,8 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { outlineStroke } from '../../core/stroke.js';
 import { strokeToSegments } from '../../core/bezier.js';
 import { triangulatePolygon } from '../../core/triangulate.js';
+import { triangulateStrokeRibbon } from '../../core/ribbon.js';
+import type { GlyphViewOptions } from '../../state/store.js';
 import {
   addStroke,
   deleteAnchor,
@@ -52,6 +54,7 @@ export function GlyphSetter(): JSX.Element {
         selected={selectedChar}
         onSelect={selectGlyph}
         font={font}
+        view={view}
       />
       <div
         style={{
@@ -86,6 +89,7 @@ function GlyphGrid(props: {
   selected: string;
   onSelect: (c: string) => void;
   font: Font;
+  view: GlyphViewOptions;
 }): JSX.Element {
   // Uniform thumbnail viewport across all glyphs so relative sizes are visible.
   const refBox = useMemo(() => {
@@ -132,7 +136,7 @@ function GlyphGrid(props: {
                 flexDirection: 'column',
               }}
             >
-              <ThumbSvg glyph={g} font={props.font} refBox={refBox} />
+              <ThumbSvg glyph={g} font={props.font} refBox={refBox} view={props.view} />
               <div style={{ fontSize: 10, marginTop: 2 }}>{c}</div>
             </button>
           );
@@ -146,15 +150,16 @@ function ThumbSvg(props: {
   glyph: Glyph;
   font: Font;
   refBox: { w: number; h: number };
+  view: GlyphViewOptions;
 }): JSX.Element {
-  const { glyph, font, refBox } = props;
+  const { glyph, font, refBox, view } = props;
   const paths = useMemo(
     () =>
       glyph.strokes.map((s) => {
-        const poly = outlineStroke(s, font.style);
-        return trianglesD(poly, triangulatePolygon(poly));
+        const { polygon, triangles } = triangulateForView(s, font.style, view);
+        return trianglesD(polygon, triangles);
       }),
-    [glyph, font.style],
+    [glyph, font.style, view],
   );
   // Center this glyph within the shared reference box so relative sizes show.
   const dx = (refBox.w - glyph.box.w) / 2;
@@ -180,9 +185,9 @@ function GlyphEditor(props: {
   char: string;
   glyph: Glyph;
   onChange: (fn: (g: Glyph) => Glyph) => void;
-  view: import('../../state/store.js').GlyphViewOptions;
+  view: GlyphViewOptions;
   setView: (
-    patch: Partial<import('../../state/store.js').GlyphViewOptions>,
+    patch: Partial<GlyphViewOptions>,
   ) => void;
 }): JSX.Element {
   const { char, glyph, onChange, view, setView } = props;
@@ -350,6 +355,48 @@ function GlyphEditor(props: {
           />
           Triangles
         </label>
+        <select
+          value={view.triMode}
+          onChange={(e) => setView({ triMode: e.target.value as GlyphViewOptions['triMode'] })}
+          style={{ fontSize: 12 }}
+          title="Triangulation algorithm"
+        >
+          <option value="earcut">earcut (minimal)</option>
+          <option value="ribbon-fixed">ribbon (fixed N)</option>
+          <option value="ribbon-density">ribbon (density)</option>
+        </select>
+        {view.triMode === 'ribbon-fixed' && (
+          <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            samples/seg
+            <input
+              type="number"
+              min={1}
+              max={64}
+              step={1}
+              value={view.ribbonSamples}
+              onChange={(e) =>
+                setView({ ribbonSamples: Math.max(1, Math.round(Number(e.target.value) || 1)) })
+              }
+              style={{ width: 48 }}
+            />
+          </label>
+        )}
+        {view.triMode === 'ribbon-density' && (
+          <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            spacing (units)
+            <input
+              type="number"
+              min={0.5}
+              max={50}
+              step={0.5}
+              value={view.ribbonSpacing}
+              onChange={(e) =>
+                setView({ ribbonSpacing: Math.max(0.1, Number(e.target.value) || 1) })
+              }
+              style={{ width: 56 }}
+            />
+          </label>
+        )}
         {selection.kind === 'anchor' && (() => {
           const v = glyph.strokes[selection.strokeIdx]?.vertices[selection.vIdx];
           if (!v) return null;
@@ -411,9 +458,8 @@ function GlyphEditor(props: {
             pointerEvents="none"
           >
             {glyph.strokes.map((s, i) => {
-              const poly = outlineStroke(s, font.style);
-              const tris = triangulatePolygon(poly);
-              return <path key={`o${i}`} d={trianglesD(poly, tris)} />;
+              const { polygon, triangles } = triangulateForView(s, font.style, view);
+              return <path key={`o${i}`} d={trianglesD(polygon, triangles)} />;
             })}
           </g>
         )}
@@ -478,15 +524,14 @@ function GlyphEditor(props: {
             strokeLinecap="round"
           >
             {glyph.strokes.map((s, i) => {
-              const poly = outlineStroke(s, font.style);
-              const tris = triangulatePolygon(poly);
+              const { polygon, triangles } = triangulateForView(s, font.style, view);
               const sw = 0.6 / SCALE;
               return (
                 <g key={`t${i}`}>
-                  {tris.map((tri, k) => {
-                    const a = poly[tri[0]]!;
-                    const b = poly[tri[1]]!;
-                    const c = poly[tri[2]]!;
+                  {triangles.map((tri, k) => {
+                    const a = polygon[tri[0]]!;
+                    const b = polygon[tri[1]]!;
+                    const c = polygon[tri[2]]!;
                     const d = `M ${a.x} ${a.y} L ${b.x} ${b.y} L ${c.x} ${c.y} Z`;
                     return (
                       <path
@@ -682,6 +727,32 @@ function trianglesD(
     d += `M ${a.x} ${a.y} L ${b.x} ${b.y} L ${c.x} ${c.y} Z `;
   }
   return d;
+}
+
+/**
+ * Triangulate one stroke using the active view-options mode. Single source
+ * of truth: callers use this for both the rendered fill AND the debug
+ * triangle overlay so they can never disagree.
+ */
+function triangulateForView(
+  stroke: import('../../core/types.js').Stroke,
+  style: import('../../core/types.js').StyleSettings,
+  view: GlyphViewOptions,
+): { polygon: readonly Vec2[]; triangles: readonly (readonly [number, number, number])[] } {
+  if (view.triMode === 'ribbon-fixed') {
+    return triangulateStrokeRibbon(stroke, style, {
+      kind: 'fixed',
+      samplesPerSegment: view.ribbonSamples,
+    });
+  }
+  if (view.triMode === 'ribbon-density') {
+    return triangulateStrokeRibbon(stroke, style, {
+      kind: 'density',
+      spacing: view.ribbonSpacing,
+    });
+  }
+  const poly = outlineStroke(stroke, style);
+  return { polygon: poly, triangles: triangulatePolygon(poly) };
 }
 
 function polylineD(points: readonly Vec2[]): string {

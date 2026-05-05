@@ -9,11 +9,16 @@ import type { Font, Glyph, StyleSettings } from '../core/types.js';
 
 export type ModuleId = 'glyphsetter' | 'stylesetter' | 'typesetter';
 
+export type TriMode = 'earcut' | 'ribbon-fixed' | 'ribbon-density';
+
 export type GlyphViewOptions = {
   showAnchors: boolean;
   showFillPreview: boolean;
   showBorders: boolean; // colorized debug overlay of left/right/caps
   showTriangles: boolean; // ear-clip triangulation of the outline polygon
+  triMode: TriMode;
+  ribbonSamples: number; // samples per Bezier segment when triMode='ribbon-fixed'
+  ribbonSpacing: number; // target arc-length spacing in glyph units when triMode='ribbon-density'
 };
 
 type AppState = {
@@ -44,7 +49,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   textScale: 1,
   module: 'glyphsetter',
   selectedGlyph: firstGlyph,
-  glyphView: { showAnchors: true, showFillPreview: true, showBorders: false, showTriangles: false },
+  glyphView: {
+    showAnchors: true,
+    showFillPreview: true,
+    showBorders: false,
+    showTriangles: false,
+    triMode: 'earcut',
+    ribbonSamples: 6,
+    ribbonSpacing: 4,
+  },
   setStyle: (patch) =>
     set((s) => ({
       font: { ...s.font, style: { ...s.font.style, ...patch } },
