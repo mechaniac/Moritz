@@ -242,6 +242,42 @@ describe('stroke', () => {
     expect(has(105, 5)).toBe(true);
   });
 
+  it('outlineStroke: bevelAmount=20 stays within reach of the corner anchor', () => {
+    // With the safety guard in place, even pathological bevelAmount values
+    // must keep the bevel endpoints within half the adjacent segment length
+    // of the corner anchor (here: prev=100 long, so cap = 50). No outline
+    // sample should sit further than ~50 units from the corner (100, 0).
+    const flatStyle: StyleSettings = {
+      ...style,
+      capStart: 'flat',
+      capEnd: 'flat',
+      bevelAmount: 20,
+      bevelMode: 1,
+    };
+    const s: Stroke = {
+      id: 'b20',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO, corner: 'bevel' },
+        { p: v2(100, 100), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const poly = outlineStroke(s, flatStyle);
+    // Without the guard the past-anchor extrapolation produces samples far
+    // out at x≈+15·5=+175 (and similar) along the prev tangent. With the
+    // guard, no sample may extend further than the cap (50) past the corner
+    // along EITHER tangent direction.
+    for (const p of poly) {
+      // Max allowed x on prev side = corner.x + cap = 150.
+      expect(p.x).toBeLessThanOrEqual(150.01);
+      // Max allowed y past corner along next tangent = corner.y + cap = 50,
+      // BUT seg2 itself extends to y=100 with halfWidth=5 → y up to 105 is
+      // legitimate; only check x doesn't shoot off (proxy for prev-side
+      // spike). Same on the other axis: x must not go below 0 - cap = -50.
+      expect(p.x).toBeGreaterThanOrEqual(-50.01);
+    }
+  });
+
   it('outlineStroke: round cap bulges outward (forward) at the end', () => {
     // Horizontal stroke ending at (100, 0). Round cap should add samples
     // beyond x=100 (forward of the endpoint), NOT samples at x<100 (which

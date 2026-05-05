@@ -449,12 +449,60 @@ function buildSides(
           x: bevNextA.x + bevelMode * (bevNextB.x - bevNextA.x),
           y: bevNextA.y + bevelMode * (bevNextB.y - bevNextA.y),
         };
+
+        // ---- Safety guards ----------------------------------------------
+        // (a) Distance cap: each bevel endpoint may not move further from
+        //     the corner anchor than half the adjacent segment's chord
+        //     length — otherwise it can run all the way across the glyph.
+        const corner = seg.pEnd;
+        const prevLen = Math.hypot(seg.pEnd.x - seg.pStart.x, seg.pEnd.y - seg.pStart.y) || 1;
+        const nextLen = Math.hypot(next.pEnd.x - next.pStart.x, next.pEnd.y - next.pStart.y) || 1;
+        const capPrev = 0.5 * prevLen;
+        const capNext = 0.5 * nextLen;
+        const guarded = (
+          bev: Vec2,
+          perp: Vec2,
+          maxFromCorner: number,
+        ): Vec2 => {
+          // Cap distance from the corner anchor.
+          let dx = bev.x - corner.x;
+          let dy = bev.y - corner.y;
+          const d = Math.hypot(dx, dy);
+          if (d > maxFromCorner && d > 1e-9) {
+            const k = maxFromCorner / d;
+            dx *= k;
+            dy *= k;
+          }
+          let out: Vec2 = { x: corner.x + dx, y: corner.y + dy };
+          // (b) Side lock: the LEFT polyline endpoint must stay on the same
+          //     side of the corner anchor as `perp` does (relative to the
+          //     average tangent through the corner). This kills the spikes
+          //     that cross the central axis when bevelMode pushes the inside
+          //     bevel into the outside half-plane.
+          const ax = seg.tangentEnd.x + next.tangentStart.x;
+          const ay = seg.tangentEnd.y + next.tangentStart.y;
+          const aLen = Math.hypot(ax, ay) || 1;
+          const nx = -ay / aLen;
+          const ny = ax / aLen;
+          const sBev = (out.x - corner.x) * nx + (out.y - corner.y) * ny;
+          const sPerp = (perp.x - corner.x) * nx + (perp.y - corner.y) * ny;
+          if (sBev * sPerp < 0) {
+            // Project bev onto the corner-anchor line perpendicular to the
+            // average tangent, then reflect to the perp's side.
+            // Concretely: subtract twice the signed component along (nx, ny).
+            out = { x: out.x - 2 * sBev * nx, y: out.y - 2 * sBev * ny };
+          }
+          return out;
+        };
+        const bevPrevSafe = guarded(bevPrev, perpPrev, capPrev);
+        const bevNextSafe = guarded(bevNext, perpNext, capNext);
+
         prevCopy.pop();
-        trimTail(prevCopy, bevPrev, seg.tangentEnd);
-        prevCopy.push(bevPrev);
+        trimTail(prevCopy, bevPrevSafe, seg.tangentEnd);
+        prevCopy.push(bevPrevSafe);
         nextCopy.shift();
-        trimHead(nextCopy, bevNext, next.tangentStart);
-        nextCopy.unshift(bevNext);
+        trimHead(nextCopy, bevNextSafe, next.tangentStart);
+        nextCopy.unshift(bevNextSafe);
         return { trimmedPrev: prevCopy, trimmedNext: nextCopy };
       };
 
