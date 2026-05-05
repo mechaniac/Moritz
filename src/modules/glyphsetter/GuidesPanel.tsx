@@ -10,6 +10,7 @@
 import type { JSX } from 'react';
 import {
   addLayer,
+  CALLIGRAPHY_RANGES,
   moveLayer,
   presetCalligraphy,
   presetDiagonals,
@@ -284,20 +285,38 @@ function KindEditor(props: {
     case 'calligraphy':
       return (
         <>
-          {(['ascender', 'capHeight', 'xHeight', 'baseline', 'descender'] as const).map((field) => (
-            <Row key={field} label={field}>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.005}
-                value={kind[field]}
-                onChange={(e) => onChange({ ...kind, [field]: Number(e.target.value) })}
-                style={{ flex: 1 }}
-              />
-              <span style={{ width: 32, textAlign: 'right' }}>{kind[field].toFixed(2)}</span>
-            </Row>
-          ))}
+          <CalligraphySlider
+            label="cap-height"
+            field="capHeight"
+            kind={kind}
+            onChange={onChange}
+          />
+          <CalligraphySlider
+            label="x-height"
+            field="xHeight"
+            kind={kind}
+            onChange={onChange}
+            help="x-height as fraction of cap"
+          />
+          <CalligraphySlider
+            label="ascender"
+            field="ascender"
+            kind={kind}
+            onChange={onChange}
+          />
+          <CalligraphySlider
+            label="descender"
+            field="descender"
+            kind={kind}
+            onChange={onChange}
+          />
+          <CalligraphySlider
+            label="balance"
+            field="weight"
+            kind={kind}
+            onChange={onChange}
+            help="− top-heavy, + bottom-heavy"
+          />
         </>
       );
     case 'dots':
@@ -355,5 +374,34 @@ function Row(props: { label: string; children: React.ReactNode }): JSX.Element {
       <span style={{ width: 50 }}>{props.label}</span>
       {props.children}
     </label>
+  );
+}
+
+type CalligraphyKind = Extract<GuideKind, { kind: 'calligraphy' }>;
+type CalligraphyField = keyof typeof CALLIGRAPHY_RANGES;
+
+function CalligraphySlider(props: {
+  label: string;
+  field: CalligraphyField;
+  kind: CalligraphyKind;
+  onChange: (k: CalligraphyKind) => void;
+  help?: string;
+}): JSX.Element {
+  const r = CALLIGRAPHY_RANGES[props.field];
+  const v = props.kind[props.field];
+  return (
+    <Row label={props.label}>
+      <input
+        type="range"
+        min={r.min}
+        max={r.max}
+        step={0.005}
+        value={v}
+        onChange={(e) => props.onChange({ ...props.kind, [props.field]: Number(e.target.value) })}
+        style={{ flex: 1 }}
+        title={props.help}
+      />
+      <span style={{ width: 36, textAlign: 'right' }}>{v.toFixed(2)}</span>
+    </Row>
   );
 }

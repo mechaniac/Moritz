@@ -24,15 +24,17 @@ export type GuideKind =
   | { kind: 'golden'; axis: 'x' | 'y'; depth: number }
   // Box diagonals / cross-diagonals (4 lines per repetition).
   | { kind: 'diagonals'; cross: boolean }
-  // Horizontal calligraphy lines: baseline / x-height / cap / ascender /
-  // descender. Heights are fractions of the glyph box height (0=top, 1=bottom).
+  // Horizontal calligraphy lines: ascender / cap / x-height / baseline /
+  // descender. Parameters are aesthetic ratios (not raw y-fractions) so the
+  // user can only nudge the typography within tasteful bounds. All values
+  // are clamped at compute time to AESTHETIC_RANGES.
   | {
       kind: 'calligraphy';
-      baseline: number; // y fraction (default ~0.85)
-      xHeight: number; // y fraction (default ~0.55)
-      capHeight: number; // y fraction (default ~0.15)
-      ascender: number; // y fraction (default ~0.05)
-      descender: number; // y fraction (default ~0.95)
+      capHeight: number;     // cap-height as fraction of box H (range 0.45..0.75)
+      xHeight: number;       // x-height as fraction of cap-height (range 0.42..0.65)
+      ascender: number;      // extra above cap, fraction of box H (range 0.00..0.18)
+      descender: number;     // depth below baseline, fraction of box H (range 0.10..0.32)
+      weight: number;        // vertical bias of the body, fraction of box H (range -0.10..0.10; +down)
     }
   // Italic / slant grid — vertical(ish) lines repeated across the box,
   // each rotated by `angle` (radians, +ve = lean right).
@@ -101,6 +103,23 @@ export function presetDiagonals(cross = true): GuideLayer {
   };
 }
 
+/**
+ * Aesthetic bounds for the calligraphy kind. The UI uses these to set slider
+ * ranges; the compute stage clamps to them so out-of-band JSON imports still
+ * render sanely.
+ */
+export const CALLIGRAPHY_RANGES = {
+  capHeight: { min: 0.45, max: 0.75, default: 0.62 },
+  xHeight:   { min: 0.42, max: 0.65, default: 0.52 },
+  ascender:  { min: 0.00, max: 0.18, default: 0.06 },
+  descender: { min: 0.10, max: 0.32, default: 0.22 },
+  weight:    { min: -0.10, max: 0.10, default: 0.00 },
+} as const;
+
+function clampRange(v: number, r: { min: number; max: number }): number {
+  return Math.max(r.min, Math.min(r.max, v));
+}
+
 export function presetCalligraphy(): GuideLayer {
   return {
     id: newId(),
@@ -111,11 +130,11 @@ export function presetCalligraphy(): GuideLayer {
     strokeWidth: 1.25,
     kind: {
       kind: 'calligraphy',
-      ascender: 0.05,
-      capHeight: 0.15,
-      xHeight: 0.55,
-      baseline: 0.85,
-      descender: 0.95,
+      capHeight: CALLIGRAPHY_RANGES.capHeight.default,
+      xHeight:   CALLIGRAPHY_RANGES.xHeight.default,
+      ascender:  CALLIGRAPHY_RANGES.ascender.default,
+      descender: CALLIGRAPHY_RANGES.descender.default,
+      weight:    CALLIGRAPHY_RANGES.weight.default,
     },
   };
 }
@@ -239,9 +258,33 @@ export function computeLayerGeometry(
       return { lines, circles: [], dots: [] };
     }
     case 'calligraphy': {
+      // Clamp inputs to aesthetic ranges, then derive the five y positions.
+      // Layout (top -> bottom in y-from-top coordinates):
+      //   ascender_y  = baseline_y - capHeight - ascender
+      //   cap_y       = baseline_y - capHeight
+      //   xHeight_y   = baseline_y - xHeight * capHeight
+      //   baseline_y  = (1 - descender + weight)
+      //   descender_y = baseline_y + descender
+      // The body is centered with no padding by default; `weight` shifts it.
+      const cap  = clampRange(k.capHeight, CALLIGRAPHY_RANGES.capHeight);
+      const xr   = clampRange(k.xHeight,   CALLIGRAPHY_RANGES.xHeight);
+      const asc  = clampRange(k.ascender,  CALLIGRAPHY_RANGES.ascender);
+      const desc = clampRange(k.descender, CALLIGRAPHY_RANGES.descender);
+      const w    = clampRange(k.weight,    CALLIGRAPHY_RANGES.weight);
+      // Ensure ascender_y stays within [0, H]. Min top-margin: 0.
+      const total = asc + cap + desc; // body span as fraction of H
+      // Place baseline so ascender_y >= 0 and descender_y <= 1, then bias by w.
+      const minBaseline = asc + cap;            // descender_y could overflow but desc clamped
+      const maxBaseline = 1 - desc;
+      const naturalBaseline = (1 - total) * 0.5 + asc + cap; // centered
+      const baseline = Math.max(minBaseline, Math.min(maxBaseline, naturalBaseline + w));
+      const ascY = (baseline - cap - asc) * H;
+      const capY = (baseline - cap) * H;
+      const xY  = (baseline - xr * cap) * H;
+      const baseY = baseline * H;
+      const descY = (baseline + desc) * H;
       const lines: GuideLine[] = [];
-      for (const f of [k.ascender, k.capHeight, k.xHeight, k.baseline, k.descender]) {
-        const y = f * H;
+      for (const y of [ascY, capY, xY, baseY, descY]) {
         lines.push({ x1: 0, y1: y, x2: W, y2: y });
       }
       return { lines, circles: [], dots: [] };
