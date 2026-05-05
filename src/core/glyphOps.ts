@@ -206,7 +206,14 @@ export function makeSmooth(g: Glyph, strokeIdx: number, vIdx: number): Glyph {
 // Re-export helpers used by callers
 export { add as _add, sub as _sub, ZERO as _ZERO };
 
-/** Toggle / set whether the anchor's in & out tangents move independently. */
+/**
+ * Toggle / set whether the anchor's in & out tangents move independently.
+ *
+ * Setting `broken = false` (smooth) immediately re-aligns the handles so
+ * they are collinear: the OUT handle keeps its direction & length, and the
+ * IN handle is reflected across `p` keeping its OWN length. If one handle
+ * is zero we mirror from the non-zero one. If both are zero, nothing to do.
+ */
 export function setBreakTangent(
   g: Glyph,
   strokeIdx: number,
@@ -217,11 +224,25 @@ export function setBreakTangent(
   if (!s) return g;
   const v = s.vertices[vIdx];
   if (!v) return g;
-  const next: Vertex = broken
-    ? { ...v, breakTangent: true }
-    : (() => {
-        const { breakTangent: _drop, ...rest } = v;
-        return rest;
-      })();
+  let next: Vertex;
+  if (broken) {
+    next = { ...v, breakTangent: true };
+  } else {
+    const { breakTangent: _drop, ...rest } = v;
+    next = rest;
+    const outLen = Math.hypot(v.outHandle.x, v.outHandle.y);
+    const inLen = Math.hypot(v.inHandle.x, v.inHandle.y);
+    // Pick a reference direction. Prefer OUT if it has length, else IN.
+    if (outLen > 1e-9) {
+      const ux = v.outHandle.x / outLen;
+      const uy = v.outHandle.y / outLen;
+      const targetInLen = inLen > 1e-9 ? inLen : outLen;
+      next = { ...next, inHandle: { x: -ux * targetInLen, y: -uy * targetInLen } };
+    } else if (inLen > 1e-9) {
+      const ux = v.inHandle.x / inLen;
+      const uy = v.inHandle.y / inLen;
+      next = { ...next, outHandle: { x: -ux * inLen, y: -uy * inLen } };
+    }
+  }
   return replaceStroke(g, strokeIdx, replaceVertex(s, vIdx, next));
 }
