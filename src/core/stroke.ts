@@ -35,7 +35,7 @@ const SAMPLES_PER_SEGMENT = 24;
 /** A miter is replaced with a bevel if its length exceeds this × halfWidth. */
 const MITER_LIMIT = 6;
 
-const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+const clampLow = (v: number, lo: number): number => (v < lo ? lo : v);
 
 /** Linear interpolation of width(t) over a sorted-by-t WidthProfile. */
 export function widthAt(profile: WidthProfile, t: number): number {
@@ -353,7 +353,7 @@ function buildSides(
       // Per-anchor join style. The corner anchor is `stroke.vertices[i+1]`.
       const anchor = stroke.vertices[i + 1]!;
       const cornerJoin = anchor.corner ?? 'miter';
-      const bevelAmount = clamp01(style.bevelAmount ?? 1);
+      const bevelAmount = clampLow(style.bevelAmount ?? 1, 0);
 
       const tryStitch = (
         prevSide: Vec2[],
@@ -401,7 +401,10 @@ function buildSides(
 
         // Outside bevel: the prev side ends at mp - amount*kPrev*tangentEnd
         // and the next side starts at mp + amount*kNext*tangentStart. The
-        // implicit chord between them is the bevel face.
+        // implicit chord between them is the bevel face. With amount > 1 the
+        // bevel endpoints walk PAST the original perpendicular samples into
+        // the interior of the prev / next polylines, so trim any samples that
+        // would now lie on the wrong side of the new endpoint.
         const bevPrev: Vec2 = {
           x: mp.x - bevelAmount * kPrev * seg.tangentEnd.x,
           y: mp.y - bevelAmount * kPrev * seg.tangentEnd.y,
@@ -411,8 +414,10 @@ function buildSides(
           y: mp.y + bevelAmount * kNext * next.tangentStart.y,
         };
         prevCopy.pop();
+        trimTail(prevCopy, bevPrev, seg.tangentEnd);
         prevCopy.push(bevPrev);
         nextCopy.shift();
+        trimHead(nextCopy, bevNext, next.tangentStart);
         nextCopy.unshift(bevNext);
         return { trimmedPrev: prevCopy, trimmedNext: nextCopy };
       };
