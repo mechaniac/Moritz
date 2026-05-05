@@ -62,10 +62,24 @@ const br = (
 });
 
 let strokeCounter = 0;
-const stroke = (vertices: Vertex[]): Stroke => ({
-  id: `r${++strokeCounter}`,
-  vertices,
-});
+
+// Tiny pen-lift gap (in glyph units) used by ellipse-shaped glyphs so the
+// stroke has a real start/end. The round end caps (radius = halfWidth) more
+// than cover this gap visually — it just guarantees first vertex ≠ last.
+const PEN_LIFT = 1;
+
+const stroke = (vertices: Vertex[]): Stroke => {
+  if (vertices.length >= 2) {
+    const a = vertices[0]!.p;
+    const b = vertices[vertices.length - 1]!.p;
+    if (a.x === b.x && a.y === b.y) {
+      throw new Error(
+        'roundFont stroke is closed (first.p === last.p). Strokes must have a distinct start and end — leave a small pen-lift gap.',
+      );
+    }
+  }
+  return { id: `r${++strokeCounter}`, vertices };
+};
 
 const glyph = (
   char: string,
@@ -205,7 +219,9 @@ const N: Glyph = glyph('N', [
   stroke([c(20, BASELINE), c(20, CAP), c(80, BASELINE), c(80, CAP)]),
 ]);
 
-// O: closed ellipse with 4 smooth cardinals; first vertex repeated to close.
+// O: ellipse drawn as a single open stroke. Start and end sit on either
+// side of the top apex, separated by PEN_LIFT — the round caps cover the
+// gap so it reads as a continuous ring.
 const O: Glyph = (() => {
   const cx = 50;
   const cy = (CAP + BASELINE) / 2;
@@ -213,11 +229,11 @@ const O: Glyph = (() => {
   const ry = (BASELINE - CAP) / 2;
   return glyph('O', [
     stroke([
-      sm(cx, CAP, KAPPA * rx, 0),
+      sm(cx + PEN_LIFT, CAP, KAPPA * rx, 0),
       sm(cx + rx, cy, 0, KAPPA * ry),
       sm(cx, BASELINE, -KAPPA * rx, 0),
       sm(cx - rx, cy, 0, -KAPPA * ry),
-      sm(cx, CAP, KAPPA * rx, 0),
+      sm(cx - PEN_LIFT, CAP, KAPPA * rx, 0),
     ]),
   ]);
 })();
@@ -341,16 +357,16 @@ const lowercase: Glyph[] = [
 
 // ---------- Digits ----------------------------------------------------------
 
-// 0: same as O.
+// 0: open ellipse, same construction as O.
 const N0: Glyph = (() => {
   const cx = 50, cy = (CAP + BASELINE) / 2, rx = 35, ry = (BASELINE - CAP) / 2;
   return glyph('0', [
     stroke([
-      sm(cx, CAP, KAPPA * rx, 0),
+      sm(cx + PEN_LIFT, CAP, KAPPA * rx, 0),
       sm(cx + rx, cy, 0, KAPPA * ry),
       sm(cx, BASELINE, -KAPPA * rx, 0),
       sm(cx - rx, cy, 0, -KAPPA * ry),
-      sm(cx, CAP, KAPPA * rx, 0),
+      sm(cx - PEN_LIFT, CAP, KAPPA * rx, 0),
     ]),
   ]);
 })();
@@ -418,7 +434,9 @@ const N6: Glyph = glyph('6', [
   ]),
 ]);
 
-// 8: figure-eight, two stacked smooth ellipses that share a midpoint.
+// 8: figure-eight drawn as a single open stroke. Start sits just left of
+// the midpoint, ascends through the top loop, returns to the midpoint,
+// descends through the bottom loop, ends just right of the midpoint.
 const N8: Glyph = (() => {
   const cx = 50;
   const yMid = MID;
@@ -428,16 +446,15 @@ const N8: Glyph = (() => {
   const cyB = (yMid + BASELINE) / 2;
   return glyph('8', [
     stroke([
-      sm(cx, yMid, KAPPA * rxT, 0),
+      sm(cx - PEN_LIFT, yMid, KAPPA * rxT, 0),
       sm(cx + rxT, cyT, 0, -KAPPA * ryT),
       sm(cx, CAP, -KAPPA * rxT, 0),
       sm(cx - rxT, cyT, 0, KAPPA * ryT),
       sm(cx, yMid, KAPPA * rxT, 0),
-      // descend into bottom loop, sharing midpoint
       sm(cx + rxB, cyB, 0, KAPPA * ryB),
       sm(cx, BASELINE, -KAPPA * rxB, 0),
       sm(cx - rxB, cyB, 0, -KAPPA * ryB),
-      sm(cx, yMid, KAPPA * rxT, 0),
+      sm(cx + PEN_LIFT, yMid, KAPPA * rxT, 0),
     ]),
   ]);
 })();

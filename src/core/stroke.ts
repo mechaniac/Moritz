@@ -380,6 +380,17 @@ function buildSides(
   tangentEnd: Vec2;
 } | null {
   if (stroke.vertices.length < 2) return null;
+  // Open-stroke invariant: a stroke is a real pen path, with a distinct
+  // moment of touch-down and lift-off. Closed loops are forbidden — they
+  // would yield a self-touching annular outline polygon that no fill rule
+  // or triangulator can interpret unambiguously.
+  const a = stroke.vertices[0]!.p;
+  const z = stroke.vertices[stroke.vertices.length - 1]!.p;
+  if (a.x === z.x && a.y === z.y) {
+    throw new Error(
+      `Stroke "${stroke.id}" is closed (first vertex coincides with last). All strokes must have a distinct start and end.`,
+    );
+  }
   const segments = strokeToSegments(stroke);
   if (segments.length === 0) return null;
 

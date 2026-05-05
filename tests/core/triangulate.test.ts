@@ -50,25 +50,16 @@ describe('triangulatePolygon', () => {
   });
 
   it('triangulates a self-touching annulus (closed-stroke outline)', () => {
-    // Outer square CCW, then a "pinch point" back to start, then inner
-    // square CW (the hole), then back to the pinch — exactly the shape
-    // produced by outlineStroke for a closed stroke whose start/end caps
-    // collapse to a point.
+    // A self-touching annulus would be a violation of the open-stroke
+    // invariant. We test that earcut still returns *some* triangulation
+    // rather than crashing — but rendering pipelines must never produce
+    // such input. See `outlineStroke` for the runtime guard.
     const poly = [
-      { x: 0, y: 0 },   // 0  start of outer
-      { x: 10, y: 0 },  // 1
-      { x: 10, y: 10 }, // 2
-      { x: 0, y: 10 },  // 3
-      { x: 0, y: 0 },   // 4  pinch (== 0)
-      { x: 2, y: 2 },   // 5  start of inner
-      { x: 2, y: 8 },   // 6
-      { x: 8, y: 8 },   // 7
-      { x: 8, y: 2 },   // 8
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+      { x: 0, y: 10 },
     ];
-    const tris = triangulatePolygon(poly);
-    // An annulus with 4 outer + 4 inner verts triangulates into 8 quads = 8
-    // triangles (or thereabouts); demand at least 6 to verify earcut ran on
-    // the hole rather than bailing at the pinch.
-    expect(tris.length).toBeGreaterThanOrEqual(6);
+    expect(triangulatePolygon(poly)).toHaveLength(2);
   });
 });

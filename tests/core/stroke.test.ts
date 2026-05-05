@@ -27,6 +27,18 @@ describe('stroke', () => {
     expect(widthAt(wp, 0.75)).toBe(7.5);
   });
 
+  it('outlineStroke throws on closed strokes (open-stroke invariant)', () => {
+    const closed: Stroke = {
+      id: 's',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(10, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    expect(() => outlineStroke(closed, style)).toThrow(/closed/i);
+  });
+
   it('outlineStroke returns empty for <2 vertices', () => {
     const s: Stroke = { id: 'a', vertices: [{ p: v2(0, 0), inHandle: ZERO, outHandle: ZERO }] };
     expect(outlineStroke(s, style)).toHaveLength(0);
