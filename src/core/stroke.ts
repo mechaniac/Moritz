@@ -36,7 +36,22 @@ import type {
  * endpoints only. Adjacent segments share the corner anchor and stitching
  * (miter / bevel) inserts whatever extra vertices the join needs.
  */
-const SAMPLES_PER_SEGMENT = 1;
+/**
+ * One offset sample per anchor: each cubic segment contributes its two
+ * endpoints only — PLUS any extra samples adaptive flattening inserts when
+ * the cubic is curvy or its width profile bends. Adjacent segments share
+ * the corner anchor and stitching (miter / bevel-fallback) inserts whatever
+ * extra vertices the join needs.
+ */
+/** Max perpendicular deviation (in glyph units) of a cubic from its chord
+ *  before we recurse. Sub-pixel at typical preview scale. */
+const FLATNESS_TOL = 0.25;
+/** Max deviation of width(midpoint) from the linear interpolation of width
+ *  at the endpoints, in glyph units, before we recurse. Catches strokes
+ *  whose centerline is straight but whose width swells. */
+const WIDTH_TOL = 0.25;
+/** Hard cap on de Casteljau depth. Reached only on truly degenerate inputs. */
+const FLATTEN_MAX_DEPTH = 12;
 /** A miter is replaced with a bevel-fallback if its length exceeds this × halfWidth. */
 const MITER_LIMIT = 6;
 
@@ -86,16 +101,22 @@ type SegmentOffsets = {
 
 function offsetSegment(
   seg: CubicSegment,
-  n: number,
   profile: WidthProfile,
   tArcStart: number,
   tArcEnd: number,
   worldNormal: Vec2 | null,
 ): SegmentOffsets {
+  // Adaptive flattening: collect t-values in [0,1] of `seg` such that each
+  // consecutive pair bounds a sub-cubic that is "flat enough" both
+  // geometrically (perpendicular deviation of the controls from the chord)
+  // and width-wise (midpoint width is close to linear interp of endpoint
+  // widths). The leaves' endpoints become the offset samples.
+  const ts: number[] = [0];
+  flattenCubic(seg, profile, tArcStart, tArcEnd, 0, 1, 0, ts);
+
   const lefts: Vec2[] = [];
   const rights: Vec2[] = [];
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
+  for (const t of ts) {
     const p = pointAt(seg, t);
     const tangent = tangentAt(seg, t);
     const tArc = tArcStart + (tArcEnd - tArcStart) * t;
@@ -116,6 +137,82 @@ function offsetSegment(
     pStart: pointAt(seg, 0),
     pEnd: pointAt(seg, 1),
   };
+}
+
+const mid = (a: Vec2, b: Vec2): Vec2 => ({
+  x: (a.x + b.x) / 2,
+  y: (a.y + b.y) / 2,
+});
+
+/**
+ * Recursive de Casteljau flattener. `tLo` / `tHi` are the parameter range
+ * of `sub` in the ORIGINAL parent segment's parameter space; `tArcStart` /
+ * `tArcEnd` are the corresponding stroke-arc t-values for width lookup.
+ *
+ * Subdivides `sub` at its own t=0.5 until both:
+ *   (a) max perp-distance of c1, c2 from the chord p0–p1 ≤ FLATNESS_TOL;
+ *   (b) |w(midArc) − ½(w(start) + w(end))| ≤ WIDTH_TOL.
+ *
+ * Emits `tHi` (in parent space) at every leaf, so `out` ends up containing
+ * the right-hand parameter of every leaf in increasing order. Caller seeds
+ * `out` with `[0]`; final `out` is the full set of sample t-values.
+ */
+function flattenCubic(
+  sub: CubicSegment,
+  profile: WidthProfile,
+  tArcStart: number,
+  tArcEnd: number,
+  tLo: number,
+  tHi: number,
+  depth: number,
+  out: number[],
+): void {
+  // (a) chord flatness — perpendicular deviation of c1, c2 from chord p0-p1.
+  const dx = sub.p1.x - sub.p0.x;
+  const dy = sub.p1.y - sub.p0.y;
+  const chordLen = Math.hypot(dx, dy);
+  let chordOk: boolean;
+  if (chordLen < 1e-9) {
+    // Degenerate chord (p0 ≈ p1): treat as flat iff the controls also
+    // collapse onto the same point. Otherwise it's a cusp/loop — split.
+    const d1 = Math.hypot(sub.c1.x - sub.p0.x, sub.c1.y - sub.p0.y);
+    const d2 = Math.hypot(sub.c2.x - sub.p0.x, sub.c2.y - sub.p0.y);
+    chordOk = Math.max(d1, d2) <= FLATNESS_TOL;
+  } else {
+    const perp1 =
+      Math.abs((sub.c1.x - sub.p0.x) * dy - (sub.c1.y - sub.p0.y) * dx) /
+      chordLen;
+    const perp2 =
+      Math.abs((sub.c2.x - sub.p0.x) * dy - (sub.c2.y - sub.p0.y) * dx) /
+      chordLen;
+    chordOk = Math.max(perp1, perp2) <= FLATNESS_TOL;
+  }
+
+  // (b) width-profile flatness over this t-range.
+  const wStart = widthAt(profile, tArcStart);
+  const wEnd = widthAt(profile, tArcEnd);
+  const wMid = widthAt(profile, (tArcStart + tArcEnd) / 2);
+  const widthOk = Math.abs(wMid - (wStart + wEnd) / 2) <= WIDTH_TOL;
+
+  if ((chordOk && widthOk) || depth >= FLATTEN_MAX_DEPTH) {
+    out.push(tHi);
+    return;
+  }
+
+  // de Casteljau split at t=0.5.
+  const m01 = mid(sub.p0, sub.c1);
+  const m12 = mid(sub.c1, sub.c2);
+  const m23 = mid(sub.c2, sub.p1);
+  const m012 = mid(m01, m12);
+  const m123 = mid(m12, m23);
+  const m0123 = mid(m012, m123);
+  const left: CubicSegment = { p0: sub.p0, c1: m01, c2: m012, p1: m0123 };
+  const right: CubicSegment = { p0: m0123, c1: m123, c2: m23, p1: sub.p1 };
+
+  const tMid = (tLo + tHi) / 2;
+  const tArcMid = (tArcStart + tArcEnd) / 2;
+  flattenCubic(left, profile, tArcStart, tArcMid, tLo, tMid, depth + 1, out);
+  flattenCubic(right, profile, tArcMid, tArcEnd, tMid, tHi, depth + 1, out);
 }
 
 /**
@@ -305,7 +402,7 @@ function buildSides(
     const tA = acc / total;
     const tB = (acc + lens[i]!) / total;
     offsets.push(
-      offsetSegment(segments[i]!, SAMPLES_PER_SEGMENT, profile, tA, tB, worldNormal),
+      offsetSegment(segments[i]!, profile, tA, tB, worldNormal),
     );
     acc += lens[i]!;
   }
