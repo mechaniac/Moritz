@@ -11,6 +11,7 @@ import { useMemo, useRef, useState } from 'react';
 import { layout } from '../../core/layout.js';
 import { renderLayoutToSvg } from '../../core/export/svg.js';
 import { svgToPng } from '../../core/export/png.js';
+import { bubbleGeometry, type BubbleShape } from '../../core/bubble.js';
 import { downloadBlob } from '../../state/persistence.js';
 import { useAppStore } from '../../state/store.js';
 import {
@@ -45,6 +46,8 @@ export function TypeSetter(): JSX.Element {
   };
 
   const onAddBlock = () => {
+    const w = Math.max(120, pageW * 0.18);
+    const h = Math.max(80, pageH * 0.12);
     addBlock({
       x: pageW * 0.3,
       y: pageH * 0.3,
@@ -52,6 +55,12 @@ export function TypeSetter(): JSX.Element {
       text: 'HELLO!',
       bold: 1,
       italic: 0,
+      shape: 'speech',
+      bubbleW: w,
+      bubbleH: h,
+      tailX: w * 0.25,
+      tailY: h + h * 0.6,
+      bubbleStroke: 3,
     });
   };
 
@@ -124,6 +133,9 @@ export function TypeSetter(): JSX.Element {
                 selected={b.id === selectedBlockId}
                 onSelect={() => selectBlock(b.id)}
                 onMove={(x, y) => updateBlock(b.id, { x, y })}
+                onTailMove={(tailX, tailY) =>
+                  updateBlock(b.id, { tailX, tailY })
+                }
               />
             ))}
           </div>
@@ -166,50 +178,114 @@ function BlockOverlay(props: {
   selected: boolean;
   onSelect: () => void;
   onMove: (x: number, y: number) => void;
+  onTailMove: (tailX: number, tailY: number) => void;
 }): JSX.Element {
   const { block, font, zoom } = props;
-  const dragRef = useRef<{ dx: number; dy: number } | null>(null);
+  const moveRef = useRef<{ lastX: number; lastY: number } | null>(null);
+  const tailRef = useRef<boolean>(false);
 
-  const svgString = useMemo(
-    () => renderBlockSvg(font, block),
-    [font, block],
-  );
+  // Inner SVG includes bubble + text, sized to a bounding box that contains
+  // both the bubble (and tail) and the text glyphs.
+  const inner = useMemo(() => buildBlockSvg(font, block), [font, block]);
 
   const onPointerDown = (e: React.PointerEvent) => {
     e.stopPropagation();
     props.onSelect();
-    const startX = e.clientX;
-    const startY = e.clientY;
-    dragRef.current = { dx: startX, dy: startY };
+    moveRef.current = { lastX: e.clientX, lastY: e.clientY };
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragRef.current) return;
-    const moveX = (e.clientX - dragRef.current.dx) / zoom;
-    const moveY = (e.clientY - dragRef.current.dy) / zoom;
-    props.onMove(block.x + moveX, block.y + moveY);
-    dragRef.current = { dx: e.clientX, dy: e.clientY };
+    if (!moveRef.current) return;
+    const dx = (e.clientX - moveRef.current.lastX) / zoom;
+    const dy = (e.clientY - moveRef.current.lastY) / zoom;
+    props.onMove(block.x + dx, block.y + dy);
+    moveRef.current = { lastX: e.clientX, lastY: e.clientY };
   };
   const onPointerUp = (e: React.PointerEvent) => {
-    dragRef.current = null;
+    moveRef.current = null;
     (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
   };
+
+  // The inner SVG is in image-space units; `zoom` scales the wrapper.
+  const w = inner.width;
+  const h = inner.height;
 
   return (
     <div
       style={{
         position: 'absolute',
-        left: block.x * zoom,
-        top: block.y * zoom,
+        left: (block.x + inner.offsetX) * zoom,
+        top: (block.y + inner.offsetY) * zoom,
+        width: w * zoom,
+        height: h * zoom,
         cursor: 'move',
-        outline: props.selected ? '2px dashed #0a84ff' : 'none',
-        padding: 2,
+        outline: props.selected ? '1px dashed #0a84ff' : 'none',
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      // The SVG already has its own width/height; scale via wrapper to honor zoom.
-      dangerouslySetInnerHTML={{ __html: scaleSvg(svgString, zoom * (block.fontSize / 140)) }}
+    >
+      <div
+        style={{ width: '100%', height: '100%', pointerEvents: 'none' }}
+        dangerouslySetInnerHTML={{ __html: scaleSvgToFit(inner.svg, w * zoom, h * zoom) }}
+      />
+      {props.selected && (block.shape === 'speech' || block.shape === 'cloud') && (
+        <TailHandle
+          block={block}
+          zoom={zoom}
+          inner={inner}
+          tailRef={tailRef}
+          onTailMove={props.onTailMove}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Drag handle on the bubble's tail tip (only shown when the block is selected). */
+function TailHandle(props: {
+  block: TextBlock;
+  zoom: number;
+  inner: { offsetX: number; offsetY: number };
+  tailRef: React.MutableRefObject<boolean>;
+  onTailMove: (tailX: number, tailY: number) => void;
+}): JSX.Element {
+  const { block, zoom, inner } = props;
+  // Tail is in bubble-local coords; render it relative to the wrapper.
+  const left = (block.tailX - inner.offsetX) * zoom;
+  const top = (block.tailY - inner.offsetY) * zoom;
+  const onPointerDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    props.tailRef.current = true;
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!props.tailRef.current) return;
+    const rect = (e.currentTarget as HTMLElement).parentElement!.getBoundingClientRect();
+    const localX = (e.clientX - rect.left) / zoom + inner.offsetX;
+    const localY = (e.clientY - rect.top) / zoom + inner.offsetY;
+    props.onTailMove(localX, localY);
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    props.tailRef.current = false;
+    (e.currentTarget as Element).releasePointerCapture?.(e.pointerId);
+  };
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        left: left - 6,
+        top: top - 6,
+        width: 12,
+        height: 12,
+        borderRadius: '50%',
+        background: '#fff',
+        border: '2px solid #0a84ff',
+        cursor: 'grab',
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
     />
   );
 }
@@ -226,15 +302,56 @@ function BlockInspector(props: {
         Text
         <textarea
           value={block.text}
-          onChange={(e) => onChange({ text: e.target.value.toUpperCase() })}
+          onChange={(e) => onChange({ text: e.target.value })}
           rows={3}
           style={{ fontSize: 14, padding: 4 }}
         />
       </label>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span>Bubble shape</span>
+        <select
+          value={block.shape}
+          onChange={(e) => onChange({ shape: e.target.value as BubbleShape })}
+          style={{ padding: 4 }}
+        >
+          <option value="none">None</option>
+          <option value="rect">Caption (rect)</option>
+          <option value="speech">Speech bubble</option>
+          <option value="cloud">Thought cloud</option>
+        </select>
+      </label>
+      {block.shape !== 'none' && (
+        <>
+          <NumberRow
+            label="Bubble W"
+            min={40}
+            max={1200}
+            step={2}
+            value={block.bubbleW}
+            onChange={(v) => onChange({ bubbleW: v })}
+          />
+          <NumberRow
+            label="Bubble H"
+            min={30}
+            max={800}
+            step={2}
+            value={block.bubbleH}
+            onChange={(v) => onChange({ bubbleH: v })}
+          />
+          <NumberRow
+            label="Outline"
+            min={0}
+            max={12}
+            step={0.5}
+            value={block.bubbleStroke}
+            onChange={(v) => onChange({ bubbleStroke: v })}
+          />
+        </>
+      )}
       <NumberRow
         label="Font size"
         min={8}
-        max={120}
+        max={200}
         step={1}
         value={block.fontSize}
         onChange={(v) => onChange({ fontSize: v })}
@@ -308,25 +425,108 @@ function applyBlockOverrides(font: Font, block: TextBlock): Font {
   };
 }
 
-function renderBlockSvg(font: Font, block: TextBlock): string {
+/**
+ * Build the inner pieces for a single block (bubble path + text glyphs) as a
+ * group of SVG elements expressed in the block's image-pixel coordinate
+ * space. (0,0) is the bubble's top-left (or, when shape='none', the text
+ * origin). Tail extends into negative space when applicable.
+ */
+type BlockPieces = {
+  /** SVG fragment string (no outer <svg>) ready to be placed in any parent. */
+  body: string;
+  /** Tight bbox of the fragment in block-local image-pixel space. */
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+};
+
+function buildBlockPieces(font: Font, block: TextBlock): BlockPieces {
   const styled = applyBlockOverrides(font, block);
   const result = layout(block.text, styled, { lineHeightFactor: 1.1 });
-  return renderLayoutToSvg(result, styled, { padding: 0 });
+  const textInner = renderLayoutToSvg(result, styled, { padding: 0 });
+  const textBody = stripSvgWrapper(textInner);
+  const textW = parseFloat(/width="([\d.]+)"/.exec(textInner)?.[1] ?? '0');
+  const textH = parseFloat(/height="([\d.]+)"/.exec(textInner)?.[1] ?? '0');
+  const scale = block.fontSize / 140; // 140 ≈ default glyph box height
+
+  const parts: string[] = [];
+
+  // Bubble first (drawn behind text).
+  let minX = 0;
+  let minY = 0;
+  let maxX = 0;
+  let maxY = 0;
+  if (block.shape !== 'none') {
+    const tail = { x: block.tailX, y: block.tailY };
+    const geom = bubbleGeometry(block.shape, block.bubbleW, block.bubbleH, tail);
+    const sw = block.bubbleStroke;
+    parts.push(
+      `<g fill="white" stroke="black" stroke-width="${sw}" stroke-linejoin="round">`,
+      `<path d="${geom.main}" />`,
+      ...geom.extras.map((d) => `<path d="${d}" />`),
+      `</g>`,
+    );
+    minX = Math.min(0, tail.x) - sw;
+    minY = Math.min(0, tail.y) - sw;
+    maxX = Math.max(block.bubbleW, tail.x) + sw;
+    maxY = Math.max(block.bubbleH, tail.y) + sw;
+  }
+
+  // Text: centered inside the bubble (or at 0,0 when shape='none').
+  const tw = textW * scale;
+  const th = textH * scale;
+  let tx = 0;
+  let ty = 0;
+  if (block.shape !== 'none') {
+    tx = (block.bubbleW - tw) / 2;
+    ty = (block.bubbleH - th) / 2;
+  }
+  parts.push(
+    `<g transform="translate(${fmt(tx)} ${fmt(ty)}) scale(${fmt(scale)})">`,
+    textBody,
+    `</g>`,
+  );
+  if (block.shape === 'none') {
+    minX = Math.min(minX, 0);
+    minY = Math.min(minY, 0);
+    maxX = Math.max(maxX, tw);
+    maxY = Math.max(maxY, th);
+  }
+
+  return { body: parts.join(''), minX, minY, maxX, maxY };
 }
 
-/** Scale an existing SVG by replacing its width/height attributes. */
-function scaleSvg(svg: string, factor: number): string {
+const fmt = (n: number): string => Number(n.toFixed(2)).toString();
+
+function buildBlockSvg(
+  font: Font,
+  block: TextBlock,
+): { svg: string; width: number; height: number; offsetX: number; offsetY: number } {
+  const pieces = buildBlockPieces(font, block);
+  const w = Math.max(1, pieces.maxX - pieces.minX);
+  const h = Math.max(1, pieces.maxY - pieces.minY);
+  const svg = [
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${fmt(pieces.minX)} ${fmt(pieces.minY)} ${fmt(w)} ${fmt(h)}" width="${fmt(w)}" height="${fmt(h)}">`,
+    pieces.body,
+    `</svg>`,
+  ].join('');
+  return { svg, width: w, height: h, offsetX: pieces.minX, offsetY: pieces.minY };
+}
+
+/** Force an SVG's width/height to a target size in screen pixels. */
+function scaleSvgToFit(svg: string, w: number, h: number): string {
   return svg
-    .replace(/\bwidth="([\d.]+)"/, (_, w) => `width="${(parseFloat(w) * factor).toFixed(2)}"`)
-    .replace(/\bheight="([\d.]+)"/, (_, h) => `height="${(parseFloat(h) * factor).toFixed(2)}"`);
+    .replace(/\bwidth="[^"]+"/, `width="${w.toFixed(2)}"`)
+    .replace(/\bheight="[^"]+"/, `height="${h.toFixed(2)}"`);
 }
 
 // ---------- Page export -----------------------------------------------------
 
 /**
- * Produce a single SVG (or PNG) of all text blocks, positioned in page space.
- * The page image itself is intentionally NOT included — exports are
- * transparent overlays meant to be composited over the original artwork.
+ * Produce a single SVG (or PNG) of all text blocks + bubbles, positioned in
+ * page space. The page image itself is intentionally NOT included — exports
+ * are transparent overlays meant to be composited over the original artwork.
  */
 function buildPageOverlaySvg(
   font: Font,
@@ -335,14 +535,8 @@ function buildPageOverlaySvg(
   pageH: number,
 ): string {
   const groups = blocks.map((b) => {
-    const styled = applyBlockOverrides(font, b);
-    const layoutResult = layout(b.text, styled, { lineHeightFactor: 1.1 });
-    const inner = renderLayoutToSvg(layoutResult, styled, { padding: 0 });
-    // Strip outer <svg> wrapper, keep its inner content; wrap in a <g> with
-    // translation + scale to position on the page.
-    const innerBody = stripSvgWrapper(inner);
-    const scale = b.fontSize / 140; // 140 ≈ default glyph box height
-    return `<g transform="translate(${b.x} ${b.y}) scale(${scale})">${innerBody}</g>`;
+    const pieces = buildBlockPieces(font, b);
+    return `<g transform="translate(${fmt(b.x)} ${fmt(b.y)})">${pieces.body}</g>`;
   });
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${pageW} ${pageH}" width="${pageW}" height="${pageH}">`,

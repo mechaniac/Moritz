@@ -7,6 +7,7 @@
  */
 
 import { create } from 'zustand';
+import type { BubbleShape } from '../core/bubble.js';
 
 export type TextBlockId = string;
 
@@ -18,6 +19,13 @@ export type TextBlock = {
   readonly text: string;
   readonly bold: number;       // multiplier on stroke width (1 = normal)
   readonly italic: number;     // additional slant in radians
+  // Bubble (caption / speech / cloud). 'none' = no bubble drawn.
+  readonly shape: BubbleShape;
+  readonly bubbleW: number;    // bubble bounding box (image px), top-left = (x,y)
+  readonly bubbleH: number;
+  readonly tailX: number;      // tail tip in bubble-local coords (image px)
+  readonly tailY: number;
+  readonly bubbleStroke: number; // bubble outline width (image px)
 };
 
 type TypesetterState = {
