@@ -9,6 +9,7 @@ import {
   saveFont,
 } from '../state/persistence.js';
 import { useAppStore } from '../state/store.js';
+import { builtInFonts, getBuiltInFont } from '../data/builtInFonts.js';
 
 /** Save / load / import / export the active font. */
 export function FontBar(): JSX.Element {
@@ -50,6 +51,21 @@ export function FontBar(): JSX.Element {
 
   return (
     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <select
+        value={builtInFonts.some((f) => f.id === font.id) ? font.id : ''}
+        onChange={(e) => {
+          const f = getBuiltInFont(e.target.value);
+          if (f) setFont({ font: f });
+        }}
+        title="Switch built-in font"
+      >
+        <option value="">Built-in…</option>
+        {builtInFonts.map((f) => (
+          <option key={f.id} value={f.id}>
+            {f.name}
+          </option>
+        ))}
+      </select>
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
