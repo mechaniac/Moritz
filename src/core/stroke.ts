@@ -37,11 +37,8 @@ import type {
  * (miter / bevel) inserts whatever extra vertices the join needs.
  */
 const SAMPLES_PER_SEGMENT = 1;
-/** A miter is replaced with a bevel if its length exceeds this × halfWidth. */
+/** A miter is replaced with a bevel-fallback if its length exceeds this × halfWidth. */
 const MITER_LIMIT = 6;
-
-const clampLow = (v: number, lo: number): number => (v < lo ? lo : v);
-const clamp01ToOne = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /** Linear interpolation of width(t) over a sorted-by-t WidthProfile. */
 export function widthAt(profile: WidthProfile, t: number): number {
@@ -339,123 +336,34 @@ function buildSides(
       nextLefts.shift();
       nextRights.shift();
     } else {
-      // Per-anchor join style. The corner anchor is `stroke.vertices[i+1]`.
-      const anchor = stroke.vertices[i + 1]!;
-      const cornerJoin = anchor.corner ?? 'miter';
-      const bevelAmount = clampLow(style.bevelAmount ?? 1, 0);
-      const bevelMode = clamp01ToOne(style.bevelMode ?? 0);
-
-      const tryStitch = (
+      // Miter join. Compute the miter point on each side; if it exists and is
+      // within the miter limit, collapse both polylines to it (trimming any
+      // samples that overshoot along the segment tangent so the inside corner
+      // stays clean). Otherwise fall back to a bevel — keep both perpendicular
+      // endpoints, the polygon edge between them forms an implicit chord.
+      const stitch = (
         prevSide: Vec2[],
         nextSide: Vec2[],
         which: 'left' | 'right',
       ): { trimmedPrev: Vec2[]; trimmedNext: Vec2[] } => {
         const prevCopy = [...prevSide];
         const nextCopy = [...nextSide];
-
         const mp = miterPoint(which, seg, next);
         if (!mp) {
-          // Parallel or beyond miter limit → keep both perpendicular endpoints
-          // (degenerate fallback, same as a full bevel).
           return { trimmedPrev: prevCopy, trimmedNext: nextCopy };
         }
-
-        // For sharp miter (or bevelAmount=0) just collapse to mp on both
-        // sides. Always trim any samples that overshoot mp along the
-        // segment tangent so the inside corner stays clean.
-        if (cornerJoin === 'miter' || bevelAmount <= 0) {
-          prevCopy.pop();
-          trimTail(prevCopy, mp, seg.tangentEnd);
-          prevCopy.push(mp);
-          nextCopy.shift();
-          trimHead(nextCopy, mp, next.tangentStart);
-          return { trimmedPrev: prevCopy, trimmedNext: nextCopy };
-        }
-
-        // Bevel. Two interpretations of "amount > 1", blended by `bevelMode`:
-        //
-        //  Mode A — into-body (mode=0):
-        //    For amount in [0,1]: bev = lerp(mp, perp, amount).
-        //    For amount > 1:     bev = perp + (amount-1) * |k| * (-tangent),
-        //                        i.e. walk backward along the offset polyline
-        //                        into the stroke body. Symmetric inside/out.
-        //
-        //  Mode B — past-anchor (mode=1):
-        //    bev = mp + amount * (perp - mp), always.
-        //    On outside this also walks into the body (because perp - mp
-        //    points into the body there). On inside it walks the other way
-        //    into empty space (the classic miter-spike look).
-        //
-        // For amount ≤ 1 both modes coincide. The two are blended linearly
-        // by `bevelMode` ∈ [0,1].
-        const perpPrev = prevCopy[prevCopy.length - 1]!;
-        const perpNext = nextCopy[0]!;
-        const kPrev =
-          (mp.x - perpPrev.x) * seg.tangentEnd.x +
-          (mp.y - perpPrev.y) * seg.tangentEnd.y;
-        const kNext =
-          (perpNext.x - mp.x) * next.tangentStart.x +
-          (perpNext.y - mp.y) * next.tangentStart.y;
-        const absKPrev = Math.abs(kPrev);
-        const absKNext = Math.abs(kNext);
-
-        // Mode B: linear extrapolation past `perp`. For amount ∈ [0,1] this
-        // smoothly lerps from the sharp miter point `mp` (at amount=0) to
-        // the perpendicular offset endpoint `perp` (at amount=1) — which
-        // means the bevel CHORD opens up gradually starting from the corner
-        // anchor on both sides. For amount > 1 it extrapolates past perp.
-        const bevPrevB: Vec2 = {
-          x: mp.x - bevelAmount * kPrev * seg.tangentEnd.x,
-          y: mp.y - bevelAmount * kPrev * seg.tangentEnd.y,
-        };
-        const bevNextB: Vec2 = {
-          x: mp.x + bevelAmount * kNext * next.tangentStart.x,
-          y: mp.y + bevelAmount * kNext * next.tangentStart.y,
-        };
-
-        // Mode A: clamp at perp for amount=1, then walk into body.
-        let bevPrevA: Vec2;
-        let bevNextA: Vec2;
-        if (bevelAmount <= 1) {
-          bevPrevA = bevPrevB;
-          bevNextA = bevNextB;
-        } else {
-          const extra = bevelAmount - 1;
-          // Body direction at prev's end = -tangentEnd (back along the seg).
-          bevPrevA = {
-            x: perpPrev.x - extra * absKPrev * seg.tangentEnd.x,
-            y: perpPrev.y - extra * absKPrev * seg.tangentEnd.y,
-          };
-          // Body direction at next's start = +tangentStart (forward into seg).
-          bevNextA = {
-            x: perpNext.x + extra * absKNext * next.tangentStart.x,
-            y: perpNext.y + extra * absKNext * next.tangentStart.y,
-          };
-        }
-
-        const bevPrev: Vec2 = {
-          x: bevPrevA.x + bevelMode * (bevPrevB.x - bevPrevA.x),
-          y: bevPrevA.y + bevelMode * (bevPrevB.y - bevPrevA.y),
-        };
-        const bevNext: Vec2 = {
-          x: bevNextA.x + bevelMode * (bevNextB.x - bevNextA.x),
-          y: bevNextA.y + bevelMode * (bevNextB.y - bevNextA.y),
-        };
-
         prevCopy.pop();
-        trimTail(prevCopy, bevPrev, seg.tangentEnd);
-        prevCopy.push(bevPrev);
+        trimTail(prevCopy, mp, seg.tangentEnd);
+        prevCopy.push(mp);
         nextCopy.shift();
-        trimHead(nextCopy, bevNext, next.tangentStart);
-        nextCopy.unshift(bevNext);
+        trimHead(nextCopy, mp, next.tangentStart);
         return { trimmedPrev: prevCopy, trimmedNext: nextCopy };
       };
 
-      const L = tryStitch(curLefts, nextLefts, 'left');
-      const R = tryStitch(curRights, nextRights, 'right');
+      const L = stitch(curLefts, nextLefts, 'left');
+      const R = stitch(curRights, nextRights, 'right');
       lefts.push(...L.trimmedPrev);
       rights.push(...R.trimmedPrev);
-      // Replace next's head with the trimmed version for the next iteration.
       nextLefts.length = 0;
       nextLefts.push(...L.trimmedNext);
       nextRights.length = 0;
@@ -482,121 +390,6 @@ function buildSides(
 }
 
 /**
- * Segment-segment intersection test (proper, parameterized). Returns the
- * intersection point and parameters (s along AB, t along CD) only if both
- * fall strictly inside (0, 1). Coincident / parallel segments return null.
- */
-function segIntersect(
-  a: Vec2,
-  b: Vec2,
-  c: Vec2,
-  d: Vec2,
-): { p: Vec2; s: number; t: number } | null {
-  const r = { x: b.x - a.x, y: b.y - a.y };
-  const sV = { x: d.x - c.x, y: d.y - c.y };
-  const denom = r.x * sV.y - r.y * sV.x;
-  if (Math.abs(denom) < 1e-12) return null;
-  const qp = { x: c.x - a.x, y: c.y - a.y };
-  const s = (qp.x * sV.y - qp.y * sV.x) / denom;
-  const t = (qp.x * r.y - qp.y * r.x) / denom;
-  const eps = 1e-6;
-  if (s <= eps || s >= 1 - eps) return null;
-  if (t <= eps || t >= 1 - eps) return null;
-  return { p: { x: a.x + s * r.x, y: a.y + s * r.y }, s, t };
-}
-
-/**
- * Resolve self-intersections in an OPEN polyline by snipping spike loops
- * and welding near-overlapping interior vertices. Strokes are never closed
- * loops — they have a distinct start and end — so this routine treats the
- * input as open: the first and last vertices are NEVER welded together,
- * and snip is not allowed to bridge between the two endpoints.
- *
- * `bevelAmount` controls strictness identically to the closed-polygon
- * version: ≤ 0 disables, → 20 widens the weld threshold relative to the
- * polyline's average edge length.
- */
-function softenSpikesOpen(poly: Vec2[], bevelAmount: number): Vec2[] {
-  if (bevelAmount <= 0 || poly.length < 4) return poly;
-  const f = Math.min(1, Math.max(0, (bevelAmount - 1) / 19));
-  const weldFrac = 1.5 * f;
-
-  const avgEdge = (pts: Vec2[]): number => {
-    let total = 0;
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i]!;
-      const b = pts[i + 1]!;
-      total += Math.hypot(b.x - a.x, b.y - a.y);
-    }
-    return total / Math.max(1, pts.length - 1);
-  };
-
-  const weldOnce = (pts: Vec2[], eps: number): { out: Vec2[]; changed: boolean } => {
-    // Always keep the first and last vertices (stroke endpoints). Only
-    // weld INTERIOR neighbors that have collapsed into each other.
-    if (pts.length <= 2) return { out: pts, changed: false };
-    const out: Vec2[] = [pts[0]!];
-    let changed = false;
-    for (let i = 1; i < pts.length - 1; i++) {
-      const p = pts[i]!;
-      const prev = out[out.length - 1]!;
-      // Don't weld an interior vertex into the protected first vertex.
-      const canMergeIntoTail = out.length > 1;
-      if (canMergeIntoTail && Math.hypot(p.x - prev.x, p.y - prev.y) <= eps) {
-        out[out.length - 1] = { x: (p.x + prev.x) / 2, y: (p.y + prev.y) / 2 };
-        changed = true;
-      } else {
-        out.push(p);
-      }
-    }
-    // Last vertex protected.
-    out.push(pts[pts.length - 1]!);
-    return { out, changed };
-  };
-
-  let cur: Vec2[] = poly.slice();
-  for (let pass = 0; pass < 16; pass++) {
-    const n = cur.length;
-    if (n < 4) break;
-    const eps = avgEdge(cur) * weldFrac;
-
-    if (eps > 0) {
-      const pre = weldOnce(cur, eps);
-      if (pre.changed) {
-        cur = pre.out;
-        continue;
-      }
-    }
-
-    if (f <= 0) return cur;
-    let snipped = false;
-    // Snip: scan all non-adjacent edge pairs (open path, no wrap).
-    outer: for (let i = 0; i < n - 1; i++) {
-      const a = cur[i]!;
-      const b = cur[i + 1]!;
-      for (let j = i + 2; j < n - 1; j++) {
-        const c = cur[j]!;
-        const d = cur[j + 1]!;
-        const hit = segIntersect(a, b, c, d);
-        if (!hit) continue;
-        // Replace vertices (i+1 … j) with hit.p.
-        const next: Vec2[] = [];
-        for (let k = 0; k <= i; k++) next.push(cur[k]!);
-        next.push(hit.p);
-        for (let k = j + 1; k < n; k++) next.push(cur[k]!);
-        cur = next;
-        snipped = true;
-        break outer;
-      }
-    }
-    if (snipped) continue;
-
-    return cur;
-  }
-  return cur;
-}
-
-/**
  * Outline a single stroke into a closed polygon, given the active style.
  * Stroke-level overrides on `width`, `capStart`, `capEnd` win over the style.
  */
@@ -606,15 +399,9 @@ export function outlineStroke(
 ): OutlinePolygon {
   const sides = buildSides(stroke, style);
   if (!sides) return [];
-  const { lefts: leftsRaw, rights: rightsRaw, pStart, pEnd, tangentStart, tangentEnd } = sides;
+  const { lefts, rights, pStart, pEnd, tangentStart, tangentEnd } = sides;
   const capStart = stroke.capStart ?? style.capStart;
   const capEnd = stroke.capEnd ?? style.capEnd;
-  const amount = style.bevelAmount ?? 1;
-
-  // Soften each SIDE independently as an open polyline so weld/snip can
-  // never bridge across a cap and collapse the inner side of the stroke.
-  const lefts = softenSpikesOpen([...leftsRaw], amount);
-  const rights = softenSpikesOpen([...rightsRaw], amount);
 
   const endCap = buildCap(capEnd, pEnd, lefts[lefts.length - 1]!, rights[rights.length - 1]!, tangentEnd);
   const startCap = buildCap(

@@ -8,17 +8,6 @@
 export type Vec2 = { readonly x: number; readonly y: number };
 
 /**
- * How a stroke's outline turns at this anchor when the in/out tangents are
- * NOT collinear (i.e. a hard corner). Smooth (collinear) anchors ignore this.
- *  - 'miter' (default): both offset polylines extend until they meet at one
- *    sharp point on each side. Falls back to bevel automatically if the
- *    miter would be excessively long (very acute angle).
- *  - 'bevel': always cut the corner — the two offset polylines stop at the
- *    anchor's perpendicular and connect with a straight chord.
- */
-export type CornerJoin = 'miter' | 'bevel';
-
-/**
  * Illustrator-style anchor.
  *
  * `inHandle` and `outHandle` are stored RELATIVE to `p`. To get the absolute
@@ -28,8 +17,6 @@ export type Vertex = {
   readonly p: Vec2;
   readonly inHandle: Vec2;
   readonly outHandle: Vec2;
-  /** Corner join style at this anchor. Defaults to 'miter'. */
-  readonly corner?: CornerJoin;
 };
 
 /** Sample on the width(t) profile, t in [0,1] along stroke arc length. */
@@ -81,28 +68,6 @@ export type StyleSettings = {
   readonly worldAngle: number;
   readonly capStart: CapShape;
   readonly capEnd: CapShape;
-  /**
-   * How wide the corner bevel is when an anchor's `corner` is `'bevel'`
-   * (or when the miter exceeds MITER_LIMIT and falls back to a bevel).
-   *  - 0   → sharp miter (no bevel — outline meets at the miter point).
-   *  - 1   → full perpendicular bevel (chord between the two perpendicular
-   *          offset endpoints at the anchor).
-   *  - >1  → grows past the perpendicular endpoints (see `bevelMode`).
-   * Defaults to 1 when undefined (back-compat).
-   */
-  readonly bevelAmount?: number;
-  /**
-   * How the bevel grows when `bevelAmount > 1`. Two interpretations are
-   * blended linearly:
-   *  - 0 → 'into-body': the bevel endpoint walks backward along the offset
-   *    polyline (always away from the corner anchor, INTO the stroke body).
-   *    Symmetric on inside / outside of the bend.
-   *  - 1 → 'past-anchor': linear extrapolation of `mp → perp`. On the outside
-   *    of the bend this also walks into the stroke body; on the inside it
-   *    walks the OTHER way into empty space (the classic miter-spike look).
-   * For `bevelAmount ≤ 1` both modes coincide. Defaults to 0 (clean).
-   */
-  readonly bevelMode?: number;
 };
 
 export type Font = {
