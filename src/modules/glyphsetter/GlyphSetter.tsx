@@ -397,6 +397,28 @@ function GlyphEditor(props: {
             />
           </label>
         )}
+        {(view.triMode === 'ribbon-fixed' || view.triMode === 'ribbon-density') && (
+          <label
+            style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            title="0 = parameter-uniform (clusters near anchors on curved segments). 1 = arc-length-uniform (even spacing along the actual curve)."
+          >
+            spread
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={view.ribbonSpread}
+              onChange={(e) =>
+                setView({ ribbonSpread: Math.max(0, Math.min(1, Number(e.target.value))) })
+              }
+              style={{ width: 80 }}
+            />
+            <span style={{ width: 24, textAlign: 'right' }}>
+              {view.ribbonSpread.toFixed(2)}
+            </span>
+          </label>
+        )}
         {selection.kind === 'anchor' && (() => {
           const v = glyph.strokes[selection.strokeIdx]?.vertices[selection.vIdx];
           if (!v) return null;
@@ -743,12 +765,14 @@ function triangulateForView(
     return triangulateStrokeRibbon(stroke, style, {
       kind: 'fixed',
       samplesPerSegment: view.ribbonSamples,
+      spread: view.ribbonSpread,
     });
   }
   if (view.triMode === 'ribbon-density') {
     return triangulateStrokeRibbon(stroke, style, {
       kind: 'density',
       spacing: view.ribbonSpacing,
+      spread: view.ribbonSpread,
     });
   }
   const poly = outlineStroke(stroke, style);

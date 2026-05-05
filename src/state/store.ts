@@ -19,6 +19,7 @@ export type GlyphViewOptions = {
   triMode: TriMode;
   ribbonSamples: number; // samples per Bezier segment when triMode='ribbon-fixed'
   ribbonSpacing: number; // target arc-length spacing in glyph units when triMode='ribbon-density'
+  ribbonSpread: number; // 0..1: blend interior sample placement from parameter-uniform (0) to arc-length-uniform (1)
 };
 
 type AppState = {
@@ -57,6 +58,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     triMode: 'earcut',
     ribbonSamples: 6,
     ribbonSpacing: 4,
+    ribbonSpread: 1,
   },
   setStyle: (patch) =>
     set((s) => ({

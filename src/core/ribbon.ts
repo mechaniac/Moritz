@@ -33,8 +33,8 @@ import type { Stroke, StyleSettings, Vec2 } from './types.js';
 import type { Triangle } from './triangulate.js';
 
 export type RibbonOptions =
-  | { kind: 'fixed'; samplesPerSegment: number }
-  | { kind: 'density'; spacing: number };
+  | { kind: 'fixed'; samplesPerSegment: number; spread?: number }
+  | { kind: 'density'; spacing: number; spread?: number };
 
 export type RibbonResult = {
   readonly polygon: Vec2[];
@@ -43,6 +43,7 @@ export type RibbonResult = {
 
 const CAP_FAN_STEPS = 8;
 const MITER_LIMIT = 4;
+const ARC_LUT_SAMPLES = 32;
 
 function unitNormal(t: Vec2): Vec2 {
   const len = Math.hypot(t.x, t.y) || 1;
@@ -128,6 +129,63 @@ function interiorCount(segLen: number, opts: RibbonOptions): number {
 }
 
 /**
+ * Build a small arc-length lookup for a single Bezier segment so we can map
+ * an arc-length fraction back to a parameter `t`. Returns ARC_LUT_SAMPLES+1
+ * cumulative chord lengths sampled at uniform `t`.
+ */
+function buildArcLut(seg: import('./bezier.js').CubicSegment): number[] {
+  const lut = new Array<number>(ARC_LUT_SAMPLES + 1);
+  lut[0] = 0;
+  let prev = pointAt(seg, 0);
+  let acc = 0;
+  for (let i = 1; i <= ARC_LUT_SAMPLES; i++) {
+    const p = pointAt(seg, i / ARC_LUT_SAMPLES);
+    acc += Math.hypot(p.x - prev.x, p.y - prev.y);
+    lut[i] = acc;
+    prev = p;
+  }
+  return lut;
+}
+
+/** Invert the arc-length LUT: given target fraction f in [0,1], return t. */
+function tForArcFraction(lut: readonly number[], f: number): number {
+  const total = lut[lut.length - 1]!;
+  if (total <= 0) return f;
+  const target = f * total;
+  // Binary search for the bracketing LUT interval.
+  let lo = 0;
+  let hi = lut.length - 1;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1;
+    if (lut[mid]! <= target) lo = mid;
+    else hi = mid;
+  }
+  const a = lut[lo]!;
+  const b = lut[hi]!;
+  const u = b > a ? (target - a) / (b - a) : 0;
+  return (lo + u) / ARC_LUT_SAMPLES;
+}
+
+/**
+ * Pick the parameter `t` for the i-th interior sample of a segment with
+ * `interior` total interior samples. `spread` blends between
+ *   - 0 (parameter-uniform: clusters near anchors on curved segments)
+ *   - 1 (arc-length-uniform: even spacing along the actual curve length).
+ */
+function sampleT(
+  i: number,
+  interior: number,
+  spread: number,
+  arcLut: readonly number[],
+): number {
+  const tParam = i / (interior + 1);
+  if (spread <= 0) return tParam;
+  const tArc = tForArcFraction(arcLut, tParam);
+  if (spread >= 1) return tArc;
+  return tParam + (tArc - tParam) * spread;
+}
+
+/**
  * Triangulate a stroke as a ribbon (quad strip + cap fans). Open-stroke
  * invariant is enforced (matching `outlineStroke`).
  */
@@ -201,12 +259,14 @@ export function triangulateStrokeRibbon(
 
   // Build the full sample list. Order:
   //   anchor0, [interior of seg0], anchor1, [interior of seg1], ..., anchorN
+  const spread = Math.max(0, Math.min(1, opts.spread ?? 0));
   const samples: SpineSample[] = [];
   samples.push(startAnchor());
   for (let s = 0; s < segments.length; s++) {
     const interior = interiorCount(lens[s]!, opts);
+    const arcLut = spread > 0 ? buildArcLut(segments[s]!) : [];
     for (let i = 1; i <= interior; i++) {
-      const tLocal = i / (interior + 1);
+      const tLocal = sampleT(i, interior, spread, arcLut);
       samples.push(interiorSample(s, tLocal));
     }
     if (s < segments.length - 1) samples.push(interiorAnchor(s));
