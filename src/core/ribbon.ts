@@ -175,13 +175,12 @@ function tForArcFraction(lut: readonly number[], f: number): number {
  *                  clusters near anchors when the cubic has nonzero
  *                  endpoint speed) and arc-length-uniform sampling (1;
  *                  even spacing along the actual curve length).
- *   - `anchorPull` in [0,1]: bias the arc-length target through smoothstep
- *                  s(u) = u²(3−2u). At 1 the targets cluster near both
- *                  endpoints — mimicking the natural distribution of a
- *                  zero-handle anchor (where the cubic has zero parameter
- *                  speed at the endpoints, so uniform-`t` samples bunch up
- *                  there). Useful for matching the look of a non-tangent
- *                  anchor on a curve that DOES have tangents.
+ *   - `anchorPull` in [0,1]: bias the arc-length target so samples cluster
+ *                  near the segment endpoint(s) whose handle is active.
+ *                  At 1 a one-sided-active end behaves like a zero-tangent
+ *                  anchor (zero param speed there); the inactive end stays
+ *                  uniformly spaced. Curves with two active ends use a
+ *                  symmetric smoothstep that clusters at both.
  *
  * `anchorPull` is applied in arc-length space, so it works regardless of
  * the underlying cubic's parameter speed.
@@ -191,19 +190,22 @@ function sampleT(
   interior: number,
   spread: number,
   anchorPull: number,
+  startActive: boolean,
+  endActive: boolean,
   arcLut: readonly number[],
 ): number {
   const u = i / (interior + 1);
-  // Cluster the *target arc fraction* via smoothstep when anchorPull > 0.
-  const cluster = u * u * (3 - 2 * u);
+  // Choose the cluster-target arc fraction based on which ends are active.
+  // All four maps satisfy f(0)=0 and f(1)=1.
+  let cluster: number;
+  if (startActive && endActive) cluster = u * u * (3 - 2 * u); // smoothstep
+  else if (startActive) cluster = u * u; // slow at 0, fast at 1
+  else if (endActive) cluster = u * (2 - u); // fast at 0, slow at 1
+  else cluster = u; // no clustering
   const targetArc = u + (cluster - u) * anchorPull;
   if (spread <= 0 && anchorPull <= 0) return u;
-  // tArc = the parameter that lands at `targetArc` along the actual arc.
   const tArc = arcLut.length > 1 ? tForArcFraction(arcLut, targetArc) : targetArc;
   if (spread >= 1) return tArc;
-  // Blend with parameter-uniform `u`. Note: when anchorPull > 0 we want it
-  // to take effect even at spread = 0, so the floor of the blend is the
-  // anchorPull-warped arc-uniform target itself, not raw `u`.
   const lo = anchorPull > 0 ? tArc : u;
   return lo + (tArc - lo) * spread;
 }
@@ -288,21 +290,24 @@ export function triangulateStrokeRibbon(
   samples.push(startAnchor());
   for (let s = 0; s < segments.length; s++) {
     const interior = interiorCount(lens[s]!, opts);
-    // anchorPull only applies on segments with at least one active tangent.
-    // A degenerate-straight cubic (both handles zero -> c1==p0 && c2==p1)
-    // already clusters samples at its endpoints under parameter-uniform
-    // sampling, so applying smoothstep on top would over-cluster.
+    // anchorPull is applied per-end: only ends with an active handle
+    // (control point not coincident with anchor) get the clustering bias.
     const seg = segments[s]!;
-    const tangentActive =
-      seg.c1.x !== seg.p0.x ||
-      seg.c1.y !== seg.p0.y ||
-      seg.c2.x !== seg.p1.x ||
-      seg.c2.y !== seg.p1.y;
-    const segAnchorPull = tangentActive ? anchorPull : 0;
+    const startActive = seg.c1.x !== seg.p0.x || seg.c1.y !== seg.p0.y;
+    const endActive = seg.c2.x !== seg.p1.x || seg.c2.y !== seg.p1.y;
+    const segAnchorPull = startActive || endActive ? anchorPull : 0;
     const needsLut = spread > 0 || segAnchorPull > 0;
     const arcLut = needsLut ? buildArcLut(seg) : [];
     for (let i = 1; i <= interior; i++) {
-      const tLocal = sampleT(i, interior, spread, segAnchorPull, arcLut);
+      const tLocal = sampleT(
+        i,
+        interior,
+        spread,
+        segAnchorPull,
+        startActive,
+        endActive,
+        arcLut,
+      );
       samples.push(interiorSample(s, tLocal));
     }
     if (s < segments.length - 1) samples.push(interiorAnchor(s));
