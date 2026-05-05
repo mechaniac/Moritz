@@ -369,32 +369,40 @@ function GlyphEditor(props: {
           <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             samples/seg
             <input
-              type="number"
-              min={1}
+              type="range"
+              min={0}
               max={64}
               step={1}
               value={view.ribbonSamples}
               onChange={(e) =>
-                setView({ ribbonSamples: Math.max(1, Math.round(Number(e.target.value) || 1)) })
+                setView({ ribbonSamples: Math.max(0, Math.round(Number(e.target.value) || 0)) })
               }
-              style={{ width: 48 }}
+              style={{ width: 100 }}
             />
+            <span style={{ width: 24, textAlign: 'right' }}>{view.ribbonSamples}</span>
           </label>
         )}
         {view.triMode === 'ribbon-density' && (
-          <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            spacing (units)
+          <label
+            style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            title="Higher = more triangles per glyph unit. Internally spacing = 1/density."
+          >
+            density
             <input
-              type="number"
-              min={0.5}
-              max={50}
-              step={0.5}
-              value={view.ribbonSpacing}
-              onChange={(e) =>
-                setView({ ribbonSpacing: Math.max(0.1, Number(e.target.value) || 1) })
-              }
-              style={{ width: 56 }}
+              type="range"
+              min={0.05}
+              max={4}
+              step={0.05}
+              value={1 / Math.max(0.0001, view.ribbonSpacing)}
+              onChange={(e) => {
+                const d = Math.max(0.05, Number(e.target.value) || 0.05);
+                setView({ ribbonSpacing: 1 / d });
+              }}
+              style={{ width: 100 }}
             />
+            <span style={{ width: 36, textAlign: 'right' }}>
+              {(1 / Math.max(0.0001, view.ribbonSpacing)).toFixed(2)}
+            </span>
           </label>
         )}
         {(view.triMode === 'ribbon-fixed' || view.triMode === 'ribbon-density') && (
