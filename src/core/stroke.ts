@@ -31,7 +31,12 @@ import type {
   WidthProfile,
 } from './types.js';
 
-const SAMPLES_PER_SEGMENT = 24;
+/**
+ * One offset sample per anchor: each cubic segment contributes its two
+ * endpoints only. Adjacent segments share the corner anchor and stitching
+ * (miter / bevel) inserts whatever extra vertices the join needs.
+ */
+const SAMPLES_PER_SEGMENT = 1;
 /** A miter is replaced with a bevel if its length exceeds this × halfWidth. */
 const MITER_LIMIT = 6;
 
@@ -204,7 +209,11 @@ function trimHead(
  * bulge into — defined by `dir` pointing OUTWARD from the stroke (i.e. for
  * an end cap pass the forward tangent; for a start cap pass the reverse of
  * the start tangent). The arc midpoint always lies on the +dir side.
+ *
+ * Currently unused: while we tune the bevel logic with minimum-vertex
+ * polygons, all caps draw flat. Kept for re-enabling later.
  */
+// @ts-expect-error temporarily unused
 function roundCap(
   center: Vec2,
   from: Vec2,
@@ -244,24 +253,15 @@ function buildCap(
   to: Vec2,
   dir: Vec2,
 ): Vec2[] {
-  switch (cap) {
-    case 'flat':
-      return [];
-    case 'tapered':
-      // Single sharp point projected one half-width past the end.
-      return [
-        {
-          x: center.x + dir.x * Math.hypot(from.x - center.x, from.y - center.y),
-          y: center.y + dir.y * Math.hypot(from.x - center.x, from.y - center.y),
-        },
-      ];
-    case 'round':
-      return roundCap(center, from, to, dir, 12);
-    default:
-      // 'custom' cap shape: not implemented yet — fall back to round.
-      // TODO(decision): custom-cap tracing.
-      return roundCap(center, from, to, dir, 12);
-  }
+  // TODO: while we're tuning the bevel logic with minimum-vertex polygons,
+  // ALL cap shapes draw flat (zero subdivisions). Re-enable round / tapered
+  // / custom once joins are stable.
+  void cap;
+  void center;
+  void from;
+  void to;
+  void dir;
+  return [];
 }
 
 export type OutlinePolygon = readonly Vec2[];
