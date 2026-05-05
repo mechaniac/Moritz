@@ -55,7 +55,7 @@ export function App(): JSX.Element {
         <div style={{ flex: 1 }} />
         <FontBar />
       </header>
-      <main style={{ flex: 1, overflow: 'auto' }}>
+      <main style={{ flex: 1, overflow: 'auto', background: '#bdbdbd' }}>
         {module === 'glyphsetter' && <GlyphSetter />}
         {module === 'stylesetter' && <StyleSetter />}
         {module === 'typesetter' && <TypeSetter />}

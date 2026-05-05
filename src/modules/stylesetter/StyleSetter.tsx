@@ -131,9 +131,8 @@ export function StyleSetter(): JSX.Element {
       <div
         style={{
           flex: 1,
-          background: '#fafafa',
-          border: '1px solid #ddd',
-          borderRadius: 6,
+          background: '#ffffff',
+          border: '1px solid #888',
           overflow: 'auto',
           padding: 16,
         }}

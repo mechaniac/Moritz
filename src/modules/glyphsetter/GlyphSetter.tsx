@@ -110,10 +110,10 @@ function GlyphGrid(props: {
     <aside
       style={{
         width: 260,
-        borderRight: '1px solid #ddd',
+        borderRight: '1px solid #999',
         padding: 8,
         overflowY: 'auto',
-        background: '#fafafa',
+        background: 'transparent',
         flexShrink: 0,
       }}
     >
@@ -475,7 +475,7 @@ function GlyphEditor(props: {
         </span>
       </div>
       <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 8 }}>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#fff', border: '1px solid #ddd', borderRadius: 6 }}>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: 'transparent' }}>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${viewW} ${viewH}`}
@@ -495,14 +495,14 @@ function GlyphEditor(props: {
           fill="transparent"
           onPointerDown={() => setSelection({ kind: 'none' })}
         />
-        {/* glyph box */}
+        {/* glyph box — the 'sheet' the character sits on */}
         <rect
           x={PADDING}
           y={PADDING}
           width={glyph.box.w * SCALE}
           height={glyph.box.h * SCALE}
-          fill="none"
-          stroke="#eee"
+          fill="#ffffff"
+          stroke="#888"
           pointerEvents="none"
         />
         {/* guides — under the glyph fill, above the box stroke */}
@@ -667,9 +667,8 @@ function GlyphEditor(props: {
           width: 240,
           flexShrink: 0,
           overflowY: 'auto',
-          background: '#fafafa',
-          border: '1px solid #ddd',
-          borderRadius: 6,
+          background: 'transparent',
+          borderLeft: '1px solid #999',
           padding: 8,
         }}
       >
