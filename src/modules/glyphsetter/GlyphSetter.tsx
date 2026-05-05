@@ -182,6 +182,7 @@ function GlyphEditor(props: {
 }): JSX.Element {
   const { char, glyph, onChange, view, setView } = props;
   const font = useAppStore((s) => s.font);
+  const setStyle = useAppStore((s) => s.setStyle);
   const [selection, setSelection] = useState<Selection>({ kind: 'none' });
   const [scale, setScale] = useState<number>(5);
   const SCALE = scale;
@@ -337,6 +338,21 @@ function GlyphEditor(props: {
           />
           Debug borders
         </label>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ color: '#666', fontSize: 12 }}>Bevel</span>
+          <input
+            type="range"
+            min={0}
+            max={20}
+            step={0.05}
+            value={font.style.bevelAmount ?? 1}
+            onChange={(e) => setStyle({ bevelAmount: parseFloat(e.target.value) })}
+            style={{ width: 100 }}
+          />
+          <span style={{ fontSize: 11, color: '#666', fontVariantNumeric: 'tabular-nums', minWidth: 28 }}>
+            {(font.style.bevelAmount ?? 1).toFixed(2)}
+          </span>
+        </span>
         {selection.kind === 'anchor' && (() => {
           const v = glyph.strokes[selection.strokeIdx]?.vertices[selection.vIdx];
           if (!v) return null;

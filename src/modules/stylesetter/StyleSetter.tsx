@@ -126,14 +126,6 @@ export function StyleSetter(): JSX.Element {
           value={normalizeCap(font.style.capEnd)}
           onChange={(v) => setStyle({ capEnd: v })}
         />
-        <Slider
-          label="Bevel amount"
-          min={0}
-          max={1}
-          step={0.01}
-          value={font.style.bevelAmount ?? 1}
-          onChange={(v) => setStyle({ bevelAmount: v })}
-        />
       </div>
 
       <div
