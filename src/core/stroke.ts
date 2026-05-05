@@ -36,6 +36,7 @@ const SAMPLES_PER_SEGMENT = 24;
 const MITER_LIMIT = 6;
 
 const clampLow = (v: number, lo: number): number => (v < lo ? lo : v);
+const clamp01ToOne = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
 
 /** Linear interpolation of width(t) over a sorted-by-t WidthProfile. */
 export function widthAt(profile: WidthProfile, t: number): number {
@@ -354,6 +355,7 @@ function buildSides(
       const anchor = stroke.vertices[i + 1]!;
       const cornerJoin = anchor.corner ?? 'miter';
       const bevelAmount = clampLow(style.bevelAmount ?? 1, 0);
+      const bevelMode = clamp01ToOne(style.bevelMode ?? 0);
 
       const tryStitch = (
         prevSide: Vec2[],
@@ -382,15 +384,22 @@ function buildSides(
           return { trimmedPrev: prevCopy, trimmedNext: nextCopy };
         }
 
-        // Bevel: walk back from mp along each segment's tangent by
-        // amount × |perp_endpoint − mp| (signed). The sign of `kPrev` /
-        // `kNext` differs on the inside vs outside of the bend, so this
-        // formula automatically produces a symmetric bevel on BOTH sides:
-        //  - outside (k>0): bevel endpoint lies between mp and perp_endpoint,
-        //    cutting off the outer triangle.
-        //  - inside  (k<0): bevel endpoint lies on the OTHER side of mp, so
-        //    the inside polyline keeps the overshoot up to the bevel point.
-        // Either way the chord between bevPrev and bevNext is the bevel face.
+        // Bevel. Two interpretations of "amount > 1", blended by `bevelMode`:
+        //
+        //  Mode A — into-body (mode=0):
+        //    For amount in [0,1]: bev = lerp(mp, perp, amount).
+        //    For amount > 1:     bev = perp + (amount-1) * |k| * (-tangent),
+        //                        i.e. walk backward along the offset polyline
+        //                        into the stroke body. Symmetric inside/out.
+        //
+        //  Mode B — past-anchor (mode=1):
+        //    bev = mp + amount * (perp - mp), always.
+        //    On outside this also walks into the body (because perp - mp
+        //    points into the body there). On inside it walks the other way
+        //    into empty space (the classic miter-spike look).
+        //
+        // For amount ≤ 1 both modes coincide. The two are blended linearly
+        // by `bevelMode` ∈ [0,1].
         const perpPrev = prevCopy[prevCopy.length - 1]!;
         const perpNext = nextCopy[0]!;
         const kPrev =
@@ -399,14 +408,46 @@ function buildSides(
         const kNext =
           (perpNext.x - mp.x) * next.tangentStart.x +
           (perpNext.y - mp.y) * next.tangentStart.y;
+        const absKPrev = Math.abs(kPrev);
+        const absKNext = Math.abs(kNext);
 
-        const bevPrev: Vec2 = {
+        // Mode B: linear extrapolation past `perp`.
+        const bevPrevB: Vec2 = {
           x: mp.x - bevelAmount * kPrev * seg.tangentEnd.x,
           y: mp.y - bevelAmount * kPrev * seg.tangentEnd.y,
         };
-        const bevNext: Vec2 = {
+        const bevNextB: Vec2 = {
           x: mp.x + bevelAmount * kNext * next.tangentStart.x,
           y: mp.y + bevelAmount * kNext * next.tangentStart.y,
+        };
+
+        // Mode A: clamp at perp for amount=1, then walk into body.
+        let bevPrevA: Vec2;
+        let bevNextA: Vec2;
+        if (bevelAmount <= 1) {
+          bevPrevA = bevPrevB;
+          bevNextA = bevNextB;
+        } else {
+          const extra = bevelAmount - 1;
+          // Body direction at prev's end = -tangentEnd (back along the seg).
+          bevPrevA = {
+            x: perpPrev.x - extra * absKPrev * seg.tangentEnd.x,
+            y: perpPrev.y - extra * absKPrev * seg.tangentEnd.y,
+          };
+          // Body direction at next's start = +tangentStart (forward into seg).
+          bevNextA = {
+            x: perpNext.x + extra * absKNext * next.tangentStart.x,
+            y: perpNext.y + extra * absKNext * next.tangentStart.y,
+          };
+        }
+
+        const bevPrev: Vec2 = {
+          x: bevPrevA.x + bevelMode * (bevPrevB.x - bevPrevA.x),
+          y: bevPrevA.y + bevelMode * (bevPrevB.y - bevPrevA.y),
+        };
+        const bevNext: Vec2 = {
+          x: bevNextA.x + bevelMode * (bevNextB.x - bevNextA.x),
+          y: bevNextA.y + bevelMode * (bevNextB.y - bevNextA.y),
         };
         prevCopy.pop();
         trimTail(prevCopy, bevPrev, seg.tangentEnd);

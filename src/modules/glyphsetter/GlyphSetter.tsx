@@ -353,6 +353,21 @@ function GlyphEditor(props: {
             {(font.style.bevelAmount ?? 1).toFixed(2)}
           </span>
         </span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ color: '#666', fontSize: 12 }} title="0 = into-body (clean), 1 = past-anchor (spike-prone on inside)">Mode</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={font.style.bevelMode ?? 0}
+            onChange={(e) => setStyle({ bevelMode: parseFloat(e.target.value) })}
+            style={{ width: 80 }}
+          />
+          <span style={{ fontSize: 11, color: '#666', fontVariantNumeric: 'tabular-nums', minWidth: 28 }}>
+            {(font.style.bevelMode ?? 0).toFixed(2)}
+          </span>
+        </span>
         {selection.kind === 'anchor' && (() => {
           const v = glyph.strokes[selection.strokeIdx]?.vertices[selection.vIdx];
           if (!v) return null;

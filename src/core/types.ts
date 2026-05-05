@@ -87,12 +87,22 @@ export type StyleSettings = {
    *  - 0   → sharp miter (no bevel — outline meets at the miter point).
    *  - 1   → full perpendicular bevel (chord between the two perpendicular
    *          offset endpoints at the anchor).
-   *  - in between → linearly interpolate along each offset line.
-   * Only affects the OUTSIDE of the bend; the inside always uses the miter
-   * point so the fill stays self-intersection free.
+   *  - >1  → grows past the perpendicular endpoints (see `bevelMode`).
    * Defaults to 1 when undefined (back-compat).
    */
   readonly bevelAmount?: number;
+  /**
+   * How the bevel grows when `bevelAmount > 1`. Two interpretations are
+   * blended linearly:
+   *  - 0 → 'into-body': the bevel endpoint walks backward along the offset
+   *    polyline (always away from the corner anchor, INTO the stroke body).
+   *    Symmetric on inside / outside of the bend.
+   *  - 1 → 'past-anchor': linear extrapolation of `mp → perp`. On the outside
+   *    of the bend this also walks into the stroke body; on the inside it
+   *    walks the OTHER way into empty space (the classic miter-spike look).
+   * For `bevelAmount ≤ 1` both modes coincide. Defaults to 0 (clean).
+   */
+  readonly bevelMode?: number;
 };
 
 export type Font = {
