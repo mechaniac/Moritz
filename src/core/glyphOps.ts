@@ -43,7 +43,15 @@ export function moveAnchor(
   return replaceStroke(g, strokeIdx, replaceVertex(s, vIdx, { ...v, p: newP }));
 }
 
-/** Move one handle in absolute coords. The stored handle is relative to `p`. */
+/**
+ * Move one handle in absolute coords. The stored handle is relative to `p`.
+ *
+ * When the anchor's `breakTangent` is false / undefined (smooth point), the
+ * opposite handle is reflected across `p` to keep the tangents collinear,
+ * PRESERVING its existing length (Illustrator-style smooth point). If the
+ * opposite handle has zero length, it stays at zero — drag both manually
+ * once you've broken the tangent.
+ */
 export function moveHandle(
   g: Glyph,
   strokeIdx: number,
@@ -56,8 +64,20 @@ export function moveHandle(
   const v = s.vertices[vIdx];
   if (!v) return g;
   const rel = sub(absoluteHandlePos, v.p);
-  const next: Vertex =
+  let next: Vertex =
     side === 'in' ? { ...v, inHandle: rel } : { ...v, outHandle: rel };
+  if (!v.breakTangent) {
+    const opposite = side === 'in' ? v.outHandle : v.inHandle;
+    const oppLen = Math.hypot(opposite.x, opposite.y);
+    const dragLen = Math.hypot(rel.x, rel.y);
+    if (oppLen > 1e-9 && dragLen > 1e-9) {
+      const scale = oppLen / dragLen;
+      const mirrored: Vec2 = { x: -rel.x * scale, y: -rel.y * scale };
+      next = side === 'in'
+        ? { ...next, outHandle: mirrored }
+        : { ...next, inHandle: mirrored };
+    }
+  }
   return replaceStroke(g, strokeIdx, replaceVertex(s, vIdx, next));
 }
 
@@ -185,3 +205,23 @@ export function makeSmooth(g: Glyph, strokeIdx: number, vIdx: number): Glyph {
 
 // Re-export helpers used by callers
 export { add as _add, sub as _sub, ZERO as _ZERO };
+
+/** Toggle / set whether the anchor's in & out tangents move independently. */
+export function setBreakTangent(
+  g: Glyph,
+  strokeIdx: number,
+  vIdx: number,
+  broken: boolean,
+): Glyph {
+  const s = g.strokes[strokeIdx];
+  if (!s) return g;
+  const v = s.vertices[vIdx];
+  if (!v) return g;
+  const next: Vertex = broken
+    ? { ...v, breakTangent: true }
+    : (() => {
+        const { breakTangent: _drop, ...rest } = v;
+        return rest;
+      })();
+  return replaceStroke(g, strokeIdx, replaceVertex(s, vIdx, next));
+}

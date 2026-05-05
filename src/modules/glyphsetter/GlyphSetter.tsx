@@ -18,6 +18,7 @@ import {
   makeSmooth,
   moveAnchor,
   moveHandle,
+  setBreakTangent,
 } from '../../core/glyphOps.js';
 import type { Font, Glyph, Stroke, Vec2 } from '../../core/types.js';
 import { useAppStore } from '../../state/store.js';
@@ -336,6 +337,24 @@ function GlyphEditor(props: {
           />
           Debug borders
         </label>
+        {selection.kind === 'anchor' && (() => {
+          const v = glyph.strokes[selection.strokeIdx]?.vertices[selection.vIdx];
+          if (!v) return null;
+          return (
+            <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <input
+                type="checkbox"
+                checked={v.breakTangent === true}
+                onChange={(e) =>
+                  onChange((g) =>
+                    setBreakTangent(g, selection.strokeIdx, selection.vIdx, e.target.checked),
+                  )
+                }
+              />
+              Break tangent
+            </label>
+          );
+        })()}
         <span style={{ color: '#666', fontSize: 12, marginLeft: 'auto' }}>
           Drag anchors / handles. Alt-click stroke = insert anchor. Alt-click
           anchor = toggle corner/smooth.

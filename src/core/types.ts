@@ -17,6 +17,13 @@ export type Vertex = {
   readonly p: Vec2;
   readonly inHandle: Vec2;
   readonly outHandle: Vec2;
+  /**
+   * If true, in/out tangents move independently (Illustrator "corner" point
+   * with handles, a.k.a. broken tangent). If false / undefined, dragging one
+   * handle mirrors the other across `p` (smooth point — opposite handle's
+   * direction is reflected, its length is preserved).
+   */
+  readonly breakTangent?: boolean;
 };
 
 /** Sample on the width(t) profile, t in [0,1] along stroke arc length. */
