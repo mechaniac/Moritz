@@ -1,0 +1,359 @@
+/**
+ * Stackable guides panel for the GlyphSetter editor sidebar.
+ *
+ * Each guide layer can be toggled, recolored, faded, reordered, and
+ * removed. New layers come from a preset menu — every preset reflects a
+ * standard typography / calligraphy convention (cap/x/baseline/ascender
+ * lines, golden ratio splits, italic slant grid, dot grid, etc.).
+ */
+
+import type { JSX } from 'react';
+import {
+  addLayer,
+  moveLayer,
+  presetCalligraphy,
+  presetDiagonals,
+  presetDots,
+  presetGolden,
+  presetRings,
+  presetSlant,
+  presetSubdivisions,
+  removeLayer,
+  updateLayer,
+  type GuideKind,
+  type GuideLayer,
+  type GuideSettings,
+} from './guides.js';
+
+type Props = {
+  value: GuideSettings;
+  onChange: (next: GuideSettings) => void;
+};
+
+const PRESETS: { label: string; make: () => GuideLayer }[] = [
+  { label: 'Calligraphy lines', make: presetCalligraphy },
+  { label: 'Golden φ (x)', make: () => presetGolden('x', 3) },
+  { label: 'Golden φ (y)', make: () => presetGolden('y', 3) },
+  { label: 'Columns × 4', make: () => presetSubdivisions(4, 'x') },
+  { label: 'Columns × 8', make: () => presetSubdivisions(8, 'x') },
+  { label: 'Rows × 4', make: () => presetSubdivisions(4, 'y') },
+  { label: 'Rows × 8', make: () => presetSubdivisions(8, 'y') },
+  { label: 'Diagonals ×', make: () => presetDiagonals(true) },
+  { label: 'Slant 12°', make: () => presetSlant(12, 10) },
+  { label: 'Slant 20°', make: () => presetSlant(20, 8) },
+  { label: 'Rings × 4', make: () => presetRings(4, 0.2) },
+  { label: 'Dot grid', make: () => presetDots(10, 0.6) },
+];
+
+export function GuidesPanel(props: Props): JSX.Element {
+  const { value, onChange } = props;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+        <input
+          type="checkbox"
+          checked={value.enabled}
+          onChange={(e) => onChange({ ...value, enabled: e.target.checked })}
+        />
+        <strong>Guides</strong>
+      </label>
+      <select
+        defaultValue=""
+        style={{ fontSize: 12 }}
+        onChange={(e) => {
+          const idx = Number(e.target.value);
+          if (!Number.isFinite(idx) || idx < 0) return;
+          const p = PRESETS[idx];
+          if (!p) return;
+          onChange(addLayer(value, p.make()));
+          e.currentTarget.value = '';
+        }}
+      >
+        <option value="" disabled>
+          + Add guide…
+        </option>
+        {PRESETS.map((p, i) => (
+          <option key={p.label} value={i}>
+            {p.label}
+          </option>
+        ))}
+      </select>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {value.layers.map((l, idx) => (
+          <LayerRow
+            key={l.id}
+            layer={l}
+            isFirst={idx === 0}
+            isLast={idx === value.layers.length - 1}
+            onChange={(patch) => onChange(updateLayer(value, l.id, patch))}
+            onRemove={() => onChange(removeLayer(value, l.id))}
+            onMove={(dir) => onChange(moveLayer(value, l.id, dir))}
+          />
+        ))}
+        {value.layers.length === 0 && (
+          <div style={{ fontSize: 11, color: '#888', fontStyle: 'italic' }}>
+            No guide layers — add one above.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LayerRow(props: {
+  layer: GuideLayer;
+  isFirst: boolean;
+  isLast: boolean;
+  onChange: (patch: Partial<GuideLayer>) => void;
+  onRemove: () => void;
+  onMove: (dir: -1 | 1) => void;
+}): JSX.Element {
+  const { layer, isFirst, isLast, onChange, onRemove, onMove } = props;
+  return (
+    <div
+      style={{
+        border: '1px solid #ddd',
+        borderRadius: 4,
+        padding: 4,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+        background: '#fafafa',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <input
+          type="checkbox"
+          checked={layer.visible}
+          onChange={(e) => onChange({ visible: e.target.checked })}
+          title="Visible"
+        />
+        <input
+          type="color"
+          value={layer.color}
+          onChange={(e) => onChange({ color: e.target.value })}
+          style={{ width: 22, height: 18, padding: 0, border: 'none', background: 'transparent' }}
+          title="Color"
+        />
+        <span style={{ fontSize: 11, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {layer.label}
+        </span>
+        <button
+          type="button"
+          onClick={() => onMove(-1)}
+          disabled={isFirst}
+          style={{ fontSize: 10, padding: '0 4px' }}
+          title="Move up"
+        >
+          ↑
+        </button>
+        <button
+          type="button"
+          onClick={() => onMove(1)}
+          disabled={isLast}
+          style={{ fontSize: 10, padding: '0 4px' }}
+          title="Move down"
+        >
+          ↓
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          style={{ fontSize: 10, padding: '0 4px' }}
+          title="Remove"
+        >
+          ✕
+        </button>
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+        <span style={{ width: 50 }}>opacity</span>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.05}
+          value={layer.opacity}
+          onChange={(e) => onChange({ opacity: Number(e.target.value) })}
+          style={{ flex: 1 }}
+        />
+        <span style={{ width: 28, textAlign: 'right' }}>{layer.opacity.toFixed(2)}</span>
+      </label>
+      <KindEditor kind={layer.kind} onChange={(kind) => onChange({ kind })} />
+    </div>
+  );
+}
+
+function KindEditor(props: {
+  kind: GuideKind;
+  onChange: (k: GuideKind) => void;
+}): JSX.Element | null {
+  const { kind, onChange } = props;
+  switch (kind.kind) {
+    case 'subdivisions':
+      return (
+        <Row label={`${kind.axis === 'x' ? 'cols' : 'rows'}`}>
+          <input
+            type="range"
+            min={2}
+            max={64}
+            step={1}
+            value={kind.n}
+            onChange={(e) => onChange({ ...kind, n: Math.max(2, Number(e.target.value) | 0) })}
+            style={{ flex: 1 }}
+          />
+          <span style={{ width: 24, textAlign: 'right' }}>{kind.n}</span>
+        </Row>
+      );
+    case 'golden':
+      return (
+        <Row label="depth">
+          <input
+            type="range"
+            min={1}
+            max={8}
+            step={1}
+            value={kind.depth}
+            onChange={(e) => onChange({ ...kind, depth: Math.max(1, Number(e.target.value) | 0) })}
+            style={{ flex: 1 }}
+          />
+          <span style={{ width: 24, textAlign: 'right' }}>{kind.depth}</span>
+        </Row>
+      );
+    case 'slant':
+      return (
+        <>
+          <Row label="angle°">
+            <input
+              type="range"
+              min={-45}
+              max={45}
+              step={1}
+              value={Math.round((kind.angle * 180) / Math.PI)}
+              onChange={(e) =>
+                onChange({ ...kind, angle: (Number(e.target.value) * Math.PI) / 180 })
+              }
+              style={{ flex: 1 }}
+            />
+            <span style={{ width: 28, textAlign: 'right' }}>
+              {Math.round((kind.angle * 180) / Math.PI)}°
+            </span>
+          </Row>
+          <Row label="spacing">
+            <input
+              type="range"
+              min={2}
+              max={50}
+              step={0.5}
+              value={kind.spacing}
+              onChange={(e) => onChange({ ...kind, spacing: Math.max(0.5, Number(e.target.value)) })}
+              style={{ flex: 1 }}
+            />
+            <span style={{ width: 28, textAlign: 'right' }}>{kind.spacing.toFixed(1)}</span>
+          </Row>
+        </>
+      );
+    case 'rings':
+      return (
+        <>
+          <Row label="count">
+            <input
+              type="range"
+              min={1}
+              max={16}
+              step={1}
+              value={kind.count}
+              onChange={(e) => onChange({ ...kind, count: Math.max(1, Number(e.target.value) | 0) })}
+              style={{ flex: 1 }}
+            />
+            <span style={{ width: 24, textAlign: 'right' }}>{kind.count}</span>
+          </Row>
+          <Row label="inner">
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={kind.innerRatio}
+              onChange={(e) => onChange({ ...kind, innerRatio: Number(e.target.value) })}
+              style={{ flex: 1 }}
+            />
+            <span style={{ width: 28, textAlign: 'right' }}>{kind.innerRatio.toFixed(2)}</span>
+          </Row>
+        </>
+      );
+    case 'calligraphy':
+      return (
+        <>
+          {(['ascender', 'capHeight', 'xHeight', 'baseline', 'descender'] as const).map((field) => (
+            <Row key={field} label={field}>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.005}
+                value={kind[field]}
+                onChange={(e) => onChange({ ...kind, [field]: Number(e.target.value) })}
+                style={{ flex: 1 }}
+              />
+              <span style={{ width: 32, textAlign: 'right' }}>{kind[field].toFixed(2)}</span>
+            </Row>
+          ))}
+        </>
+      );
+    case 'dots':
+      return (
+        <>
+          <Row label="spacing">
+            <input
+              type="range"
+              min={2}
+              max={40}
+              step={0.5}
+              value={kind.spacing}
+              onChange={(e) => onChange({ ...kind, spacing: Math.max(0.5, Number(e.target.value)) })}
+              style={{ flex: 1 }}
+            />
+            <span style={{ width: 28, textAlign: 'right' }}>{kind.spacing.toFixed(1)}</span>
+          </Row>
+          <Row label="r">
+            <input
+              type="range"
+              min={0.1}
+              max={3}
+              step={0.1}
+              value={kind.radiusUnits}
+              onChange={(e) =>
+                onChange({ ...kind, radiusUnits: Math.max(0.05, Number(e.target.value)) })
+              }
+              style={{ flex: 1 }}
+            />
+            <span style={{ width: 28, textAlign: 'right' }}>{kind.radiusUnits.toFixed(1)}</span>
+          </Row>
+        </>
+      );
+    case 'diagonals':
+      return (
+        <Row label="cross">
+          <input
+            type="checkbox"
+            checked={kind.cross}
+            onChange={(e) => onChange({ ...kind, cross: e.target.checked })}
+          />
+        </Row>
+      );
+    default: {
+      const _: never = kind;
+      void _;
+      return null;
+    }
+  }
+}
+
+function Row(props: { label: string; children: React.ReactNode }): JSX.Element {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
+      <span style={{ width: 50 }}>{props.label}</span>
+      {props.children}
+    </label>
+  );
+}

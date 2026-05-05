@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { defaultFont } from '../data/defaultFont.js';
 import type { Font, Glyph, StyleSettings } from '../core/types.js';
+import { defaultGuides, type GuideSettings } from '../modules/glyphsetter/guides.js';
 
 export type ModuleId = 'glyphsetter' | 'stylesetter' | 'typesetter';
 
@@ -21,6 +22,7 @@ export type GlyphViewOptions = {
   ribbonSpacing: number; // target arc-length spacing in glyph units when triMode='ribbon-density'
   ribbonSpread: number; // 0..1: blend interior sample placement from parameter-uniform (0) to arc-length-uniform (1)
   ribbonAnchorPull: number; // 0..1: bias arc-length targets via smoothstep so samples cluster near anchors (mimics zero-tangent anchor distribution on a tangent curve)
+  guides: GuideSettings;
 };
 
 type AppState = {
@@ -61,6 +63,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     ribbonSpacing: 4,
     ribbonSpread: 1,
     ribbonAnchorPull: 0,
+    guides: defaultGuides(),
   },
   setStyle: (patch) =>
     set((s) => ({

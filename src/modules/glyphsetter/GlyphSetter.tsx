@@ -12,6 +12,8 @@ import { strokeToSegments } from '../../core/bezier.js';
 import { triangulatePolygon } from '../../core/triangulate.js';
 import { triangulateStrokeRibbon } from '../../core/ribbon.js';
 import type { GlyphViewOptions } from '../../state/store.js';
+import { computeLayerGeometry } from './guides.js';
+import { GuidesPanel } from './GuidesPanel.js';
 import {
   addStroke,
   deleteAnchor,
@@ -472,6 +474,7 @@ function GlyphEditor(props: {
           anchor = toggle corner/smooth.
         </span>
       </div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 8 }}>
       <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: '#fff', border: '1px solid #ddd', borderRadius: 6 }}>
       <svg
         ref={svgRef}
@@ -502,6 +505,47 @@ function GlyphEditor(props: {
           stroke="#eee"
           pointerEvents="none"
         />
+        {/* guides — under the glyph fill, above the box stroke */}
+        {view.guides.enabled && (
+          <g
+            transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
+            pointerEvents="none"
+          >
+            {view.guides.layers.map((l) => {
+              if (!l.visible) return null;
+              const g = computeLayerGeometry(l, glyph.box.w, glyph.box.h);
+              const sw = l.strokeWidth / SCALE;
+              return (
+                <g key={l.id} stroke={l.color} fill={l.color} opacity={l.opacity}>
+                  {g.lines.map((ln, i) => (
+                    <line
+                      key={`l${i}`}
+                      x1={ln.x1}
+                      y1={ln.y1}
+                      x2={ln.x2}
+                      y2={ln.y2}
+                      strokeWidth={sw}
+                      fill="none"
+                    />
+                  ))}
+                  {g.circles.map((c, i) => (
+                    <circle
+                      key={`c${i}`}
+                      cx={c.cx}
+                      cy={c.cy}
+                      r={c.r}
+                      strokeWidth={sw}
+                      fill="none"
+                    />
+                  ))}
+                  {g.dots.map((d, i) => (
+                    <circle key={`d${i}`} cx={d.cx} cy={d.cy} r={d.r} stroke="none" />
+                  ))}
+                </g>
+              );
+            })}
+          </g>
+        )}
         {/* outlined preview (faded) — fill comes from the triangulated mesh */}
         {view.showFillPreview && (
           <g
@@ -617,6 +661,23 @@ function GlyphEditor(props: {
           ))}
         </g>
       </svg>
+      </div>
+      <aside
+        style={{
+          width: 240,
+          flexShrink: 0,
+          overflowY: 'auto',
+          background: '#fafafa',
+          border: '1px solid #ddd',
+          borderRadius: 6,
+          padding: 8,
+        }}
+      >
+        <GuidesPanel
+          value={view.guides}
+          onChange={(guides) => setView({ guides })}
+        />
+      </aside>
       </div>
     </div>
   );
