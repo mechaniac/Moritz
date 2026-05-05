@@ -479,17 +479,20 @@ const digits: Glyph[] = [N0, N1, N2, N3, N4, N5, N6, N7, N8, N9];
 
 // ---------- Punctuation ----------------------------------------------------
 
+// Small filled dot drawn as an open stroke: ~360° around (cx, cy) with a
+// PEN_LIFT gap at the top so first vertex ≠ last. Round caps cover the gap.
+const dotStroke = (cx: number, cy: number, r: number) =>
+  stroke([
+    sm(cx + PEN_LIFT * 0.5, cy - r, r, 0),
+    sm(cx + r, cy, 0, r),
+    sm(cx, cy + r, -r, 0),
+    sm(cx - r, cy, 0, -r),
+    sm(cx - PEN_LIFT * 0.5, cy - r, r, 0),
+  ]);
+
 const PERIOD: Glyph = glyph(
   '.',
-  [
-    stroke([
-      sm(30, BASELINE - 4, 4, 0),
-      sm(34, BASELINE, 0, -4),
-      sm(30, BASELINE - 8, -4, 0),
-      sm(26, BASELINE - 4, 0, 4),
-      sm(30, BASELINE - 4, 4, 0),
-    ]),
-  ],
+  [dotStroke(30, BASELINE - 4, 4)],
   { w: 50, h: BOX_H },
 );
 
@@ -503,26 +506,14 @@ const QUESTION: Glyph = glyph('?', [
     c(50, BASELINE - 25),
   ]),
   // dot
-  stroke([
-    sm(50, BASELINE - 4, 4, 0),
-    sm(54, BASELINE, 0, -4),
-    sm(50, BASELINE - 8, -4, 0),
-    sm(46, BASELINE - 4, 0, 4),
-    sm(50, BASELINE - 4, 4, 0),
-  ]),
+  dotStroke(50, BASELINE - 4, 4),
 ]);
 
 const EXCLAIM: Glyph = glyph(
   '!',
   [
     stroke([c(35, CAP), c(35, BASELINE - 25)]),
-    stroke([
-      sm(35, BASELINE - 4, 4, 0),
-      sm(39, BASELINE, 0, -4),
-      sm(35, BASELINE - 8, -4, 0),
-      sm(31, BASELINE - 4, 0, 4),
-      sm(35, BASELINE - 4, 4, 0),
-    ]),
+    dotStroke(35, BASELINE - 4, 4),
   ],
   { w: 70, h: BOX_H },
 );
