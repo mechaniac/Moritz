@@ -411,23 +411,18 @@ function buildSides(
         const absKPrev = Math.abs(kPrev);
         const absKNext = Math.abs(kNext);
 
-        // Mode B: linear extrapolation past `perp`.
-        // For inside corners (kPrev < 0 / kNext < 0) and amount ≤ 1 this
-        // would walk bev BACKWARD along the tangent — i.e. closer to the
-        // path. The bevel is meant to only ever pull AWAY from the curve,
-        // so clamp the inside side to perp until amount > 1 (where Mode B
-        // extrapolation past perp is the intended "spike" behavior).
-        const insidePrev = kPrev < 0;
-        const insideNext = kNext < 0;
-        const aPrev = insidePrev && bevelAmount < 1 ? 1 : bevelAmount;
-        const aNext = insideNext && bevelAmount < 1 ? 1 : bevelAmount;
+        // Mode B: linear extrapolation past `perp`. For amount ∈ [0,1] this
+        // smoothly lerps from the sharp miter point `mp` (at amount=0) to
+        // the perpendicular offset endpoint `perp` (at amount=1) — which
+        // means the bevel CHORD opens up gradually starting from the corner
+        // anchor on both sides. For amount > 1 it extrapolates past perp.
         const bevPrevB: Vec2 = {
-          x: mp.x - aPrev * kPrev * seg.tangentEnd.x,
-          y: mp.y - aPrev * kPrev * seg.tangentEnd.y,
+          x: mp.x - bevelAmount * kPrev * seg.tangentEnd.x,
+          y: mp.y - bevelAmount * kPrev * seg.tangentEnd.y,
         };
         const bevNextB: Vec2 = {
-          x: mp.x + aNext * kNext * next.tangentStart.x,
-          y: mp.y + aNext * kNext * next.tangentStart.y,
+          x: mp.x + bevelAmount * kNext * next.tangentStart.x,
+          y: mp.y + bevelAmount * kNext * next.tangentStart.y,
         };
 
         // Mode A: clamp at perp for amount=1, then walk into body.
