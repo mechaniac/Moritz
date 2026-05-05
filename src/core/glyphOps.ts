@@ -210,8 +210,9 @@ export { add as _add, sub as _sub, ZERO as _ZERO };
  * Toggle / set whether the anchor's in & out tangents move independently.
  *
  * Setting `broken = false` (smooth) immediately re-aligns the handles so
- * they are collinear: the OUT handle keeps its direction & length, and the
- * IN handle is reflected across `p` keeping its OWN length. If one handle
+ * they are collinear, using the BISECTOR of the two current tangent
+ * directions (out direction = +outHandle, in's outgoing direction = -inHandle).
+ * Each handle keeps its own length; only the directions snap. If one handle
  * is zero we mirror from the non-zero one. If both are zero, nothing to do.
  */
 export function setBreakTangent(
@@ -232,12 +233,34 @@ export function setBreakTangent(
     next = rest;
     const outLen = Math.hypot(v.outHandle.x, v.outHandle.y);
     const inLen = Math.hypot(v.inHandle.x, v.inHandle.y);
-    // Pick a reference direction. Prefer OUT if it has length, else IN.
-    if (outLen > 1e-9) {
+    if (outLen > 1e-9 && inLen > 1e-9) {
+      // Bisector of the two outgoing-tangent directions:
+      // out's outgoing dir = +outHandle, in's outgoing dir = -inHandle.
+      const oux = v.outHandle.x / outLen;
+      const ouy = v.outHandle.y / outLen;
+      const iux = -v.inHandle.x / inLen;
+      const iuy = -v.inHandle.y / inLen;
+      let bx = oux + iux;
+      let by = ouy + iuy;
+      let blen = Math.hypot(bx, by);
+      if (blen < 1e-9) {
+        // Tangents are exactly opposite (180°): bisector is undefined.
+        // Pick a perpendicular fallback so we don't NaN out.
+        bx = -ouy;
+        by = oux;
+        blen = 1;
+      }
+      const ux = bx / blen;
+      const uy = by / blen;
+      next = {
+        ...next,
+        outHandle: { x: ux * outLen, y: uy * outLen },
+        inHandle: { x: -ux * inLen, y: -uy * inLen },
+      };
+    } else if (outLen > 1e-9) {
       const ux = v.outHandle.x / outLen;
       const uy = v.outHandle.y / outLen;
-      const targetInLen = inLen > 1e-9 ? inLen : outLen;
-      next = { ...next, inHandle: { x: -ux * targetInLen, y: -uy * targetInLen } };
+      next = { ...next, inHandle: { x: -ux * outLen, y: -uy * outLen } };
     } else if (inLen > 1e-9) {
       const ux = v.inHandle.x / inLen;
       const uy = v.inHandle.y / inLen;
