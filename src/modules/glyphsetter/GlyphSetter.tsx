@@ -451,13 +451,41 @@ function GlyphEditor(props: {
           >
             {glyph.strokes.map((s, i) => {
               const parts = outlineStrokeParts(s, font.style);
+              const poly = outlineStroke(s, font.style);
               const sw = 1.4 / SCALE;
+              const dotR = 2.6 / SCALE;
+              const fontPx = 9 / SCALE;
               return (
                 <g key={`b${i}`}>
                   <path d={polylineD(parts.left)} stroke="#0a84ff" strokeWidth={sw} />
                   <path d={polylineD(parts.right)} stroke="#ff3b30" strokeWidth={sw} />
                   <path d={polylineD(parts.startCap)} stroke="#34c759" strokeWidth={sw} />
                   <path d={polylineD(parts.endCap)} stroke="#ff9500" strokeWidth={sw} />
+                  {/* vertex dots + ids on the FINAL stitched polygon */}
+                  {poly.map((p, k) => (
+                    <g key={`v${i}-${k}`}>
+                      <circle
+                        cx={p.x}
+                        cy={p.y}
+                        r={dotR}
+                        fill="#111"
+                        stroke="#fff"
+                        strokeWidth={sw * 0.6}
+                      />
+                      <text
+                        x={p.x + dotR * 1.4}
+                        y={p.y - dotR * 1.4}
+                        fontSize={fontPx}
+                        fill="#111"
+                        stroke="#fff"
+                        strokeWidth={sw * 0.4}
+                        paintOrder="stroke"
+                        style={{ userSelect: 'none' }}
+                      >
+                        {k}
+                      </text>
+                    </g>
+                  ))}
                 </g>
               );
             })}
