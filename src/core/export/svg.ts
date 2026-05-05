@@ -7,6 +7,7 @@
 
 import type { LayoutResult } from '../layout.js';
 import { outlineStroke } from '../stroke.js';
+import { triangulatePolygon } from '../triangulate.js';
 import type { Font, Vec2 } from '../types.js';
 
 export type SvgRenderOptions = {
@@ -18,12 +19,16 @@ export type SvgRenderOptions = {
 
 function polygonToPathD(points: readonly Vec2[]): string {
   if (points.length === 0) return '';
+  const tris = triangulatePolygon(points);
+  // Render the polygon as the union of its triangles — single source of
+  // truth shared with the editor preview and debug overlay.
   const parts: string[] = [];
-  parts.push(`M ${fmt(points[0]!.x)} ${fmt(points[0]!.y)}`);
-  for (let i = 1; i < points.length; i++) {
-    parts.push(`L ${fmt(points[i]!.x)} ${fmt(points[i]!.y)}`);
+  for (const t of tris) {
+    const a = points[t[0]]!;
+    const b = points[t[1]]!;
+    const c = points[t[2]]!;
+    parts.push(`M ${fmt(a.x)} ${fmt(a.y)} L ${fmt(b.x)} ${fmt(b.y)} L ${fmt(c.x)} ${fmt(c.y)} Z`);
   }
-  parts.push('Z');
   return parts.join(' ');
 }
 

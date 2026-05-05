@@ -149,7 +149,11 @@ function ThumbSvg(props: {
 }): JSX.Element {
   const { glyph, font, refBox } = props;
   const paths = useMemo(
-    () => glyph.strokes.map((s) => polygonD(outlineStroke(s, font.style))),
+    () =>
+      glyph.strokes.map((s) => {
+        const poly = outlineStroke(s, font.style);
+        return trianglesD(poly, triangulatePolygon(poly));
+      }),
     [glyph, font.style],
   );
   // Center this glyph within the shared reference box so relative sizes show.
@@ -399,16 +403,18 @@ function GlyphEditor(props: {
           stroke="#eee"
           pointerEvents="none"
         />
-        {/* outlined preview (faded) */}
+        {/* outlined preview (faded) — fill comes from the triangulated mesh */}
         {view.showFillPreview && (
           <g
             transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
             fill="rgba(0,0,0,0.15)"
             pointerEvents="none"
           >
-            {glyph.strokes.map((s, i) => (
-              <path key={`o${i}`} d={polygonD(outlineStroke(s, font.style))} />
-            ))}
+            {glyph.strokes.map((s, i) => {
+              const poly = outlineStroke(s, font.style);
+              const tris = triangulatePolygon(poly);
+              return <path key={`o${i}`} d={trianglesD(poly, tris)} />;
+            })}
           </g>
         )}
         {/* debug border overlay */}
@@ -652,13 +658,30 @@ function StrokeOverlay(props: {
 
 // ---------- helpers ---------------------------------------------------------
 
-function polygonD(points: readonly Vec2[]): string {
-  if (points.length === 0) return '';
-  let d = `M ${points[0]!.x} ${points[0]!.y}`;
-  for (let i = 1; i < points.length; i++) {
-    d += ` L ${points[i]!.x} ${points[i]!.y}`;
+function polygonD(_points: readonly Vec2[]): string {
+  // Kept around for potential reuse; current renderer routes all fills
+  // through trianglesD() to keep a single source of truth with the debug
+  // overlay. Prefix arg with `_` so strict unused-vars stays quiet.
+  return '';
+}
+// Silence "declared but unused" — exposed for future reuse by other tools.
+void polygonD;
+
+// SINGLE SOURCE OF TRUTH for the rendered fill: build the path d from the
+// SAME triangle list the debug overlay uses, so the visible shape is
+// literally the union of those triangles.
+function trianglesD(
+  poly: readonly Vec2[],
+  triangles: readonly (readonly [number, number, number])[],
+): string {
+  let d = '';
+  for (const t of triangles) {
+    const a = poly[t[0]]!;
+    const b = poly[t[1]]!;
+    const c = poly[t[2]]!;
+    d += `M ${a.x} ${a.y} L ${b.x} ${b.y} L ${c.x} ${c.y} Z `;
   }
-  return d + ' Z';
+  return d;
 }
 
 function polylineD(points: readonly Vec2[]): string {
