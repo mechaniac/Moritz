@@ -408,6 +408,19 @@ function GlyphEditor(props: {
         {(view.triMode === 'ribbon-fixed' || view.triMode === 'ribbon-density') && (
           <label
             style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            title="Off = each segment owns its own endpoints (extra seam pair at every interior anchor; segment count drives the triangle layout). On = adjacent segments share one miter-joined offset pair (ribbon outline matches earcut outline)."
+          >
+            <input
+              type="checkbox"
+              checked={view.ribbonJoinSegments}
+              onChange={(e) => setView({ ribbonJoinSegments: e.target.checked })}
+            />
+            join segments
+          </label>
+        )}
+        {(view.triMode === 'ribbon-fixed' || view.triMode === 'ribbon-density') && (
+          <label
+            style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
             title="0 = parameter-uniform (clusters near anchors on curved segments). 1 = arc-length-uniform (even spacing along the actual curve)."
           >
             spread
@@ -774,6 +787,7 @@ function triangulateForView(
       kind: 'fixed',
       samplesPerSegment: view.ribbonSamples,
       spread: view.ribbonSpread,
+      joinSegments: view.ribbonJoinSegments,
     });
   }
   if (view.triMode === 'ribbon-density') {
@@ -781,6 +795,7 @@ function triangulateForView(
       kind: 'density',
       spacing: view.ribbonSpacing,
       spread: view.ribbonSpread,
+      joinSegments: view.ribbonJoinSegments,
     });
   }
   const poly = outlineStroke(stroke, style);

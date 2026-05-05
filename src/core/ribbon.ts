@@ -33,8 +33,8 @@ import type { Stroke, StyleSettings, Vec2 } from './types.js';
 import type { Triangle } from './triangulate.js';
 
 export type RibbonOptions =
-  | { kind: 'fixed'; samplesPerSegment: number; spread?: number }
-  | { kind: 'density'; spacing: number; spread?: number };
+  | { kind: 'fixed'; samplesPerSegment: number; spread?: number; joinSegments?: boolean }
+  | { kind: 'density'; spacing: number; spread?: number; joinSegments?: boolean };
 
 export type RibbonResult = {
   readonly polygon: Vec2[];
@@ -259,7 +259,18 @@ export function triangulateStrokeRibbon(
 
   // Build the full sample list. Order:
   //   anchor0, [interior of seg0], anchor1, [interior of seg1], ..., anchorN
+  //
+  // When joinSegments is true (default) interior anchors are emitted ONCE
+  // with a miter-joined offset pair shared by both adjacent segments — the
+  // ribbon outline matches the earcut outline exactly. When false, each
+  // segment owns its own endpoints: at every interior anchor we push two
+  // samples back-to-back (segPrev's end with prev tangent, segNext's start
+  // with next tangent). With smooth tangents these are geometrically
+  // identical but become separate vertices in the polygon, producing extra
+  // (degenerate-but-visible) quad rings whose count tracks the segment
+  // count — useful for distortion effects.
   const spread = Math.max(0, Math.min(1, opts.spread ?? 0));
+  const join = opts.joinSegments !== false;
   const samples: SpineSample[] = [];
   samples.push(startAnchor());
   for (let s = 0; s < segments.length; s++) {
@@ -269,7 +280,15 @@ export function triangulateStrokeRibbon(
       const tLocal = sampleT(i, interior, spread, arcLut);
       samples.push(interiorSample(s, tLocal));
     }
-    if (s < segments.length - 1) samples.push(interiorAnchor(s));
+    if (s < segments.length - 1) {
+      if (join) {
+        samples.push(interiorAnchor(s));
+      } else {
+        // Two samples at the same anchor point, each with its own tangent.
+        samples.push(interiorSample(s, 1));
+        samples.push(interiorSample(s + 1, 0));
+      }
+    }
   }
   samples.push(endAnchor());
 

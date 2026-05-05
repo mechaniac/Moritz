@@ -20,6 +20,7 @@ export type GlyphViewOptions = {
   ribbonSamples: number; // samples per Bezier segment when triMode='ribbon-fixed'
   ribbonSpacing: number; // target arc-length spacing in glyph units when triMode='ribbon-density'
   ribbonSpread: number; // 0..1: blend interior sample placement from parameter-uniform (0) to arc-length-uniform (1)
+  ribbonJoinSegments: boolean; // true = miter-join adjacent segments at every anchor (matches earcut outline). false = each segment owns its endpoints (a seam pair at every interior anchor).
 };
 
 type AppState = {
@@ -59,6 +60,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     ribbonSamples: 6,
     ribbonSpacing: 4,
     ribbonSpread: 1,
+    ribbonJoinSegments: true,
   },
   setStyle: (patch) =>
     set((s) => ({
