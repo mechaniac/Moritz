@@ -31,10 +31,22 @@ const corner = (x: number, y: number): Vertex => ({
 });
 
 let strokeCounter = 0;
-const stroke = (vertices: Vertex[]): Stroke => ({
-  id: `s${++strokeCounter}`,
-  vertices,
-});
+
+// Open-stroke invariant: every stroke must have a distinct start and end
+// (a real pen path with touch-down and lift-off). Throws on closed loops
+// instead of silently producing a degenerate self-touching outline.
+const stroke = (vertices: Vertex[]): Stroke => {
+  if (vertices.length >= 2) {
+    const a = vertices[0]!.p;
+    const z = vertices[vertices.length - 1]!.p;
+    if (a.x === z.x && a.y === z.y) {
+      throw new Error(
+        'defaultFont stroke is closed (first.p === last.p). Strokes must have a distinct start and end — leave a small pen-lift gap.',
+      );
+    }
+  }
+  return { id: `s${++strokeCounter}`, vertices };
+};
 
 const glyph = (
   char: string,
@@ -175,15 +187,18 @@ const N: Glyph = glyph('N', [
   ]),
 ]);
 
+// O: hex outline drawn as an open stroke. Start sits 1 unit right of the
+// top apex, end sits 1 unit left — the round caps cover the gap so the
+// loop visually closes while the geometry stays a true pen path.
 const O: Glyph = glyph('O', [
   stroke([
-    corner(50, CAP),
-    corner(15, CAP + 25),
-    corner(15, BASELINE - 25),
-    corner(50, BASELINE),
-    corner(85, BASELINE - 25),
+    corner(51, CAP),
     corner(85, CAP + 25),
-    corner(50, CAP),
+    corner(85, BASELINE - 25),
+    corner(50, BASELINE),
+    corner(15, BASELINE - 25),
+    corner(15, CAP + 25),
+    corner(49, CAP),
   ]),
 ]);
 
@@ -200,13 +215,13 @@ const P: Glyph = glyph('P', [
 
 const Q: Glyph = glyph('Q', [
   stroke([
-    corner(50, CAP),
-    corner(15, CAP + 25),
-    corner(15, BASELINE - 25),
-    corner(50, BASELINE),
-    corner(85, BASELINE - 25),
+    corner(51, CAP),
     corner(85, CAP + 25),
-    corner(50, CAP),
+    corner(85, BASELINE - 25),
+    corner(50, BASELINE),
+    corner(15, BASELINE - 25),
+    corner(15, CAP + 25),
+    corner(49, CAP),
   ]),
   stroke([corner(60, BASELINE - 20), corner(95, BASELINE + 10)]),
 ]);
@@ -329,13 +344,13 @@ const lowercase: Glyph[] = [
 
 const N0: Glyph = glyph('0', [
   stroke([
-    corner(50, CAP),
-    corner(15, CAP + 25),
-    corner(15, BASELINE - 25),
-    corner(50, BASELINE),
-    corner(85, BASELINE - 25),
+    corner(51, CAP),
     corner(85, CAP + 25),
-    corner(50, CAP),
+    corner(85, BASELINE - 25),
+    corner(50, BASELINE),
+    corner(15, BASELINE - 25),
+    corner(15, CAP + 25),
+    corner(49, CAP),
   ]),
 ]);
 
@@ -404,17 +419,20 @@ const N7: Glyph = glyph('7', [
   stroke([corner(15, CAP), corner(85, CAP), corner(40, BASELINE)]),
 ]);
 
+// 8: open figure-eight — starts just left of the midpoint, traces top
+// loop, midpoint, bottom loop, ends just right of the midpoint. Caps
+// cover the 2-unit gap.
 const N8: Glyph = glyph('8', [
   stroke([
-    corner(50, CAP + 35),
+    corner(49, CAP + 35),
     corner(20, CAP + 18),
     corner(50, CAP),
     corner(80, CAP + 18),
     corner(50, CAP + 35),
-    corner(15, BASELINE - 18),
-    corner(50, BASELINE),
     corner(85, BASELINE - 18),
-    corner(50, CAP + 35),
+    corner(50, BASELINE),
+    corner(15, BASELINE - 18),
+    corner(51, CAP + 35),
   ]),
 ]);
 
@@ -432,9 +450,20 @@ const N9: Glyph = glyph('9', [
 const digits: Glyph[] = [N0, N1, N2, N3, N4, N5, N6, N7, N8, N9];
 
 // Punctuation
+// Dot helper: open ~rectangular path around (cx, cy) with a tiny pen-lift
+// gap at the top so first vertex ≠ last. Round caps overlap the gap.
+const dotStroke = (cx: number, cy: number, r: number) =>
+  stroke([
+    corner(cx + 0.5, cy - r),
+    corner(cx + r, cy),
+    corner(cx, cy + r),
+    corner(cx - r, cy),
+    corner(cx - 0.5, cy - r),
+  ]);
+
 const PERIOD: Glyph = glyph(
   '.',
-  [stroke([corner(25, BASELINE - 5), corner(35, BASELINE - 5), corner(35, BASELINE), corner(25, BASELINE), corner(25, BASELINE - 5)])],
+  [dotStroke(30, BASELINE - 2, 5)],
   { w: 50, h: BOX_H },
 );
 
@@ -446,26 +475,14 @@ const QUESTION: Glyph = glyph('?', [
     corner(50, BASELINE - 50),
     corner(50, BASELINE - 30),
   ]),
-  stroke([
-    corner(45, BASELINE - 5),
-    corner(55, BASELINE - 5),
-    corner(55, BASELINE),
-    corner(45, BASELINE),
-    corner(45, BASELINE - 5),
-  ]),
+  dotStroke(50, BASELINE - 2, 5),
 ]);
 
 const EXCLAIM: Glyph = glyph(
   '!',
   [
     stroke([corner(35, CAP), corner(35, BASELINE - 25)]),
-    stroke([
-      corner(30, BASELINE - 5),
-      corner(40, BASELINE - 5),
-      corner(40, BASELINE),
-      corner(30, BASELINE),
-      corner(30, BASELINE - 5),
-    ]),
+    dotStroke(35, BASELINE - 2, 5),
   ],
   { w: 70, h: BOX_H },
 );
