@@ -516,19 +516,23 @@ export function outlineStrokeParts(
 }
 
 /**
- * Soften "spike" vertices on a closed polygon: any vertex that sticks out of
- * the chord between its two neighbors by more than `maxRatio × chord` is
- * replaced by the chord midpoint. Iterates a few times so cascaded spikes
- * also collapse.
+ * Relax "spike" vertices on a closed polygon by repeatedly:
+ *   1. Finding stressed vertices (perpendicular outshoot from neighbor chord
+ *      exceeds `maxRatio × chord`).
+ *   2. Subdividing the two edges adjacent to each stressed vertex (insert a
+ *      midpoint), giving the smoother more degrees of freedom in the spike
+ *      region without collapsing the tip onto the neighbor chord.
+ *   3. Running one Laplacian pass on the stressed vertices (replace each
+ *      with the midpoint of its two — now closer — neighbors).
  *
  * `bevelAmount` controls strictness:
- *   - amount ≤ 0 → no smoothing (caller path is returned unchanged).
- *   - amount = 1 → very lax (only egregious self-intersecting spikes go).
- *   - amount → 20 → strict (almost any backwards-bending tip is collapsed).
+ *   - amount ≤ 0 → no relaxation, polygon returned unchanged.
+ *   - amount = 1 → very lax (only egregious self-intersecting tips relax).
+ *   - amount → 20 → strict (almost any backwards-bending tip relaxes).
  *
- * The detector is geometric (perpendicular-outshoot vs neighbor-chord
- * length), so it only triggers on out-and-back spikes — round / tapered /
- * flat caps and natural sharp glyph corners are left intact.
+ * The detector is geometric (perp/chord ratio), so it ignores legitimate
+ * sharp glyph corners and round/tapered/flat caps where the chord stays
+ * roughly proportional to the outshoot.
  */
 function softenSpikes(poly: Vec2[], bevelAmount: number): Vec2[] {
   if (bevelAmount <= 0 || poly.length < 4) return poly;
@@ -536,39 +540,69 @@ function softenSpikes(poly: Vec2[], bevelAmount: number): Vec2[] {
   const f = Math.min(1, bevelAmount / 20);
   // Outshoot ratio threshold: lax (5) → strict (0.5).
   const maxRatio = 5 - 4.5 * f;
+  // Maximum number of subdivide+relax passes.
+  const MAX_PASSES = 8;
+  // Cap on total polygon size to avoid runaway subdivision in pathological
+  // cases.
+  const MAX_POINTS = poly.length * 8;
+
+  const isStressed = (a: Vec2, p: Vec2, b: Vec2): boolean => {
+    const cx = b.x - a.x;
+    const cy = b.y - a.y;
+    const chord = Math.hypot(cx, cy);
+    if (chord < 1e-9) return true; // collapsed neighbors → always relax
+    const tx = cx / chord;
+    const ty = cy / chord;
+    const px = p.x - a.x;
+    const py = p.y - a.y;
+    const perp = Math.abs(px * -ty + py * tx);
+    return perp > maxRatio * chord;
+  };
+
   let cur = poly;
-  for (let iter = 0; iter < 6; iter++) {
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
     const n = cur.length;
     if (n < 4) break;
-    const next: Vec2[] = new Array(n);
-    let changed = false;
+
+    // 1. Mark stressed vertices.
+    const stressed: boolean[] = new Array(n);
+    let anyStressed = false;
+    for (let i = 0; i < n; i++) {
+      const a = cur[(i - 1 + n) % n]!;
+      const p = cur[i]!;
+      const b = cur[(i + 1) % n]!;
+      if (isStressed(a, p, b)) {
+        stressed[i] = true;
+        anyStressed = true;
+      } else {
+        stressed[i] = false;
+      }
+    }
+    if (!anyStressed) return cur;
+
+    // 2. Subdivide edges adjacent to any stressed vertex, AND apply one
+    //    Laplacian smoothing pass to stressed vertices in the same rebuild.
+    const next: Vec2[] = [];
     for (let i = 0; i < n; i++) {
       const p = cur[i]!;
       const a = cur[(i - 1 + n) % n]!;
       const b = cur[(i + 1) % n]!;
-      const cx = b.x - a.x;
-      const cy = b.y - a.y;
-      const chord = Math.hypot(cx, cy);
-      if (chord < 1e-9) {
-        // Neighbors coincide: collapse onto them.
-        next[i] = { x: a.x, y: a.y };
-        changed = true;
-        continue;
-      }
-      const tx = cx / chord;
-      const ty = cy / chord;
-      const px = p.x - a.x;
-      const py = p.y - a.y;
-      // Perpendicular outshoot from the line through (a, b).
-      const perp = Math.abs(px * -ty + py * tx);
-      if (perp > maxRatio * chord) {
-        next[i] = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-        changed = true;
+      // Stressed vertex → emit the average of its (current) neighbors;
+      // this is the Laplacian relaxation step.
+      if (stressed[i]) {
+        next.push({ x: (a.x + p.x + b.x) / 3, y: (a.y + p.y + b.y) / 3 });
       } else {
-        next[i] = p;
+        next.push(p);
       }
+      // Subdivide outgoing edge if either endpoint is stressed.
+      const j = (i + 1) % n;
+      if (stressed[i] || stressed[j]) {
+        const q = cur[j]!;
+        next.push({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
+      }
+      if (next.length > MAX_POINTS) break;
     }
-    if (!changed) return cur;
+    if (next.length > MAX_POINTS) break;
     cur = next;
   }
   return cur;
