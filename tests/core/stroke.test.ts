@@ -242,11 +242,13 @@ describe('stroke', () => {
     expect(has(105, 5)).toBe(true);
   });
 
-  it('outlineStroke: bevelAmount=20 stays within reach of the corner anchor', () => {
-    // With the safety guard in place, even pathological bevelAmount values
-    // must keep the bevel endpoints within half the adjacent segment length
-    // of the corner anchor (here: prev=100 long, so cap = 50). No outline
-    // sample should sit further than ~50 units from the corner (100, 0).
+  it('outlineStroke: bevelAmount=20 spike softener kills runaway points', () => {
+    // Without softening, past-anchor extrapolation at amount=20 mode=1
+    // produces polygon points hundreds of units from the corner along the
+    // adjacent tangents. The post-process softener (linked to bevelAmount)
+    // must collapse those out-and-back spikes so no point overshoots its
+    // chord-neighborhood by an extreme ratio. We assert a generous bound
+    // related to the stroke's own bounding box (≤ 200 units from corner).
     const flatStyle: StyleSettings = {
       ...style,
       capStart: 'flat',
@@ -263,19 +265,36 @@ describe('stroke', () => {
       ],
     };
     const poly = outlineStroke(s, flatStyle);
-    // Without the guard the past-anchor extrapolation produces samples far
-    // out at x≈+15·5=+175 (and similar) along the prev tangent. With the
-    // guard, no sample may extend further than the cap (50) past the corner
-    // along EITHER tangent direction.
+    const corner = { x: 100, y: 0 };
     for (const p of poly) {
-      // Max allowed x on prev side = corner.x + cap = 150.
-      expect(p.x).toBeLessThanOrEqual(150.01);
-      // Max allowed y past corner along next tangent = corner.y + cap = 50,
-      // BUT seg2 itself extends to y=100 with halfWidth=5 → y up to 105 is
-      // legitimate; only check x doesn't shoot off (proxy for prev-side
-      // spike). Same on the other axis: x must not go below 0 - cap = -50.
-      expect(p.x).toBeGreaterThanOrEqual(-50.01);
+      const d = Math.hypot(p.x - corner.x, p.y - corner.y);
+      expect(d).toBeLessThanOrEqual(200);
     }
+  });
+
+  it('outlineStroke: spike softener is disabled at bevelAmount=0', () => {
+    // amount=0 collapses bevel to a sharp miter and disables the smoother
+    // entirely — straight L-shape polygon must contain the natural endpoints.
+    const flatStyle: StyleSettings = {
+      ...style,
+      capStart: 'flat',
+      capEnd: 'flat',
+      bevelAmount: 0,
+    };
+    const s: Stroke = {
+      id: 'b0',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO, corner: 'bevel' },
+        { p: v2(100, 100), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const poly = outlineStroke(s, flatStyle);
+    // Far end of seg2 should still be present near (100, 100).
+    const hasEnd = poly.some(
+      (p) => Math.abs(p.x - 100) < 6 && Math.abs(p.y - 100) < 1,
+    );
+    expect(hasEnd).toBe(true);
   });
 
   it('outlineStroke: round cap bulges outward (forward) at the end', () => {

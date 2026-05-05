@@ -450,59 +450,12 @@ function buildSides(
           y: bevNextA.y + bevelMode * (bevNextB.y - bevNextA.y),
         };
 
-        // ---- Safety guards ----------------------------------------------
-        // (a) Distance cap: each bevel endpoint may not move further from
-        //     the corner anchor than half the adjacent segment's chord
-        //     length — otherwise it can run all the way across the glyph.
-        const corner = seg.pEnd;
-        const prevLen = Math.hypot(seg.pEnd.x - seg.pStart.x, seg.pEnd.y - seg.pStart.y) || 1;
-        const nextLen = Math.hypot(next.pEnd.x - next.pStart.x, next.pEnd.y - next.pStart.y) || 1;
-        const capPrev = 0.5 * prevLen;
-        const capNext = 0.5 * nextLen;
-        const guarded = (
-          bev: Vec2,
-          perp: Vec2,
-          maxFromCorner: number,
-        ): Vec2 => {
-          // Cap distance from the corner anchor.
-          let dx = bev.x - corner.x;
-          let dy = bev.y - corner.y;
-          const d = Math.hypot(dx, dy);
-          if (d > maxFromCorner && d > 1e-9) {
-            const k = maxFromCorner / d;
-            dx *= k;
-            dy *= k;
-          }
-          let out: Vec2 = { x: corner.x + dx, y: corner.y + dy };
-          // (b) Side lock: the LEFT polyline endpoint must stay on the same
-          //     side of the corner anchor as `perp` does (relative to the
-          //     average tangent through the corner). This kills the spikes
-          //     that cross the central axis when bevelMode pushes the inside
-          //     bevel into the outside half-plane.
-          const ax = seg.tangentEnd.x + next.tangentStart.x;
-          const ay = seg.tangentEnd.y + next.tangentStart.y;
-          const aLen = Math.hypot(ax, ay) || 1;
-          const nx = -ay / aLen;
-          const ny = ax / aLen;
-          const sBev = (out.x - corner.x) * nx + (out.y - corner.y) * ny;
-          const sPerp = (perp.x - corner.x) * nx + (perp.y - corner.y) * ny;
-          if (sBev * sPerp < 0) {
-            // Project bev onto the corner-anchor line perpendicular to the
-            // average tangent, then reflect to the perp's side.
-            // Concretely: subtract twice the signed component along (nx, ny).
-            out = { x: out.x - 2 * sBev * nx, y: out.y - 2 * sBev * ny };
-          }
-          return out;
-        };
-        const bevPrevSafe = guarded(bevPrev, perpPrev, capPrev);
-        const bevNextSafe = guarded(bevNext, perpNext, capNext);
-
         prevCopy.pop();
-        trimTail(prevCopy, bevPrevSafe, seg.tangentEnd);
-        prevCopy.push(bevPrevSafe);
+        trimTail(prevCopy, bevPrev, seg.tangentEnd);
+        prevCopy.push(bevPrev);
         nextCopy.shift();
-        trimHead(nextCopy, bevNextSafe, next.tangentStart);
-        nextCopy.unshift(bevNextSafe);
+        trimHead(nextCopy, bevNext, next.tangentStart);
+        nextCopy.unshift(bevNext);
         return { trimmedPrev: prevCopy, trimmedNext: nextCopy };
       };
 
@@ -563,6 +516,65 @@ export function outlineStrokeParts(
 }
 
 /**
+ * Soften "spike" vertices on a closed polygon: any vertex that sticks out of
+ * the chord between its two neighbors by more than `maxRatio × chord` is
+ * replaced by the chord midpoint. Iterates a few times so cascaded spikes
+ * also collapse.
+ *
+ * `bevelAmount` controls strictness:
+ *   - amount ≤ 0 → no smoothing (caller path is returned unchanged).
+ *   - amount = 1 → very lax (only egregious self-intersecting spikes go).
+ *   - amount → 20 → strict (almost any backwards-bending tip is collapsed).
+ *
+ * The detector is geometric (perpendicular-outshoot vs neighbor-chord
+ * length), so it only triggers on out-and-back spikes — round / tapered /
+ * flat caps and natural sharp glyph corners are left intact.
+ */
+function softenSpikes(poly: Vec2[], bevelAmount: number): Vec2[] {
+  if (bevelAmount <= 0 || poly.length < 4) return poly;
+  // Strictness grows with bevelAmount: f ∈ [0,1].
+  const f = Math.min(1, bevelAmount / 20);
+  // Outshoot ratio threshold: lax (5) → strict (0.5).
+  const maxRatio = 5 - 4.5 * f;
+  let cur = poly;
+  for (let iter = 0; iter < 6; iter++) {
+    const n = cur.length;
+    if (n < 4) break;
+    const next: Vec2[] = new Array(n);
+    let changed = false;
+    for (let i = 0; i < n; i++) {
+      const p = cur[i]!;
+      const a = cur[(i - 1 + n) % n]!;
+      const b = cur[(i + 1) % n]!;
+      const cx = b.x - a.x;
+      const cy = b.y - a.y;
+      const chord = Math.hypot(cx, cy);
+      if (chord < 1e-9) {
+        // Neighbors coincide: collapse onto them.
+        next[i] = { x: a.x, y: a.y };
+        changed = true;
+        continue;
+      }
+      const tx = cx / chord;
+      const ty = cy / chord;
+      const px = p.x - a.x;
+      const py = p.y - a.y;
+      // Perpendicular outshoot from the line through (a, b).
+      const perp = Math.abs(px * -ty + py * tx);
+      if (perp > maxRatio * chord) {
+        next[i] = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        changed = true;
+      } else {
+        next[i] = p;
+      }
+    }
+    if (!changed) return cur;
+    cur = next;
+  }
+  return cur;
+}
+
+/**
  * Outline a single stroke into a closed polygon, given the active style.
  * Stroke-level overrides on `width`, `capStart`, `capEnd` win over the style.
  */
@@ -590,5 +602,5 @@ export function outlineStroke(
   polygon.push(...endCap);
   for (let i = rights.length - 1; i >= 0; i--) polygon.push(rights[i]!);
   polygon.push(...startCap);
-  return polygon;
+  return softenSpikes(polygon, style.bevelAmount ?? 1);
 }
