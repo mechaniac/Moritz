@@ -20,6 +20,7 @@ export type GlyphViewOptions = {
   ribbonSamples: number; // samples per Bezier segment when triMode='ribbon-fixed'
   ribbonSpacing: number; // target arc-length spacing in glyph units when triMode='ribbon-density'
   ribbonSpread: number; // 0..1: blend interior sample placement from parameter-uniform (0) to arc-length-uniform (1)
+  ribbonAnchorPull: number; // 0..1: bias arc-length targets via smoothstep so samples cluster near anchors (mimics zero-tangent anchor distribution on a tangent curve)
 };
 
 type AppState = {
@@ -59,6 +60,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     ribbonSamples: 6,
     ribbonSpacing: 4,
     ribbonSpread: 1,
+    ribbonAnchorPull: 0,
   },
   setStyle: (patch) =>
     set((s) => ({

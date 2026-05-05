@@ -33,8 +33,8 @@ import type { Stroke, StyleSettings, Vec2 } from './types.js';
 import type { Triangle } from './triangulate.js';
 
 export type RibbonOptions =
-  | { kind: 'fixed'; samplesPerSegment: number; spread?: number }
-  | { kind: 'density'; spacing: number; spread?: number };
+  | { kind: 'fixed'; samplesPerSegment: number; spread?: number; anchorPull?: number }
+  | { kind: 'density'; spacing: number; spread?: number; anchorPull?: number };
 
 export type RibbonResult = {
   readonly polygon: Vec2[];
@@ -168,21 +168,44 @@ function tForArcFraction(lut: readonly number[], f: number): number {
 
 /**
  * Pick the parameter `t` for the i-th interior sample of a segment with
- * `interior` total interior samples. `spread` blends between
- *   - 0 (parameter-uniform: clusters near anchors on curved segments)
- *   - 1 (arc-length-uniform: even spacing along the actual curve length).
+ * `interior` total interior samples.
+ *
+ * Two orthogonal knobs:
+ *   - `spread`     in [0,1]: blend between parameter-uniform sampling (0;
+ *                  clusters near anchors when the cubic has nonzero
+ *                  endpoint speed) and arc-length-uniform sampling (1;
+ *                  even spacing along the actual curve length).
+ *   - `anchorPull` in [0,1]: bias the arc-length target through smoothstep
+ *                  s(u) = u²(3−2u). At 1 the targets cluster near both
+ *                  endpoints — mimicking the natural distribution of a
+ *                  zero-handle anchor (where the cubic has zero parameter
+ *                  speed at the endpoints, so uniform-`t` samples bunch up
+ *                  there). Useful for matching the look of a non-tangent
+ *                  anchor on a curve that DOES have tangents.
+ *
+ * `anchorPull` is applied in arc-length space, so it works regardless of
+ * the underlying cubic's parameter speed.
  */
 function sampleT(
   i: number,
   interior: number,
   spread: number,
+  anchorPull: number,
   arcLut: readonly number[],
 ): number {
-  const tParam = i / (interior + 1);
-  if (spread <= 0) return tParam;
-  const tArc = tForArcFraction(arcLut, tParam);
+  const u = i / (interior + 1);
+  // Cluster the *target arc fraction* via smoothstep when anchorPull > 0.
+  const cluster = u * u * (3 - 2 * u);
+  const targetArc = u + (cluster - u) * anchorPull;
+  if (spread <= 0 && anchorPull <= 0) return u;
+  // tArc = the parameter that lands at `targetArc` along the actual arc.
+  const tArc = arcLut.length > 1 ? tForArcFraction(arcLut, targetArc) : targetArc;
   if (spread >= 1) return tArc;
-  return tParam + (tArc - tParam) * spread;
+  // Blend with parameter-uniform `u`. Note: when anchorPull > 0 we want it
+  // to take effect even at spread = 0, so the floor of the blend is the
+  // anchorPull-warped arc-uniform target itself, not raw `u`.
+  const lo = anchorPull > 0 ? tArc : u;
+  return lo + (tArc - lo) * spread;
 }
 
 /**
@@ -260,13 +283,15 @@ export function triangulateStrokeRibbon(
   // Build the full sample list. Order:
   //   anchor0, [interior of seg0], anchor1, [interior of seg1], ..., anchorN
   const spread = Math.max(0, Math.min(1, opts.spread ?? 0));
+  const anchorPull = Math.max(0, Math.min(1, opts.anchorPull ?? 0));
+  const needsLut = spread > 0 || anchorPull > 0;
   const samples: SpineSample[] = [];
   samples.push(startAnchor());
   for (let s = 0; s < segments.length; s++) {
     const interior = interiorCount(lens[s]!, opts);
-    const arcLut = spread > 0 ? buildArcLut(segments[s]!) : [];
+    const arcLut = needsLut ? buildArcLut(segments[s]!) : [];
     for (let i = 1; i <= interior; i++) {
-      const tLocal = sampleT(i, interior, spread, arcLut);
+      const tLocal = sampleT(i, interior, spread, anchorPull, arcLut);
       samples.push(interiorSample(s, tLocal));
     }
     if (s < segments.length - 1) samples.push(interiorAnchor(s));

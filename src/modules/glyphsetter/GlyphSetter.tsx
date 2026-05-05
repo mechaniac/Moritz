@@ -427,6 +427,28 @@ function GlyphEditor(props: {
             </span>
           </label>
         )}
+        {(view.triMode === 'ribbon-fixed' || view.triMode === 'ribbon-density') && (
+          <label
+            style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+            title="Bias samples toward both endpoints of each segment, mimicking the natural distribution of a zero-tangent anchor on a curve that does have tangents."
+          >
+            anchor pull
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={view.ribbonAnchorPull}
+              onChange={(e) =>
+                setView({ ribbonAnchorPull: Math.max(0, Math.min(1, Number(e.target.value))) })
+              }
+              style={{ width: 80 }}
+            />
+            <span style={{ width: 24, textAlign: 'right' }}>
+              {view.ribbonAnchorPull.toFixed(2)}
+            </span>
+          </label>
+        )}
         {selection.kind === 'anchor' && (() => {
           const v = glyph.strokes[selection.strokeIdx]?.vertices[selection.vIdx];
           if (!v) return null;
@@ -774,6 +796,7 @@ function triangulateForView(
       kind: 'fixed',
       samplesPerSegment: view.ribbonSamples,
       spread: view.ribbonSpread,
+      anchorPull: view.ribbonAnchorPull,
     });
   }
   if (view.triMode === 'ribbon-density') {
@@ -781,6 +804,7 @@ function triangulateForView(
       kind: 'density',
       spacing: view.ribbonSpacing,
       spread: view.ribbonSpread,
+      anchorPull: view.ribbonAnchorPull,
     });
   }
   const poly = outlineStroke(stroke, style);
