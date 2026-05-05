@@ -125,6 +125,69 @@ describe('stroke', () => {
     expect(hasOuter2).toBe(true);
   });
 
+  it('outlineStroke: bevel anchor does NOT self-intersect on the inside', () => {
+    // Bevel must apply only on the OUTSIDE of the bend. The inside should
+    // still collapse to the single miter point (95, 5) — no perpendicular
+    // endpoints on the inside, which would overlap each other.
+    const flatStyle: StyleSettings = { ...style, capStart: 'flat', capEnd: 'flat' };
+    const s: Stroke = {
+      id: 'beveled',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO, corner: 'bevel' },
+        { p: v2(100, 100), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const poly = outlineStroke(s, flatStyle);
+    // Inside corner must contain (95, 5) once (the trimmed miter), and
+    // NEITHER of the perpendicular endpoints (100, 5) or (95, 0) — those
+    // would extend the inside polyline past the meeting point.
+    const hasMiter = poly.some(
+      (p) => Math.abs(p.x - 95) < 0.01 && Math.abs(p.y - 5) < 0.01,
+    );
+    const hasInner1 = poly.some(
+      (p) => Math.abs(p.x - 100) < 0.01 && Math.abs(p.y - 5) < 0.01,
+    );
+    const hasInner2 = poly.some(
+      (p) => Math.abs(p.x - 95) < 0.01 && Math.abs(p.y) < 0.01,
+    );
+    expect(hasMiter).toBe(true);
+    expect(hasInner1).toBe(false);
+    expect(hasInner2).toBe(false);
+  });
+
+  it('outlineStroke: bevelAmount=0 collapses bevel to a sharp miter', () => {
+    const flatStyle: StyleSettings = {
+      ...style,
+      capStart: 'flat',
+      capEnd: 'flat',
+      bevelAmount: 0,
+    };
+    const s: Stroke = {
+      id: 'b0',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO, corner: 'bevel' },
+        { p: v2(100, 100), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const poly = outlineStroke(s, flatStyle);
+    // Outside corner is a single sharp point at (105, -5); no perpendicular
+    // endpoints on the outside.
+    const sharp = poly.filter(
+      (p) => Math.abs(p.x - 105) < 0.01 && Math.abs(p.y + 5) < 0.01,
+    );
+    const perpA = poly.some(
+      (p) => Math.abs(p.x - 100) < 0.01 && Math.abs(p.y + 5) < 0.01,
+    );
+    const perpB = poly.some(
+      (p) => Math.abs(p.x - 105) < 0.01 && Math.abs(p.y) < 0.01,
+    );
+    expect(sharp).toHaveLength(1);
+    expect(perpA).toBe(false);
+    expect(perpB).toBe(false);
+  });
+
   it('outlineStroke: round cap bulges outward (forward) at the end', () => {
     // Horizontal stroke ending at (100, 0). Round cap should add samples
     // beyond x=100 (forward of the endpoint), NOT samples at x<100 (which

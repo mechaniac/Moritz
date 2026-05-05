@@ -35,6 +35,8 @@ const SAMPLES_PER_SEGMENT = 24;
 /** A miter is replaced with a bevel if its length exceeds this × halfWidth. */
 const MITER_LIMIT = 6;
 
+const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
+
 /** Linear interpolation of width(t) over a sorted-by-t WidthProfile. */
 export function widthAt(profile: WidthProfile, t: number): number {
   const s = profile.samples;
@@ -351,34 +353,68 @@ function buildSides(
       // Per-anchor join style. The corner anchor is `stroke.vertices[i+1]`.
       const anchor = stroke.vertices[i + 1]!;
       const cornerJoin = anchor.corner ?? 'miter';
+      const bevelAmount = clamp01(style.bevelAmount ?? 1);
 
       const tryStitch = (
         prevSide: Vec2[],
         nextSide: Vec2[],
         which: 'left' | 'right',
-      ): { trimmedPrev: Vec2[]; head: Vec2 | null; trimmedNext: Vec2[] } => {
-        // Replace the actual endpoints with miter (or bevel) and trim any
-        // overshoot. We work on local mutable copies and return them.
+      ): { trimmedPrev: Vec2[]; trimmedNext: Vec2[] } => {
         const prevCopy = [...prevSide];
         const nextCopy = [...nextSide];
-        if (cornerJoin === 'bevel') {
-          // Bevel: keep both endpoints of the offset polylines (no trimming),
-          // they're already at the perpendicular at the anchor.
-          return { trimmedPrev: prevCopy, head: null, trimmedNext: nextCopy };
-        }
+
         const mp = miterPoint(which, seg, next);
         if (!mp) {
-          // Parallel or beyond miter limit → bevel fallback.
-          return { trimmedPrev: prevCopy, head: null, trimmedNext: nextCopy };
+          // Parallel or beyond miter limit → keep both perpendicular endpoints
+          // (degenerate fallback, same as a full bevel).
+          return { trimmedPrev: prevCopy, trimmedNext: nextCopy };
         }
-        // Drop endpoints that extend beyond mp on either side (inside-corner
-        // overshoot), then insert mp as the single junction point.
-        prevCopy.pop(); // discard the original endpoint sample
-        trimTail(prevCopy, mp, seg.tangentEnd);
-        prevCopy.push(mp);
+
+        // Decide inside vs outside on THIS side: the perpendicular endpoint
+        // lies past mp along the segment tangent on the OUTSIDE of the bend
+        // (so a bevel chord cuts off a triangle), and lies before mp on the
+        // INSIDE (so the offset polylines actually overshoot mp). Inside is
+        // always trimmed to mp regardless of corner style — putting the
+        // perpendicular endpoints there would self-intersect.
+        const perpPrev = prevCopy[prevCopy.length - 1]!;
+        const perpNext = nextCopy[0]!;
+        const kPrev =
+          (mp.x - perpPrev.x) * seg.tangentEnd.x +
+          (mp.y - perpPrev.y) * seg.tangentEnd.y;
+        const kNext =
+          (perpNext.x - mp.x) * next.tangentStart.x +
+          (perpNext.y - mp.y) * next.tangentStart.y;
+        // Outside iff both are positive (mp lies past perp_prev along prev
+        // tangent AND perp_next lies past mp along next tangent). Otherwise
+        // it's the inside.
+        const isOutside = kPrev > 0 && kNext > 0;
+
+        if (!isOutside || cornerJoin === 'miter' || bevelAmount <= 0) {
+          // Sharp miter: replace both endpoint samples with the single mp.
+          prevCopy.pop();
+          trimTail(prevCopy, mp, seg.tangentEnd);
+          prevCopy.push(mp);
+          nextCopy.shift();
+          trimHead(nextCopy, mp, next.tangentStart);
+          return { trimmedPrev: prevCopy, trimmedNext: nextCopy };
+        }
+
+        // Outside bevel: the prev side ends at mp - amount*kPrev*tangentEnd
+        // and the next side starts at mp + amount*kNext*tangentStart. The
+        // implicit chord between them is the bevel face.
+        const bevPrev: Vec2 = {
+          x: mp.x - bevelAmount * kPrev * seg.tangentEnd.x,
+          y: mp.y - bevelAmount * kPrev * seg.tangentEnd.y,
+        };
+        const bevNext: Vec2 = {
+          x: mp.x + bevelAmount * kNext * next.tangentStart.x,
+          y: mp.y + bevelAmount * kNext * next.tangentStart.y,
+        };
+        prevCopy.pop();
+        prevCopy.push(bevPrev);
         nextCopy.shift();
-        trimHead(nextCopy, mp, next.tangentStart);
-        return { trimmedPrev: prevCopy, head: null, trimmedNext: nextCopy };
+        nextCopy.unshift(bevNext);
+        return { trimmedPrev: prevCopy, trimmedNext: nextCopy };
       };
 
       const L = tryStitch(curLefts, nextLefts, 'left');

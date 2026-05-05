@@ -494,6 +494,7 @@ export const defaultFont: Font = {
     worldAngle: 0,
     capStart: 'round',
     capEnd: 'round',
+    bevelAmount: 1,
   },
   glyphs: glyphsRecord,
 };

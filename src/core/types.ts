@@ -81,6 +81,18 @@ export type StyleSettings = {
   readonly worldAngle: number;
   readonly capStart: CapShape;
   readonly capEnd: CapShape;
+  /**
+   * How wide the corner bevel is when an anchor's `corner` is `'bevel'`
+   * (or when the miter exceeds MITER_LIMIT and falls back to a bevel).
+   *  - 0   → sharp miter (no bevel — outline meets at the miter point).
+   *  - 1   → full perpendicular bevel (chord between the two perpendicular
+   *          offset endpoints at the anchor).
+   *  - in between → linearly interpolate along each offset line.
+   * Only affects the OUTSIDE of the bend; the inside always uses the miter
+   * point so the fill stays self-intersection free.
+   * Defaults to 1 when undefined (back-compat).
+   */
+  readonly bevelAmount?: number;
 };
 
 export type Font = {
