@@ -266,18 +266,6 @@ function buildCap(
 
 export type OutlinePolygon = readonly Vec2[];
 
-/** Sub-polylines that make up a stroke outline. Useful for debug overlays. */
-export type OutlineParts = {
-  /** Left side polyline (in path direction). */
-  readonly left: readonly Vec2[];
-  /** Right side polyline (in path direction). */
-  readonly right: readonly Vec2[];
-  /** Cap polyline at the start of the stroke (right[0] → left[0]). */
-  readonly startCap: readonly Vec2[];
-  /** Cap polyline at the end of the stroke (left[last] → right[last]). */
-  readonly endCap: readonly Vec2[];
-};
-
 /**
  * Build the per-segment offset polylines, then stitch them at interior
  * junctions with miter joins so corners meet at one point on each side
@@ -490,32 +478,6 @@ function buildSides(
     pEnd: last.pEnd,
     tangentStart: first.tangentStart,
     tangentEnd: last.tangentEnd,
-  };
-}
-
-/**
- * Outline a stroke as four separate sub-polylines (left, right, start cap,
- * end cap). Same math as `outlineStroke`, but the parts are not concatenated.
- * Used by editors that want to colorize each border independently.
- */
-export function outlineStrokeParts(
-  stroke: Stroke,
-  style: StyleSettings,
-): OutlineParts {
-  const empty: OutlineParts = { left: [], right: [], startCap: [], endCap: [] };
-  const sides = buildSides(stroke, style);
-  if (!sides) return empty;
-
-  const { lefts, rights, pStart, pEnd, tangentStart, tangentEnd } = sides;
-  const capStart = stroke.capStart ?? style.capStart;
-  const capEnd = stroke.capEnd ?? style.capEnd;
-  const endCapPts = buildCap(capEnd, pEnd, lefts[lefts.length - 1]!, rights[rights.length - 1]!, tangentEnd);
-  const startCapPts = buildCap(capStart, pStart, rights[0]!, lefts[0]!, { x: -tangentStart.x, y: -tangentStart.y });
-  return {
-    left: lefts,
-    right: rights,
-    startCap: [rights[0]!, ...startCapPts, lefts[0]!],
-    endCap: [lefts[lefts.length - 1]!, ...endCapPts, rights[rights.length - 1]!],
   };
 }
 

@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { outlineStroke, outlineStrokeParts } from '../../core/stroke.js';
+import { outlineStroke } from '../../core/stroke.js';
 import { strokeToSegments } from '../../core/bezier.js';
 import {
   addStroke,
@@ -450,18 +450,18 @@ function GlyphEditor(props: {
             strokeLinecap="round"
           >
             {glyph.strokes.map((s, i) => {
-              const parts = outlineStrokeParts(s, font.style);
               const poly = outlineStroke(s, font.style);
               const sw = 1.4 / SCALE;
               const dotR = 2.6 / SCALE;
               const fontPx = 9 / SCALE;
+              // Single source of truth: the outline path drawn here is the
+              // EXACT same closed polygon `outlineStroke` returns to the
+              // renderer, so debug overlay and rendered shape can never
+              // disagree.
+              const closed = poly.length > 0 ? [...poly, poly[0]!] : [];
               return (
                 <g key={`b${i}`}>
-                  <path d={polylineD(parts.left)} stroke="#0a84ff" strokeWidth={sw} />
-                  <path d={polylineD(parts.right)} stroke="#ff3b30" strokeWidth={sw} />
-                  <path d={polylineD(parts.startCap)} stroke="#34c759" strokeWidth={sw} />
-                  <path d={polylineD(parts.endCap)} stroke="#ff9500" strokeWidth={sw} />
-                  {/* vertex dots + ids on the FINAL stitched polygon */}
+                  <path d={polylineD(closed)} stroke="#0a84ff" strokeWidth={sw} />
                   {poly.map((p, k) => (
                     <g key={`v${i}-${k}`}>
                       <circle
