@@ -506,67 +506,51 @@ function segIntersect(
 }
 
 /**
- * Resolve self-intersections in a closed polygon by snipping spike loops.
+ * Resolve self-intersections in an OPEN polyline by snipping spike loops
+ * and welding near-overlapping interior vertices. Strokes are never closed
+ * loops — they have a distinct start and end — so this routine treats the
+ * input as open: the first and last vertices are NEVER welded together,
+ * and snip is not allowed to bridge between the two endpoints.
  *
- * Algorithm (per pass):
- *   - For each edge `i → i+1`, look forward up to `window` edges. If edge
- *     `j → j+1` intersects edge `i`, the vertices in the open interval
- *     `(i+1 … j)` form a self-intersecting loop. Replace them with a single
- *     vertex at the intersection point, "snipping" the loop off.
- *   - Then weld any adjacent vertices that are within `weldEps` of each
- *     other; merged vertices effectively halt further bevel propagation.
- *
- * `bevelAmount` controls strictness:
- *   - amount ≤ 0 → return polygon unchanged.
- *   - amount → 20 → wider lookahead window and larger weld distance, so
- *     even mild near-overlaps and small loops are removed.
- *
- * The clipper only acts on TRUE geometric self-intersection, so legitimate
- * sharp glyph corners and round / tapered / flat caps (which never cross
- * themselves) are untouched.
+ * `bevelAmount` controls strictness identically to the closed-polygon
+ * version: ≤ 0 disables, → 20 widens the weld threshold relative to the
+ * polyline's average edge length.
  */
-function softenSpikes(poly: Vec2[], bevelAmount: number): Vec2[] {
+function softenSpikesOpen(poly: Vec2[], bevelAmount: number): Vec2[] {
   if (bevelAmount <= 0 || poly.length < 4) return poly;
-  // Weld threshold ramps from 0 (at amount ≤ 1) to 1.5 × avgEdge (at amount=20).
-  // At amount=1 (the default "perpendicular bevel") we MUST NOT weld real
-  // bevel chord points away.
   const f = Math.min(1, Math.max(0, (bevelAmount - 1) / 19));
   const weldFrac = 1.5 * f;
 
   const avgEdge = (pts: Vec2[]): number => {
     let total = 0;
-    const n = pts.length;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i]!;
-      const b = pts[(i + 1) % n]!;
+      const b = pts[i + 1]!;
       total += Math.hypot(b.x - a.x, b.y - a.y);
     }
-    return total / Math.max(1, n);
+    return total / Math.max(1, pts.length - 1);
   };
 
   const weldOnce = (pts: Vec2[], eps: number): { out: Vec2[]; changed: boolean } => {
-    const n = pts.length;
-    const out: Vec2[] = [];
+    // Always keep the first and last vertices (stroke endpoints). Only
+    // weld INTERIOR neighbors that have collapsed into each other.
+    if (pts.length <= 2) return { out: pts, changed: false };
+    const out: Vec2[] = [pts[0]!];
     let changed = false;
-    for (let i = 0; i < n; i++) {
+    for (let i = 1; i < pts.length - 1; i++) {
       const p = pts[i]!;
-      const q = out[out.length - 1] ?? null;
-      if (q && Math.hypot(p.x - q.x, p.y - q.y) <= eps) {
-        out[out.length - 1] = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+      const prev = out[out.length - 1]!;
+      // Don't weld an interior vertex into the protected first vertex.
+      const canMergeIntoTail = out.length > 1;
+      if (canMergeIntoTail && Math.hypot(p.x - prev.x, p.y - prev.y) <= eps) {
+        out[out.length - 1] = { x: (p.x + prev.x) / 2, y: (p.y + prev.y) / 2 };
         changed = true;
       } else {
         out.push(p);
       }
     }
-    if (out.length >= 2) {
-      const first = out[0]!;
-      const last = out[out.length - 1]!;
-      if (Math.hypot(first.x - last.x, first.y - last.y) <= eps) {
-        out[0] = { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 };
-        out.pop();
-        changed = true;
-      }
-    }
+    // Last vertex protected.
+    out.push(pts[pts.length - 1]!);
     return { out, changed };
   };
 
@@ -576,8 +560,6 @@ function softenSpikes(poly: Vec2[], bevelAmount: number): Vec2[] {
     if (n < 4) break;
     const eps = avgEdge(cur) * weldFrac;
 
-    // 1. Pre-weld: collapse already-overlapping neighbors so further bevel
-    //    propagation has fewer degrees of freedom in stressed regions.
     if (eps > 0) {
       const pre = weldOnce(cur, eps);
       if (pre.changed) {
@@ -586,32 +568,22 @@ function softenSpikes(poly: Vec2[], bevelAmount: number): Vec2[] {
       }
     }
 
-    // 2. Snip the FIRST true self-intersection (full O(n²) pair scan since
-    //    the polygons here are small — at most a few hundred points). Only
-    //    runs above bevelAmount=1, where bevels start extending past the
-    //    perpendicular and can genuinely cross themselves.
     if (f <= 0) return cur;
     let snipped = false;
-    outer: for (let i = 0; i < n; i++) {
+    // Snip: scan all non-adjacent edge pairs (open path, no wrap).
+    outer: for (let i = 0; i < n - 1; i++) {
       const a = cur[i]!;
-      const b = cur[(i + 1) % n]!;
-      for (let k = 2; k < n - 1; k++) {
-        const j = (i + k) % n;
-        const jNext = (j + 1) % n;
-        if (jNext === i) continue;
+      const b = cur[i + 1]!;
+      for (let j = i + 2; j < n - 1; j++) {
         const c = cur[j]!;
-        const d = cur[jNext]!;
+        const d = cur[j + 1]!;
         const hit = segIntersect(a, b, c, d);
         if (!hit) continue;
-        // Snip vertices (i+1 … j) inclusive, replace with hit.p.
+        // Replace vertices (i+1 … j) with hit.p.
         const next: Vec2[] = [];
-        next.push(a);
+        for (let k = 0; k <= i; k++) next.push(cur[k]!);
         next.push(hit.p);
-        let cursor = jNext;
-        while (cursor !== i) {
-          next.push(cur[cursor]!);
-          cursor = (cursor + 1) % n;
-        }
+        for (let k = j + 1; k < n; k++) next.push(cur[k]!);
         cur = next;
         snipped = true;
         break outer;
@@ -619,7 +591,6 @@ function softenSpikes(poly: Vec2[], bevelAmount: number): Vec2[] {
     }
     if (snipped) continue;
 
-    // 3. No more loops, no more welds — we're done.
     return cur;
   }
   return cur;
@@ -635,9 +606,15 @@ export function outlineStroke(
 ): OutlinePolygon {
   const sides = buildSides(stroke, style);
   if (!sides) return [];
-  const { lefts, rights, pStart, pEnd, tangentStart, tangentEnd } = sides;
+  const { lefts: leftsRaw, rights: rightsRaw, pStart, pEnd, tangentStart, tangentEnd } = sides;
   const capStart = stroke.capStart ?? style.capStart;
   const capEnd = stroke.capEnd ?? style.capEnd;
+  const amount = style.bevelAmount ?? 1;
+
+  // Soften each SIDE independently as an open polyline so weld/snip can
+  // never bridge across a cap and collapse the inner side of the stroke.
+  const lefts = softenSpikesOpen([...leftsRaw], amount);
+  const rights = softenSpikesOpen([...rightsRaw], amount);
 
   const endCap = buildCap(capEnd, pEnd, lefts[lefts.length - 1]!, rights[rights.length - 1]!, tangentEnd);
   const startCap = buildCap(
@@ -653,5 +630,5 @@ export function outlineStroke(
   polygon.push(...endCap);
   for (let i = rights.length - 1; i >= 0; i--) polygon.push(rights[i]!);
   polygon.push(...startCap);
-  return softenSpikes(polygon, style.bevelAmount ?? 1);
+  return polygon;
 }
