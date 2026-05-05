@@ -284,14 +284,25 @@ export function triangulateStrokeRibbon(
   //   anchor0, [interior of seg0], anchor1, [interior of seg1], ..., anchorN
   const spread = Math.max(0, Math.min(1, opts.spread ?? 0));
   const anchorPull = Math.max(0, Math.min(1, opts.anchorPull ?? 0));
-  const needsLut = spread > 0 || anchorPull > 0;
   const samples: SpineSample[] = [];
   samples.push(startAnchor());
   for (let s = 0; s < segments.length; s++) {
     const interior = interiorCount(lens[s]!, opts);
-    const arcLut = needsLut ? buildArcLut(segments[s]!) : [];
+    // anchorPull only applies on segments with at least one active tangent.
+    // A degenerate-straight cubic (both handles zero -> c1==p0 && c2==p1)
+    // already clusters samples at its endpoints under parameter-uniform
+    // sampling, so applying smoothstep on top would over-cluster.
+    const seg = segments[s]!;
+    const tangentActive =
+      seg.c1.x !== seg.p0.x ||
+      seg.c1.y !== seg.p0.y ||
+      seg.c2.x !== seg.p1.x ||
+      seg.c2.y !== seg.p1.y;
+    const segAnchorPull = tangentActive ? anchorPull : 0;
+    const needsLut = spread > 0 || segAnchorPull > 0;
+    const arcLut = needsLut ? buildArcLut(seg) : [];
     for (let i = 1; i <= interior; i++) {
-      const tLocal = sampleT(i, interior, spread, anchorPull, arcLut);
+      const tLocal = sampleT(i, interior, spread, segAnchorPull, arcLut);
       samples.push(interiorSample(s, tLocal));
     }
     if (s < segments.length - 1) samples.push(interiorAnchor(s));

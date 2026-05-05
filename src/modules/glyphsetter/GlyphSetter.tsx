@@ -430,7 +430,7 @@ function GlyphEditor(props: {
         {(view.triMode === 'ribbon-fixed' || view.triMode === 'ribbon-density') && (
           <label
             style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-            title="Bias samples toward both endpoints of each segment, mimicking the natural distribution of a zero-tangent anchor on a curve that does have tangents."
+            title="Bias samples toward both endpoints of each segment with active tangents, mimicking the natural distribution of a zero-tangent anchor. Has no effect on degenerate-straight segments (both handles zero) since they already cluster naturally."
           >
             anchor pull
             <input
