@@ -516,94 +516,132 @@ export function outlineStrokeParts(
 }
 
 /**
- * Relax "spike" vertices on a closed polygon by repeatedly:
- *   1. Finding stressed vertices (perpendicular outshoot from neighbor chord
- *      exceeds `maxRatio × chord`).
- *   2. Subdividing the two edges adjacent to each stressed vertex (insert a
- *      midpoint), giving the smoother more degrees of freedom in the spike
- *      region without collapsing the tip onto the neighbor chord.
- *   3. Running one Laplacian pass on the stressed vertices (replace each
- *      with the midpoint of its two — now closer — neighbors).
+ * Segment-segment intersection test (proper, parameterized). Returns the
+ * intersection point and parameters (s along AB, t along CD) only if both
+ * fall strictly inside (0, 1). Coincident / parallel segments return null.
+ */
+function segIntersect(
+  a: Vec2,
+  b: Vec2,
+  c: Vec2,
+  d: Vec2,
+): { p: Vec2; s: number; t: number } | null {
+  const r = { x: b.x - a.x, y: b.y - a.y };
+  const sV = { x: d.x - c.x, y: d.y - c.y };
+  const denom = r.x * sV.y - r.y * sV.x;
+  if (Math.abs(denom) < 1e-12) return null;
+  const qp = { x: c.x - a.x, y: c.y - a.y };
+  const s = (qp.x * sV.y - qp.y * sV.x) / denom;
+  const t = (qp.x * r.y - qp.y * r.x) / denom;
+  const eps = 1e-6;
+  if (s <= eps || s >= 1 - eps) return null;
+  if (t <= eps || t >= 1 - eps) return null;
+  return { p: { x: a.x + s * r.x, y: a.y + s * r.y }, s, t };
+}
+
+/**
+ * Resolve self-intersections in a closed polygon by snipping spike loops.
+ *
+ * Algorithm (per pass):
+ *   - For each edge `i → i+1`, look forward up to `window` edges. If edge
+ *     `j → j+1` intersects edge `i`, the vertices in the open interval
+ *     `(i+1 … j)` form a self-intersecting loop. Replace them with a single
+ *     vertex at the intersection point, "snipping" the loop off.
+ *   - Then weld any adjacent vertices that are within `weldEps` of each
+ *     other; merged vertices effectively halt further bevel propagation.
  *
  * `bevelAmount` controls strictness:
- *   - amount ≤ 0 → no relaxation, polygon returned unchanged.
- *   - amount = 1 → very lax (only egregious self-intersecting tips relax).
- *   - amount → 20 → strict (almost any backwards-bending tip relaxes).
+ *   - amount ≤ 0 → return polygon unchanged.
+ *   - amount → 20 → wider lookahead window and larger weld distance, so
+ *     even mild near-overlaps and small loops are removed.
  *
- * The detector is geometric (perp/chord ratio), so it ignores legitimate
- * sharp glyph corners and round/tapered/flat caps where the chord stays
- * roughly proportional to the outshoot.
+ * The clipper only acts on TRUE geometric self-intersection, so legitimate
+ * sharp glyph corners and round / tapered / flat caps (which never cross
+ * themselves) are untouched.
  */
 function softenSpikes(poly: Vec2[], bevelAmount: number): Vec2[] {
   if (bevelAmount <= 0 || poly.length < 4) return poly;
-  // Strictness grows with bevelAmount: f ∈ [0,1].
   const f = Math.min(1, bevelAmount / 20);
-  // Outshoot ratio threshold: lax (5) → strict (0.5).
-  const maxRatio = 5 - 4.5 * f;
-  // Maximum number of subdivide+relax passes.
-  const MAX_PASSES = 8;
-  // Cap on total polygon size to avoid runaway subdivision in pathological
-  // cases.
-  const MAX_POINTS = poly.length * 8;
+  // Lookahead window grows with strictness: 4 edges (lax) → 16 edges (strict).
+  const window = Math.max(4, Math.round(4 + 12 * f));
+  // Weld distance grows with strictness: 0.05 (lax) → 1.0 (strict) units.
+  const weldEps = 0.05 + 0.95 * f;
 
-  const isStressed = (a: Vec2, p: Vec2, b: Vec2): boolean => {
-    const cx = b.x - a.x;
-    const cy = b.y - a.y;
-    const chord = Math.hypot(cx, cy);
-    if (chord < 1e-9) return true; // collapsed neighbors → always relax
-    const tx = cx / chord;
-    const ty = cy / chord;
-    const px = p.x - a.x;
-    const py = p.y - a.y;
-    const perp = Math.abs(px * -ty + py * tx);
-    return perp > maxRatio * chord;
-  };
-
-  let cur = poly;
-  for (let pass = 0; pass < MAX_PASSES; pass++) {
+  let cur: Vec2[] = poly.slice();
+  for (let pass = 0; pass < 16; pass++) {
     const n = cur.length;
     if (n < 4) break;
 
-    // 1. Mark stressed vertices.
-    const stressed: boolean[] = new Array(n);
-    let anyStressed = false;
-    for (let i = 0; i < n; i++) {
-      const a = cur[(i - 1 + n) % n]!;
-      const p = cur[i]!;
+    // 1. Find the first self-intersection within the lookahead window and
+    //    snip the loop. Restart the scan from the snip point next pass.
+    let snipped = false;
+    outer: for (let i = 0; i < n; i++) {
+      const a = cur[i]!;
       const b = cur[(i + 1) % n]!;
-      if (isStressed(a, p, b)) {
-        stressed[i] = true;
-        anyStressed = true;
-      } else {
-        stressed[i] = false;
+      for (let k = 2; k <= window; k++) {
+        const j = (i + k) % n;
+        const jNext = (j + 1) % n;
+        // Skip if the forward edge wraps to touch i (adjacent edges).
+        if (jNext === i) continue;
+        const c = cur[j]!;
+        const d = cur[jNext]!;
+        const hit = segIntersect(a, b, c, d);
+        if (!hit) continue;
+        // Snip vertices (i+1 … j) inclusive, replace with hit.p.
+        const next: Vec2[] = [];
+        // Walk from (i+1)%n forward to j, those go away. Keep everything
+        // else; insert hit.p in their place.
+        let idx = (i + 1) % n;
+        // Add vertices BEFORE the snipped range, starting just after j.
+        let kept = jNext;
+        // We'll rebuild: start at i, push cur[i], push hit.p, then continue
+        // from jNext to (i in cyclic order back), avoiding the snipped span.
+        next.push(a);
+        next.push(hit.p);
+        let cursor = jNext;
+        // Walk until we loop back to i (exclusive).
+        while (cursor !== i) {
+          next.push(cur[cursor]!);
+          cursor = (cursor + 1) % n;
+        }
+        cur = next;
+        snipped = true;
+        // Avoid unused-var warnings from idx/kept (kept for readability).
+        void idx;
+        void kept;
+        break outer;
       }
     }
-    if (!anyStressed) return cur;
+    if (snipped) continue;
 
-    // 2. Subdivide edges adjacent to any stressed vertex, AND apply one
-    //    Laplacian smoothing pass to stressed vertices in the same rebuild.
-    const next: Vec2[] = [];
+    // 2. No more self-intersections — weld neighboring vertices that have
+    //    collapsed within weldEps. Welded pairs become one anchor and stop
+    //    the bevel chain at that point.
+    const welded: Vec2[] = [];
+    let weldedAny = false;
     for (let i = 0; i < n; i++) {
       const p = cur[i]!;
-      const a = cur[(i - 1 + n) % n]!;
-      const b = cur[(i + 1) % n]!;
-      // Stressed vertex → emit the average of its (current) neighbors;
-      // this is the Laplacian relaxation step.
-      if (stressed[i]) {
-        next.push({ x: (a.x + p.x + b.x) / 3, y: (a.y + p.y + b.y) / 3 });
+      const q = welded[welded.length - 1] ?? null;
+      if (q && Math.hypot(p.x - q.x, p.y - q.y) <= weldEps) {
+        // Merge into the existing tail at the midpoint.
+        welded[welded.length - 1] = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+        weldedAny = true;
       } else {
-        next.push(p);
+        welded.push(p);
       }
-      // Subdivide outgoing edge if either endpoint is stressed.
-      const j = (i + 1) % n;
-      if (stressed[i] || stressed[j]) {
-        const q = cur[j]!;
-        next.push({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
-      }
-      if (next.length > MAX_POINTS) break;
     }
-    if (next.length > MAX_POINTS) break;
-    cur = next;
+    // Wrap-around weld between last and first.
+    if (welded.length >= 2) {
+      const first = welded[0]!;
+      const last = welded[welded.length - 1]!;
+      if (Math.hypot(first.x - last.x, first.y - last.y) <= weldEps) {
+        welded[0] = { x: (first.x + last.x) / 2, y: (first.y + last.y) / 2 };
+        welded.pop();
+        weldedAny = true;
+      }
+    }
+    if (!weldedAny) return cur;
+    cur = welded;
   }
   return cur;
 }
