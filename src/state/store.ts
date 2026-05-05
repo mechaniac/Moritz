@@ -13,6 +13,7 @@ export type GlyphViewOptions = {
   showAnchors: boolean;
   showFillPreview: boolean;
   showBorders: boolean; // colorized debug overlay of left/right/caps
+  showTriangles: boolean; // ear-clip triangulation of the outline polygon
 };
 
 type AppState = {
@@ -43,7 +44,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   textScale: 1,
   module: 'glyphsetter',
   selectedGlyph: firstGlyph,
-  glyphView: { showAnchors: true, showFillPreview: true, showBorders: false },
+  glyphView: { showAnchors: true, showFillPreview: true, showBorders: false, showTriangles: false },
   setStyle: (patch) =>
     set((s) => ({
       font: { ...s.font, style: { ...s.font.style, ...patch } },

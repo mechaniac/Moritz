@@ -9,6 +9,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { outlineStroke } from '../../core/stroke.js';
 import { strokeToSegments } from '../../core/bezier.js';
+import { triangulatePolygon } from '../../core/triangulate.js';
 import {
   addStroke,
   deleteAnchor,
@@ -337,6 +338,14 @@ function GlyphEditor(props: {
           />
           Debug borders
         </label>
+        <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <input
+            type="checkbox"
+            checked={view.showTriangles}
+            onChange={(e) => setView({ showTriangles: e.target.checked })}
+          />
+          Triangles
+        </label>
         {selection.kind === 'anchor' && (() => {
           const v = glyph.strokes[selection.strokeIdx]?.vertices[selection.vIdx];
           if (!v) return null;
@@ -448,6 +457,41 @@ function GlyphEditor(props: {
                       </text>
                     </g>
                   ))}
+                </g>
+              );
+            })}
+          </g>
+        )}
+        {/* triangulation overlay */}
+        {view.showTriangles && (
+          <g
+            transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
+            fill="none"
+            pointerEvents="none"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          >
+            {glyph.strokes.map((s, i) => {
+              const poly = outlineStroke(s, font.style);
+              const tris = triangulatePolygon(poly);
+              const sw = 0.6 / SCALE;
+              return (
+                <g key={`t${i}`}>
+                  {tris.map((tri, k) => {
+                    const a = poly[tri[0]]!;
+                    const b = poly[tri[1]]!;
+                    const c = poly[tri[2]]!;
+                    const d = `M ${a.x} ${a.y} L ${b.x} ${b.y} L ${c.x} ${c.y} Z`;
+                    return (
+                      <path
+                        key={`t${i}-${k}`}
+                        d={d}
+                        stroke="#e0457b"
+                        strokeWidth={sw}
+                        fill="rgba(224, 69, 123, 0.06)"
+                      />
+                    );
+                  })}
                 </g>
               );
             })}
