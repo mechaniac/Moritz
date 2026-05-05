@@ -8,6 +8,17 @@
 export type Vec2 = { readonly x: number; readonly y: number };
 
 /**
+ * How a stroke's outline turns at this anchor when the in/out tangents are
+ * NOT collinear (i.e. a hard corner). Smooth (collinear) anchors ignore this.
+ *  - 'miter' (default): both offset polylines extend until they meet at one
+ *    sharp point on each side. Falls back to bevel automatically if the
+ *    miter would be excessively long (very acute angle).
+ *  - 'bevel': always cut the corner — the two offset polylines stop at the
+ *    anchor's perpendicular and connect with a straight chord.
+ */
+export type CornerJoin = 'miter' | 'bevel';
+
+/**
  * Illustrator-style anchor.
  *
  * `inHandle` and `outHandle` are stored RELATIVE to `p`. To get the absolute
@@ -17,6 +28,8 @@ export type Vertex = {
   readonly p: Vec2;
   readonly inHandle: Vec2;
   readonly outHandle: Vec2;
+  /** Corner join style at this anchor. Defaults to 'miter'. */
+  readonly corner?: CornerJoin;
 };
 
 /** Sample on the width(t) profile, t in [0,1] along stroke arc length. */

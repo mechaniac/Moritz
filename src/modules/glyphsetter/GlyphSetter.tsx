@@ -18,6 +18,7 @@ import {
   makeSmooth,
   moveAnchor,
   moveHandle,
+  setCorner,
 } from '../../core/glyphOps.js';
 import type { Font, Glyph, Stroke, Vec2 } from '../../core/types.js';
 import { useAppStore } from '../../state/store.js';
@@ -336,6 +337,31 @@ function GlyphEditor(props: {
           />
           Debug borders
         </label>
+        {selection.kind === 'anchor' && (() => {
+          const v = glyph.strokes[selection.strokeIdx]?.vertices[selection.vIdx];
+          if (!v) return null;
+          const isCorner =
+            v.inHandle.x === 0 && v.inHandle.y === 0 &&
+            v.outHandle.x === 0 && v.outHandle.y === 0;
+          if (!isCorner) return null;
+          const current = v.corner ?? 'miter';
+          return (
+            <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ color: '#666' }}>Corner</span>
+              <select
+                value={current}
+                onChange={(e) => {
+                  const next = e.target.value as 'miter' | 'bevel';
+                  onChange((g) => setCorner(g, selection.strokeIdx, selection.vIdx, next));
+                }}
+                style={{ padding: 2 }}
+              >
+                <option value="miter">miter</option>
+                <option value="bevel">bevel</option>
+              </select>
+            </label>
+          );
+        })()}
         <span style={{ color: '#666', fontSize: 12, marginLeft: 'auto' }}>
           Drag anchors / handles. Alt-click stroke = insert anchor. Alt-click
           anchor = toggle corner/smooth.

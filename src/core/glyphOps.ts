@@ -185,3 +185,26 @@ export function makeSmooth(g: Glyph, strokeIdx: number, vIdx: number): Glyph {
 
 // Re-export helpers used by callers
 export { add as _add, sub as _sub, ZERO as _ZERO };
+
+/**
+ * Set the corner-join style at an anchor (only meaningful for hard-corner
+ * anchors with non-collinear in/out handles). Pass `undefined` to clear.
+ */
+export function setCorner(
+  g: Glyph,
+  strokeIdx: number,
+  vIdx: number,
+  corner: 'miter' | 'bevel' | undefined,
+): Glyph {
+  const s = g.strokes[strokeIdx];
+  if (!s) return g;
+  const v = s.vertices[vIdx];
+  if (!v) return g;
+  const next = corner === undefined
+    ? (() => {
+        const { corner: _drop, ...rest } = v;
+        return rest;
+      })()
+    : { ...v, corner };
+  return replaceStroke(g, strokeIdx, replaceVertex(s, vIdx, next));
+}

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { layout } from '../../core/layout.js';
 import { renderLayoutToSvg } from '../../core/export/svg.js';
 import { useAppStore } from '../../state/store.js';
+import type { CapShape } from '../../core/types.js';
 
 /**
  * StyleSetter — sliders bound to StyleSettings, with live SVG preview of the
@@ -114,6 +115,17 @@ export function StyleSetter(): JSX.Element {
             onChange={(v) => setStyle({ worldAngle: v })}
           />
         )}
+
+        <CapPicker
+          label="Start cap"
+          value={normalizeCap(font.style.capStart)}
+          onChange={(v) => setStyle({ capStart: v })}
+        />
+        <CapPicker
+          label="End cap"
+          value={normalizeCap(font.style.capEnd)}
+          onChange={(v) => setStyle({ capEnd: v })}
+        />
       </div>
 
       <div
@@ -155,6 +167,33 @@ function Slider(props: {
         value={props.value}
         onChange={(e) => props.onChange(parseFloat(e.target.value))}
       />
+    </label>
+  );
+}
+
+type SimpleCap = 'round' | 'flat' | 'tapered';
+
+function normalizeCap(c: CapShape): SimpleCap {
+  return c === 'round' || c === 'flat' || c === 'tapered' ? c : 'round';
+}
+
+function CapPicker(props: {
+  label: string;
+  value: SimpleCap;
+  onChange: (v: SimpleCap) => void;
+}): JSX.Element {
+  return (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <span>{props.label}</span>
+      <select
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value as SimpleCap)}
+        style={{ padding: 4 }}
+      >
+        <option value="round">round</option>
+        <option value="flat">flat</option>
+        <option value="tapered">tapered</option>
+      </select>
     </label>
   );
 }

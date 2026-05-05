@@ -163,10 +163,44 @@ function miterPoint(
   return hit;
 }
 
+/** Drop trailing samples of a one-sided polyline that lie past `mp` along `tangent`. */
+function trimTail(
+  side: Vec2[],
+  mp: Vec2,
+  tangent: Vec2,
+): void {
+  // A sample s is "past" mp (further along the tangent) when (s - mp)·tangent > eps.
+  // Walk back from the end and pop while that's true; this clips inside-corner
+  // overshoot so the polyline ends at the miter point cleanly.
+  while (side.length > 1) {
+    const s = side[side.length - 1]!;
+    const dot = (s.x - mp.x) * tangent.x + (s.y - mp.y) * tangent.y;
+    if (dot <= 1e-6) break;
+    side.pop();
+  }
+}
+
+/** Drop leading samples of a one-sided polyline that lie before `mp` along `tangent`. */
+function trimHead(
+  side: Vec2[],
+  mp: Vec2,
+  tangent: Vec2,
+): void {
+  // A sample s at the start is "before" mp when (s - mp)·tangent < -eps.
+  while (side.length > 1) {
+    const s = side[0]!;
+    const dot = (s.x - mp.x) * tangent.x + (s.y - mp.y) * tangent.y;
+    if (dot >= -1e-6) break;
+    side.shift();
+  }
+}
+
 /**
  * Build a circular cap as a fan of `steps` points between two endpoints,
- * centered at `center`. `from` is on the left side, `to` on the right.
- * Sweeps through the side opposite the path direction `dir`.
+ * centered at `center`. Sweeps through the half-plane that the cap should
+ * bulge into — defined by `dir` pointing OUTWARD from the stroke (i.e. for
+ * an end cap pass the forward tangent; for a start cap pass the reverse of
+ * the start tangent). The arc midpoint always lies on the +dir side.
  */
 function roundCap(
   center: Vec2,
@@ -175,21 +209,22 @@ function roundCap(
   dir: Vec2,
   steps: number,
 ): Vec2[] {
-  // We sweep from `from` to `to` through the arc that points opposite to `dir`.
   const a0 = Math.atan2(from.y - center.y, from.x - center.x);
   const a1 = Math.atan2(to.y - center.y, to.x - center.x);
-  // Decide sweep direction such that the midpoint is opposite `dir`.
-  let delta = a1 - a0;
-  // Normalize to (-PI, PI]
-  while (delta > Math.PI) delta -= 2 * Math.PI;
-  while (delta <= -Math.PI) delta += 2 * Math.PI;
-  // Pick the long way if midpoint of the short way is on the `dir` side.
-  const midShort = a0 + delta / 2;
-  const mxShort = Math.cos(midShort);
-  const myShort = Math.sin(midShort);
-  if (mxShort * dir.x + myShort * dir.y > 0) {
-    delta = delta > 0 ? delta - 2 * Math.PI : delta + 2 * Math.PI;
-  }
+  // Two candidate sweeps reach a1 from a0: clockwise (delta < 0) and
+  // counter-clockwise (delta > 0). Their endpoints are the same; their
+  // midpoints lie on opposite sides of the chord. Pick the one whose
+  // midpoint is on the +dir side (so the arc bulges OUT past the endpoint).
+  let dRaw = a1 - a0;
+  while (dRaw > Math.PI) dRaw -= 2 * Math.PI;
+  while (dRaw < -Math.PI) dRaw += 2 * Math.PI;
+  // Now dRaw is in (-π, π]. The other sweep is dRaw ± 2π (opposite sign).
+  const dOther = dRaw > 0 ? dRaw - 2 * Math.PI : dRaw + 2 * Math.PI;
+  const midDot = (d: number): number => {
+    const a = a0 + d / 2;
+    return Math.cos(a) * dir.x + Math.sin(a) * dir.y;
+  };
+  const delta = midDot(dRaw) >= midDot(dOther) ? dRaw : dOther;
   const r = Math.hypot(from.x - center.x, from.y - center.y);
   const out: Vec2[] = [];
   for (let i = 1; i < steps; i++) {
@@ -287,52 +322,82 @@ function buildSides(
     acc += lens[i]!;
   }
 
-  // Stitch lefts: for each interior junction, replace the two adjacent
-  // offset points with a single miter point (or fall back to bevel = keep
-  // both points). World-orientation has a fixed normal so corners are pure
+  // Stitch lefts/rights with miter joins, trimming any samples that overshoot
+  // the miter intersection (this is what removes the inside-corner artifact
+  // where the inner offset polyline previously extended past the meeting
+  // point). World-orientation has a fixed normal so corners are pure
   // translations of the path → no mitering needed there.
   const lefts: Vec2[] = [];
   const rights: Vec2[] = [];
+  // Each entry holds the current segment's left & right polylines being
+  // accumulated; we may pop trailing samples from it during stitching.
+  let curLefts: Vec2[] = [...offsets[0]!.lefts];
+  let curRights: Vec2[] = [...offsets[0]!.rights];
 
-  for (let i = 0; i < offsets.length; i++) {
+  for (let i = 0; i < offsets.length - 1; i++) {
     const seg = offsets[i]!;
-    if (i === 0) {
-      lefts.push(seg.lefts[0]!);
-      rights.push(seg.rights[0]!);
-    }
-    // Push interior points (skip first to avoid duplicating last of previous).
-    for (let j = 1; j < seg.lefts.length - 1; j++) {
-      lefts.push(seg.lefts[j]!);
-      rights.push(seg.rights[j]!);
+    const next = offsets[i + 1]!;
+    const nextLefts: Vec2[] = [...next.lefts];
+    const nextRights: Vec2[] = [...next.rights];
+
+    if (worldNormal) {
+      // Pure translation: both sides line up by construction. Just push.
+      lefts.push(...curLefts);
+      rights.push(...curRights);
+      // Drop the duplicate junction sample at the head of next.
+      nextLefts.shift();
+      nextRights.shift();
+    } else {
+      // Per-anchor join style. The corner anchor is `stroke.vertices[i+1]`.
+      const anchor = stroke.vertices[i + 1]!;
+      const cornerJoin = anchor.corner ?? 'miter';
+
+      const tryStitch = (
+        prevSide: Vec2[],
+        nextSide: Vec2[],
+        which: 'left' | 'right',
+      ): { trimmedPrev: Vec2[]; head: Vec2 | null; trimmedNext: Vec2[] } => {
+        // Replace the actual endpoints with miter (or bevel) and trim any
+        // overshoot. We work on local mutable copies and return them.
+        const prevCopy = [...prevSide];
+        const nextCopy = [...nextSide];
+        if (cornerJoin === 'bevel') {
+          // Bevel: keep both endpoints of the offset polylines (no trimming),
+          // they're already at the perpendicular at the anchor.
+          return { trimmedPrev: prevCopy, head: null, trimmedNext: nextCopy };
+        }
+        const mp = miterPoint(which, seg, next);
+        if (!mp) {
+          // Parallel or beyond miter limit → bevel fallback.
+          return { trimmedPrev: prevCopy, head: null, trimmedNext: nextCopy };
+        }
+        // Drop endpoints that extend beyond mp on either side (inside-corner
+        // overshoot), then insert mp as the single junction point.
+        prevCopy.pop(); // discard the original endpoint sample
+        trimTail(prevCopy, mp, seg.tangentEnd);
+        prevCopy.push(mp);
+        nextCopy.shift();
+        trimHead(nextCopy, mp, next.tangentStart);
+        return { trimmedPrev: prevCopy, head: null, trimmedNext: nextCopy };
+      };
+
+      const L = tryStitch(curLefts, nextLefts, 'left');
+      const R = tryStitch(curRights, nextRights, 'right');
+      lefts.push(...L.trimmedPrev);
+      rights.push(...R.trimmedPrev);
+      // Replace next's head with the trimmed version for the next iteration.
+      nextLefts.length = 0;
+      nextLefts.push(...L.trimmedNext);
+      nextRights.length = 0;
+      nextRights.push(...R.trimmedNext);
     }
 
-    if (i < offsets.length - 1) {
-      const next = offsets[i + 1]!;
-      if (worldNormal) {
-        // Pure translation: both sides line up by construction.
-        lefts.push(seg.lefts[seg.lefts.length - 1]!);
-        rights.push(seg.rights[seg.rights.length - 1]!);
-      } else {
-        const ml = miterPoint('left', seg, next);
-        const mr = miterPoint('right', seg, next);
-        if (ml) {
-          lefts.push(ml);
-        } else {
-          // Bevel: keep both endpoints.
-          lefts.push(seg.lefts[seg.lefts.length - 1]!, next.lefts[0]!);
-        }
-        if (mr) {
-          rights.push(mr);
-        } else {
-          rights.push(seg.rights[seg.rights.length - 1]!, next.rights[0]!);
-        }
-      }
-    } else {
-      // Last segment: push its endpoint.
-      lefts.push(seg.lefts[seg.lefts.length - 1]!);
-      rights.push(seg.rights[seg.rights.length - 1]!);
-    }
+    curLefts = nextLefts;
+    curRights = nextRights;
   }
+  // Push the last segment's remaining samples.
+  lefts.push(...curLefts);
+  rights.push(...curRights);
 
   const first = offsets[0]!;
   const last = offsets[offsets.length - 1]!;

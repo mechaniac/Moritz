@@ -72,4 +72,112 @@ describe('stroke', () => {
     );
     expect(innerHits).toHaveLength(1);
   });
+
+  it('outlineStroke: no inside-corner overshoot past the miter point', () => {
+    // Same 90° corner; on the inside (right side, +y) NO sample should
+    // sit past the miter intersection (which is at x=95, y=5). "Past" here
+    // means x > 95 along the prev tangent (and y > 5 along the next tangent).
+    const flatStyle: StyleSettings = { ...style, capStart: 'flat', capEnd: 'flat' };
+    const s: Stroke = {
+      id: 'corner',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 100), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const poly = outlineStroke(s, flatStyle);
+    // No inside-corner overshoot: the inside-corner pocket is the open box
+    // (95, 100] × (0, 5]. Any polyline sample in there means an offset
+    // polyline extended past its miter intersection at (95, 5).
+    for (const p of poly) {
+      if (p.x > 95.01 && p.x <= 100 && p.y > 0.01 && p.y <= 5) {
+        throw new Error(`overshoot: (${p.x}, ${p.y})`);
+      }
+    }
+  });
+
+  it('outlineStroke: bevel corner is honored when anchor.corner=bevel', () => {
+    // Same 90° corner but anchor marked as bevel: instead of the single
+    // miter point at (105, -5) on the outside, we expect the two original
+    // offset endpoints (100, -5) and (105, 0) joined by a chord.
+    const flatStyle: StyleSettings = { ...style, capStart: 'flat', capEnd: 'flat' };
+    const s: Stroke = {
+      id: 'beveled',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO, corner: 'bevel' },
+        { p: v2(100, 100), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const poly = outlineStroke(s, flatStyle);
+    const hasOuterMiter = poly.some(
+      (p) => Math.abs(p.x - 105) < 0.01 && Math.abs(p.y + 5) < 0.01,
+    );
+    const hasOuter1 = poly.some(
+      (p) => Math.abs(p.x - 100) < 0.01 && Math.abs(p.y + 5) < 0.01,
+    );
+    const hasOuter2 = poly.some(
+      (p) => Math.abs(p.x - 105) < 0.01 && Math.abs(p.y) < 0.01,
+    );
+    expect(hasOuterMiter).toBe(false);
+    expect(hasOuter1).toBe(true);
+    expect(hasOuter2).toBe(true);
+  });
+
+  it('outlineStroke: round cap bulges outward (forward) at the end', () => {
+    // Horizontal stroke ending at (100, 0). Round cap should add samples
+    // beyond x=100 (forward of the endpoint), NOT samples at x<100 (which
+    // would be the cap curling backward into the stroke body).
+    const s: Stroke = {
+      id: 'rc',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const poly = outlineStroke(s, style);
+    const maxX = poly.reduce((m, p) => Math.max(m, p.x), 0);
+    expect(maxX).toBeGreaterThan(104); // arc reaches ~halfWidth past the end
+    expect(maxX).toBeLessThan(106);
+  });
+
+  it('outlineStroke: tapered cap projects a single point past the end', () => {
+    const taperStyle: StyleSettings = { ...style, capStart: 'tapered', capEnd: 'tapered' };
+    const s: Stroke = {
+      id: 'tc',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const poly = outlineStroke(s, taperStyle);
+    // Exactly one point at the forward tip (~ x=105, y=0).
+    const tipHits = poly.filter(
+      (p) => Math.abs(p.x - 105) < 0.01 && Math.abs(p.y) < 0.01,
+    );
+    expect(tipHits).toHaveLength(1);
+    // And one at the backward tip (x=-5, y=0) for the start cap.
+    const startHits = poly.filter(
+      (p) => Math.abs(p.x + 5) < 0.01 && Math.abs(p.y) < 0.01,
+    );
+    expect(startHits).toHaveLength(1);
+  });
+
+  it('outlineStroke: flat cap adds no extra points past the endpoint', () => {
+    const flatStyle: StyleSettings = { ...style, capStart: 'flat', capEnd: 'flat' };
+    const s: Stroke = {
+      id: 'fc',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const poly = outlineStroke(s, flatStyle);
+    // No samples should sit beyond x=100 (forward) or x=0 (backward).
+    for (const p of poly) {
+      expect(p.x).toBeGreaterThanOrEqual(-0.01);
+      expect(p.x).toBeLessThanOrEqual(100.01);
+    }
+  });
 });
