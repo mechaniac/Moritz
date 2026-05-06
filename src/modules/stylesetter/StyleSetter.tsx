@@ -25,8 +25,8 @@ export function StyleSetter(): JSX.Element {
   const widthValue = font.style.defaultWidth.samples[0]?.width ?? 8;
 
   return (
-    <div style={{ display: 'flex', gap: 24, padding: 16, height: '100%' }}>
-      <div style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, overflowY: 'auto' }}>
+    <div className="mz-stylesetter" style={{ display: 'flex', gap: 24, padding: 16, height: '100%' }}>
+      <div className="mz-stylesetter__sidebar" style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, overflowY: 'auto' }}>
         <h2 style={{ margin: 0 }}>StyleSetter</h2>
         <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
           Font-wide style. All settings here also appear in the GlyphSetter
@@ -195,6 +195,7 @@ export function StyleSetter(): JSX.Element {
       </div>
 
       <div
+        className="mz-stylesetter__preview"
         style={{
           flex: 1,
           background: '#ffffff',

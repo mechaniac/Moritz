@@ -75,6 +75,7 @@ export function GlyphSetter(): JSX.Element {
 
   return (
     <div
+      className="mz-glyphsetter"
       style={{
         display: 'grid',
         gridTemplateColumns: `${GRID_W}px 1fr ${INSPECTOR_W}px`,
@@ -90,6 +91,7 @@ export function GlyphSetter(): JSX.Element {
         view={view}
       />
       <div
+        className="mz-glyphsetter__editor"
         style={{
           minWidth: 0,
           minHeight: 0,
@@ -146,6 +148,7 @@ function GlyphGrid(props: {
 
   return (
     <aside
+      className="mz-glyphsetter__grid"
       style={{
         width: GRID_W,
         borderRight: '1px solid #999',
@@ -155,13 +158,15 @@ function GlyphGrid(props: {
         flexShrink: 0,
       }}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }}>
+      <div className="mz-glyph-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }}>
         {props.chars.map((c) => {
           const g = props.font.glyphs[c]!;
           const active = c === props.selected;
           return (
             <button
               key={c}
+              className={`mz-glyph-thumb${active ? ' mz-glyph-thumb--active' : ''}`}
+              data-char={c}
               onClick={() => props.onSelect(c)}
               title={c}
               style={{
@@ -348,6 +353,7 @@ function GlyphEditor(props: {
       {/* Toolbar: glyph-editing actions only (anchors/strokes are the per-
           glyph data). Style/preview controls live in the Inspector panel. */}
       <div
+        className="mz-glyphsetter__toolbar"
         style={{
           height: 40,
           display: 'flex',
@@ -399,6 +405,7 @@ function GlyphEditor(props: {
       </div>
       {/* Canvas — fills remaining space */}
       <div
+        className="mz-glyphsetter__canvas"
         style={{
           flex: 1,
           minWidth: 0,
@@ -410,6 +417,7 @@ function GlyphEditor(props: {
       >
         <svg
           ref={svgRef}
+          className="mz-glyph-canvas"
           viewBox={`0 0 ${viewW} ${viewH}`}
           width={viewW}
           height={viewH}
@@ -626,6 +634,7 @@ function Inspector(props: {
   const { view, setView, style, setStyle } = props;
   return (
     <aside
+      className="mz-glyphsetter__inspector"
       style={{
         width: INSPECTOR_W,
         flexShrink: 0,
@@ -762,6 +771,7 @@ function Section(props: {
   const isStyle = props.tone === 'style';
   return (
     <section
+      className={`mz-inspector__section mz-inspector__section--${props.tone}`}
       style={{
         border: `1px solid ${isStyle ? '#c98a2c' : '#bbb'}`,
         borderRadius: 4,

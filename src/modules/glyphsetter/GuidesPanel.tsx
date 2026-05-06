@@ -49,7 +49,7 @@ const PRESETS: { label: string; make: () => GuideLayer }[] = [
 export function GuidesPanel(props: Props): JSX.Element {
   const { value, onChange } = props;
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div className="mz-guides" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
         <input
           type="checkbox"
@@ -112,6 +112,7 @@ function LayerRow(props: {
   const { layer, isFirst, isLast, onChange, onRemove, onMove } = props;
   return (
     <div
+      className={`mz-guides__layer mz-guides__layer--${layer.kind.kind}`}
       style={{
         border: '1px solid #ddd',
         borderRadius: 4,

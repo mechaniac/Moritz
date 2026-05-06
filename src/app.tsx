@@ -16,6 +16,7 @@ export function App(): JSX.Element {
 
   return (
     <div
+      className="mz-app"
       style={{
         height: '100vh',
         display: 'flex',
@@ -24,6 +25,7 @@ export function App(): JSX.Element {
       }}
     >
       <header
+        className="mz-header"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -33,11 +35,12 @@ export function App(): JSX.Element {
           background: '#fff',
         }}
       >
-        <strong style={{ fontSize: 18 }}>Moritz</strong>
-        <nav style={{ display: 'flex', gap: 4 }}>
+        <strong className="mz-app__title" style={{ fontSize: 18 }}>Moritz</strong>
+        <nav className="mz-tabs" style={{ display: 'flex', gap: 4 }}>
           {tabs.map((t) => (
             <button
               key={t.id}
+              className={`mz-tab mz-tab--${t.id}${module === t.id ? ' mz-tab--active' : ''}`}
               onClick={() => setModule(t.id)}
               style={{
                 padding: '6px 12px',
@@ -55,7 +58,10 @@ export function App(): JSX.Element {
         <div style={{ flex: 1 }} />
         <FontBar />
       </header>
-      <main style={{ flex: 1, overflow: 'auto', background: '#bdbdbd' }}>
+      <main
+        className={`mz-main mz-main--${module}`}
+        style={{ flex: 1, overflow: 'auto', background: '#bdbdbd' }}
+      >
         {module === 'glyphsetter' && <GlyphSetter />}
         {module === 'stylesetter' && <StyleSetter />}
         {module === 'typesetter' && <TypeSetter />}

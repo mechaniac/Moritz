@@ -67,10 +67,10 @@ export function TypeSetter(): JSX.Element {
   const selected = blocks.find((b) => b.id === selectedBlockId) ?? null;
 
   return (
-    <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
+    <div className="mz-typesetter" style={{ display: 'flex', height: '100%', minHeight: 0 }}>
       {/* Left: stage */}
-      <div style={{ flex: 1, overflow: 'auto', background: '#1a1a1a', padding: 16 }}>
-        <div style={{ marginBottom: 8, color: '#ddd', display: 'flex', gap: 8 }}>
+      <div className="mz-typesetter__stage" style={{ flex: 1, overflow: 'auto', background: '#1a1a1a', padding: 16 }}>
+        <div className="mz-typesetter__toolbar" style={{ marginBottom: 8, color: '#ddd', display: 'flex', gap: 8 }}>
           <label style={{ background: '#fff', color: '#222', padding: '4px 8px', borderRadius: 4, cursor: 'pointer' }}>
             Load page…
             <input
@@ -114,6 +114,7 @@ export function TypeSetter(): JSX.Element {
         {pageImage ? (
           <div
             ref={stageRef}
+            className="mz-typesetter__page"
             style={{
               position: 'relative',
               width: pageW * zoom,
@@ -146,6 +147,7 @@ export function TypeSetter(): JSX.Element {
 
       {/* Right: inspector */}
       <aside
+        className="mz-typesetter__inspector"
         style={{
           width: 280,
           background: '#fafafa',
@@ -212,6 +214,7 @@ function BlockOverlay(props: {
 
   return (
     <div
+      className={`mz-block${props.selected ? ' mz-block--selected' : ''}`}
       style={{
         position: 'absolute',
         left: (block.x + inner.offsetX) * zoom,

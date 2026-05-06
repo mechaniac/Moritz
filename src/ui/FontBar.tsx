@@ -50,8 +50,9 @@ export function FontBar(): JSX.Element {
   };
 
   return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+    <div className="mz-fontbar" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
       <select
+        className="mz-fontbar__builtin"
         value={builtInFonts.some((f) => f.id === font.id) ? font.id : ''}
         onChange={(e) => {
           const f = getBuiltInFont(e.target.value);
@@ -67,13 +68,15 @@ export function FontBar(): JSX.Element {
         ))}
       </select>
       <input
+        className="mz-fontbar__name"
         value={name}
         onChange={(e) => setName(e.target.value)}
         style={{ padding: '4px 6px', width: 140 }}
         placeholder="Font name"
       />
-      <button onClick={onSave}>Save</button>
+      <button className="mz-fontbar__save" onClick={onSave}>Save</button>
       <select
+        className="mz-fontbar__load"
         value=""
         onChange={(e) => {
           if (e.target.value) onLoad(e.target.value);
@@ -89,6 +92,7 @@ export function FontBar(): JSX.Element {
       </select>
       {savedIds.length > 0 && (
         <select
+          className="mz-fontbar__delete"
           value=""
           onChange={(e) => {
             if (e.target.value && confirm(`Delete ${e.target.value}?`)) {
@@ -105,8 +109,8 @@ export function FontBar(): JSX.Element {
           ))}
         </select>
       )}
-      <button onClick={onExport}>Export</button>
-      <button onClick={() => fileInput.current?.click()}>Import</button>
+      <button className="mz-fontbar__export" onClick={onExport}>Export</button>
+      <button className="mz-fontbar__import" onClick={() => fileInput.current?.click()}>Import</button>
       <input
         ref={fileInput}
         type="file"
