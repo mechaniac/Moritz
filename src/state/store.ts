@@ -38,6 +38,7 @@ type AppState = {
   selectGlyph: (char: string) => void;
   setGlyph: (char: string, glyph: Glyph) => void;
   updateSelectedGlyph: (fn: (g: Glyph) => Glyph) => void;
+  updateAllGlyphs: (fn: (g: Glyph, char: string) => Glyph) => void;
   setGlyphView: (patch: Partial<GlyphViewOptions>) => void;
   setKerning: (pairs: Record<string, number>) => void;
 };
@@ -83,6 +84,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({
       font: { ...font, glyphs: { ...font.glyphs, [selectedGlyph]: fn(g) } },
     });
+  },
+  updateAllGlyphs: (fn) => {
+    const { font } = get();
+    const next: Record<string, Glyph> = {};
+    for (const [c, g] of Object.entries(font.glyphs)) next[c] = fn(g, c);
+    set({ font: { ...font, glyphs: next } });
   },
   setGlyphView: (patch) =>
     set((s) => ({ glyphView: { ...s.glyphView, ...patch } })),

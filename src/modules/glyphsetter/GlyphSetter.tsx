@@ -61,6 +61,41 @@ const DEFAULT_BOX = 140;
 const GRID_W = 360;
 const INSPECTOR_W = 300;
 
+/**
+ * Apply reference-font metrics (advance + side bearings) to a glyph.
+ * Pure helper: vertical scale is `g.box.h / (ascent + descent)` so the
+ * imported width matches the rendered reference glyph in the editor.
+ * Existing strokes are shifted by half the box-width delta so artwork
+ * stays visually centred. Returns the glyph unchanged if no metrics are
+ * available (font not loaded, missing glyph, etc.).
+ */
+function importGlyphMetrics(g: Glyph, char: string, family: string): Glyph {
+  if (!family) return g;
+  const fm = measureFontMetrics(family);
+  const gm = measureGlyphMetrics(family, char);
+  if (!gm) return g;
+  const emToUnits = g.box.h / Math.max(1e-6, fm.ascent + fm.descent);
+  const newW = Math.max(1, Math.round(gm.advance * emToUnits));
+  const lsb = Math.round(gm.leftBearing * emToUnits);
+  const rsb = Math.round(gm.rightBearing * emToUnits);
+  const dx = (newW - g.box.w) / 2;
+  const strokes = dx === 0
+    ? g.strokes
+    : g.strokes.map((s) => ({
+        ...s,
+        vertices: s.vertices.map((vx) => ({
+          ...vx,
+          p: { x: vx.p.x + dx, y: vx.p.y },
+        })),
+      }));
+  return {
+    ...g,
+    box: { ...g.box, w: newW },
+    sidebearings: { left: lsb, right: rsb },
+    strokes,
+  };
+}
+
 type Selection =
   | { kind: 'none' }
   | { kind: 'stroke'; strokeIdx: number }
@@ -75,6 +110,7 @@ export function GlyphSetter(): JSX.Element {
   const selectedChar = useAppStore((s) => s.selectedGlyph);
   const selectGlyph = useAppStore((s) => s.selectGlyph);
   const updateSelectedGlyph = useAppStore((s) => s.updateSelectedGlyph);
+  const updateAllGlyphs = useAppStore((s) => s.updateAllGlyphs);
   const view = useAppStore((s) => s.glyphView);
   const setGlyphView = useAppStore((s) => s.setGlyphView);
   const setStyle = useAppStore((s) => s.setStyle);
@@ -171,6 +207,7 @@ export function GlyphSetter(): JSX.Element {
           setStyle={setStyle}
           glyph={glyph}
           updateGlyph={updateSelectedGlyph}
+          updateAllGlyphs={updateAllGlyphs}
         />
       </div>
     </div>
@@ -836,8 +873,9 @@ function Inspector(props: {
   setStyle: (patch: Partial<StyleSettings>) => void;
   glyph: Glyph | undefined;
   updateGlyph: (fn: (g: Glyph) => Glyph) => void;
+  updateAllGlyphs: (fn: (g: Glyph, char: string) => Glyph) => void;
 }): JSX.Element {
-  const { view, setView, style, setStyle, glyph, updateGlyph } = props;
+  const { view, setView, style, setStyle, glyph, updateGlyph, updateAllGlyphs } = props;
   return (
     <aside
       className="mz-glyphsetter__inspector"
@@ -903,48 +941,41 @@ function Inspector(props: {
       </Section>
       {glyph && (
         <Section title="Glyph" tone="local" subtitle="Per-glyph metrics">
-          <button
-            type="button"
-            disabled={!view.refFontFamily}
-            onClick={() => {
-              if (!view.refFontFamily) return;
-              const fm = measureFontMetrics(view.refFontFamily);
-              const gm = measureGlyphMetrics(view.refFontFamily, glyph.char);
-              if (!gm) return;
-              // Same vertical scale as 'Align to reference font':
-              // 1em maps to box.h / (ascent + descent) font units.
-              updateGlyph((g) => {
-                const emToUnits = g.box.h / Math.max(1e-6, fm.ascent + fm.descent);
-                const newW = Math.max(1, Math.round(gm.advance * emToUnits));
-                const lsb = Math.round(gm.leftBearing * emToUnits);
-                const rsb = Math.round(gm.rightBearing * emToUnits);
-                const dx = (newW - g.box.w) / 2;
-                const strokes = dx === 0
-                  ? g.strokes
-                  : g.strokes.map((s) => ({
-                      ...s,
-                      vertices: s.vertices.map((vx) => ({
-                        ...vx,
-                        p: { x: vx.p.x + dx, y: vx.p.y },
-                      })),
-                    }));
-                return {
-                  ...g,
-                  box: { ...g.box, w: newW },
-                  sidebearings: { left: lsb, right: rsb },
-                  strokes,
-                };
-              });
-            }}
-            title={
-              view.refFontFamily
-                ? "Set this glyph's box width and side bearings from the reference font's measured advance width and ink bounds. Vertical scale matches 'Align to reference font'."
-                : 'Pick a Reference font in the View section first.'
-            }
-            style={{ fontSize: 11, padding: '2px 6px', marginBottom: 4 }}
-          >
-            Import metrics from reference font
-          </button>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+            <button
+              type="button"
+              disabled={!view.refFontFamily}
+              onClick={() => {
+                if (!view.refFontFamily) return;
+                updateGlyph((g) => importGlyphMetrics(g, glyph.char, view.refFontFamily));
+              }}
+              title={
+                view.refFontFamily
+                  ? "Set this glyph's box width and side bearings from the reference font's measured advance width and ink bounds. Vertical scale matches 'Align to reference font'."
+                  : 'Pick a Reference font in the View section first.'
+              }
+              style={{ flex: 1, fontSize: 11, padding: '2px 6px' }}
+            >
+              Import (this glyph)
+            </button>
+            <button
+              type="button"
+              disabled={!view.refFontFamily}
+              onClick={() => {
+                if (!view.refFontFamily) return;
+                if (!confirm('Import box width and side bearings from the reference font for ALL glyphs? Existing strokes are kept and re-centred.')) return;
+                updateAllGlyphs((g, char) => importGlyphMetrics(g, char, view.refFontFamily));
+              }}
+              title={
+                view.refFontFamily
+                  ? 'Apply the same metrics import to every glyph in the typeface.'
+                  : 'Pick a Reference font in the View section first.'
+              }
+              style={{ flex: 1, fontSize: 11, padding: '2px 6px' }}
+            >
+              Import (all glyphs)
+            </button>
+          </div>
           <NumSlider
             label="Box width"
             min={20}
