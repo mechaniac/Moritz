@@ -145,11 +145,13 @@ function clampRange(v: number, r: { min: number; max: number }): number {
 
 /**
  * Compute calligraphy-guide parameters that line up with a real font's
- * own metrics. The font's em-square is mapped to the full glyph box, so
- * cap-height, x-height, ascender, descender become fractions of the box
- * height. `weight` is set so the formula in computeLayerGeometry yields
- * `baseline = ascent` exactly (i.e. the guide baseline coincides with
- * the font's drawn baseline).
+ * own metrics. The font is scaled uniformly so its full vertical extent
+ * (ascent + descent) fits inside the glyph box, which keeps descenders
+ * (Q, g, p, y, …) on screen. Cap-height, x-height, ascender (extra
+ * above cap) and descender become fractions of box H. `weight` is set
+ * so the formula in computeLayerGeometry yields `baseline = ascent`
+ * exactly (i.e. the guide baseline coincides with the font's drawn
+ * baseline).
  */
 export function calligraphyFromFontMetrics(m: {
   capHeight: number;   // em
@@ -163,12 +165,18 @@ export function calligraphyFromFontMetrics(m: {
   descender: number;
   weight: number;
 } {
-  const cap  = clampRange(m.capHeight, CALLIGRAPHY_RANGES.capHeight);
-  const desc = clampRange(m.descent, CALLIGRAPHY_RANGES.descender);
-  const ascExtra = Math.max(0, m.ascent - m.capHeight);
-  const asc  = clampRange(ascExtra, CALLIGRAPHY_RANGES.ascender);
-  const xr   = clampRange(m.xHeight / Math.max(1e-6, m.capHeight), CALLIGRAPHY_RANGES.xHeight);
-  // weight = (total - 1) / 2 makes natural baseline coincide with m.ascent.
+  // Scale the font so its full extent (ascent + descent) fills the box.
+  const totalEm = Math.max(1e-6, m.ascent + m.descent);
+  const s = 1 / totalEm;
+  const capRaw  = m.capHeight * s;
+  const descRaw = m.descent   * s;
+  const ascRaw  = Math.max(0, m.ascent - m.capHeight) * s;
+  const xRatioRaw = m.xHeight / Math.max(1e-6, m.capHeight);
+  const cap  = clampRange(capRaw,  CALLIGRAPHY_RANGES.capHeight);
+  const desc = clampRange(descRaw, CALLIGRAPHY_RANGES.descender);
+  const asc  = clampRange(ascRaw,  CALLIGRAPHY_RANGES.ascender);
+  const xr   = clampRange(xRatioRaw, CALLIGRAPHY_RANGES.xHeight);
+  // weight = (total - 1) / 2 makes natural baseline coincide with ascent.
   const total = asc + cap + desc;
   const w    = clampRange((total - 1) / 2, CALLIGRAPHY_RANGES.weight);
   return { capHeight: cap, xHeight: xr, ascender: asc, descender: desc, weight: w };

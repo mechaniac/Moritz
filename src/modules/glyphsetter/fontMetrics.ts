@@ -48,18 +48,19 @@ export function measureFontMetrics(family: string): FontMetricsEm {
   c.textBaseline = 'alphabetic';
   const cap = c.measureText('H');
   const xr  = c.measureText('x');
+  const desG = c.measureText('gjpqyQ');
+  const ascG = c.measureText('lhfbdkABCDEF');
   const cH = (cap.actualBoundingBoxAscent ?? 0) / SIZE;
   const xH = (xr.actualBoundingBoxAscent  ?? 0) / SIZE;
-  // Font-wide ascent/descent: prefer fontBoundingBox (font metrics, not
-  // glyph-specific). Fallback to actualBoundingBox of an ascender + descender.
-  let asc = (cap.fontBoundingBoxAscent ?? 0) / SIZE;
-  let desc = (cap.fontBoundingBoxDescent ?? 0) / SIZE;
-  if (asc <= 0 || desc <= 0) {
-    const tall = c.measureText('lh');
-    const low  = c.measureText('gpqy');
-    asc = (tall.actualBoundingBoxAscent ?? 0) / SIZE || FALLBACK.ascent;
-    desc = (low.actualBoundingBoxDescent ?? 0) / SIZE || FALLBACK.descent;
-  }
+  // Font-wide ascent/descent: take the max of fontBoundingBox (font metrics)
+  // and the actual ink extent of tall ascenders / deep descenders. This is
+  // what we need to keep glyphs like Q, g, y, j on screen.
+  const fAsc = (cap.fontBoundingBoxAscent ?? 0) / SIZE;
+  const fDesc = (cap.fontBoundingBoxDescent ?? 0) / SIZE;
+  const aAsc = (ascG.actualBoundingBoxAscent ?? 0) / SIZE;
+  const aDesc = (desG.actualBoundingBoxDescent ?? 0) / SIZE;
+  const asc = Math.max(fAsc, aAsc, FALLBACK.ascent);
+  const desc = Math.max(fDesc, aDesc, FALLBACK.descent);
   const m: FontMetricsEm = {
     capHeight: cH > 0 ? cH : FALLBACK.capHeight,
     xHeight:   xH > 0 ? xH : FALLBACK.xHeight,
