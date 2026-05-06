@@ -330,86 +330,150 @@ export function triangulateStrokeRibbon(
   for (const p of lefts) polygon.push(p);
   const leftIdx = lefts.map((_, i) => i);
 
-  // End cap fan: arc around pEnd, from leftLast → rightLast bowing out.
-  const endCenterIdx = polygon.length;
-  polygon.push(pEnd);
-  const endFan: number[] = [leftIdx[leftIdx.length - 1]!];
-  const endStartAngle = Math.atan2(
-    lefts[lefts.length - 1]!.y - pEnd.y,
-    lefts[lefts.length - 1]!.x - pEnd.x,
-  );
-  const endEndAngle = Math.atan2(
-    rights[rights.length - 1]!.y - pEnd.y,
-    rights[rights.length - 1]!.x - pEnd.x,
-  );
-  let dEnd = endEndAngle - endStartAngle;
-  while (dEnd <= -Math.PI) dEnd += Math.PI * 2;
-  while (dEnd > Math.PI) dEnd -= Math.PI * 2;
-  const eMid = endStartAngle + dEnd * 0.5;
-  if (Math.cos(eMid) * tEnd.x + Math.sin(eMid) * tEnd.y < 0) {
-    dEnd = dEnd > 0 ? dEnd - Math.PI * 2 : dEnd + Math.PI * 2;
-  }
-  const endRadius = Math.hypot(
-    lefts[lefts.length - 1]!.x - pEnd.x,
-    lefts[lefts.length - 1]!.y - pEnd.y,
-  );
-  for (let k = 1; k < CAP_FAN_STEPS; k++) {
-    const t = k / CAP_FAN_STEPS;
-    const ang = endStartAngle + dEnd * t;
-    polygon.push({
-      x: pEnd.x + Math.cos(ang) * endRadius,
-      y: pEnd.y + Math.sin(ang) * endRadius,
-    });
-    endFan.push(polygon.length - 1);
-  }
-  // Push rights (reversed) so they appear after the end fan.
-  const rightStartIdx = polygon.length;
-  for (let i = rights.length - 1; i >= 0; i--) polygon.push(rights[i]!);
-  const rightIdx = rights.map(
-    (_, i) => rightStartIdx + (rights.length - 1 - i),
-  );
-  endFan.push(rightIdx[rightIdx.length - 1]!);
-  for (let k = 0; k < endFan.length - 1; k++) {
-    triangles.push([endCenterIdx, endFan[k]!, endFan[k + 1]!]);
+  // Resolve cap kinds (stroke override > style). Same logic as outlineStroke.
+  const capStartShape = stroke.capStart ?? style.capStart;
+  const capEndShape = stroke.capEnd ?? style.capEnd;
+  const capKind = (c: typeof capStartShape): 'flat' | 'round' | 'tapered' => {
+    if (c === 'flat' || c === 'round' || c === 'tapered') return c;
+    return 'flat'; // 'custom' falls back to flat for now
+  };
+  const endCapKind = capKind(capEndShape);
+  const startCapKind = capKind(capStartShape);
+
+  // ----- End cap -----
+  // The end cap closes from leftLast → ... → rightLast around pEnd.
+  // Geometry varies by kind:
+  //   flat    → no center vertex, single triangle (left,right,pEnd-not-needed);
+  //              actually the left-last/right-last/quad-strip already meet at
+  //              pEnd indirectly — we just emit one triangle covering the
+  //              chord-to-spine area.
+  //   round   → fan of CAP_FAN_STEPS arc points centered on pEnd.
+  //   tapered → single tip vertex pushed by half-width along +tEnd.
+  const endLeftIdx = leftIdx[leftIdx.length - 1]!;
+  // rightIdx is filled inside one of the cap branches below — every branch
+  // pushes rights to the polygon and sets this mapping.
+  let rightIdx: number[] = [];
+  // Push rights (reversed) AFTER cap geometry. We need the rightIdx mapping
+  // ready, so compute it first by emitting cap fan vertices, then rights.
+  const endFan: number[] = [endLeftIdx];
+  if (endCapKind === 'round') {
+    const endCenterIdx = polygon.length;
+    polygon.push(pEnd);
+    const endStartAngle = Math.atan2(
+      lefts[lefts.length - 1]!.y - pEnd.y,
+      lefts[lefts.length - 1]!.x - pEnd.x,
+    );
+    const endEndAngle = Math.atan2(
+      rights[rights.length - 1]!.y - pEnd.y,
+      rights[rights.length - 1]!.x - pEnd.x,
+    );
+    let dEnd = endEndAngle - endStartAngle;
+    while (dEnd <= -Math.PI) dEnd += Math.PI * 2;
+    while (dEnd > Math.PI) dEnd -= Math.PI * 2;
+    const eMid = endStartAngle + dEnd * 0.5;
+    if (Math.cos(eMid) * tEnd.x + Math.sin(eMid) * tEnd.y < 0) {
+      dEnd = dEnd > 0 ? dEnd - Math.PI * 2 : dEnd + Math.PI * 2;
+    }
+    const endRadius = Math.hypot(
+      lefts[lefts.length - 1]!.x - pEnd.x,
+      lefts[lefts.length - 1]!.y - pEnd.y,
+    );
+    for (let k = 1; k < CAP_FAN_STEPS; k++) {
+      const t = k / CAP_FAN_STEPS;
+      const ang = endStartAngle + dEnd * t;
+      polygon.push({
+        x: pEnd.x + Math.cos(ang) * endRadius,
+        y: pEnd.y + Math.sin(ang) * endRadius,
+      });
+      endFan.push(polygon.length - 1);
+    }
+    // Now push rights and finish fan.
+    const rightStartIdxR = polygon.length;
+    for (let i = rights.length - 1; i >= 0; i--) polygon.push(rights[i]!);
+    rightIdx = rights.map(
+      (_, i) => rightStartIdxR + (rights.length - 1 - i),
+    );
+    endFan.push(rightIdx[rightIdx.length - 1]!);
+    for (let k = 0; k < endFan.length - 1; k++) {
+      triangles.push([endCenterIdx, endFan[k]!, endFan[k + 1]!]);
+    }
+  } else if (endCapKind === 'tapered') {
+    // Single tip vertex pushed by half-width along +tEnd.
+    const half = Math.hypot(
+      lefts[lefts.length - 1]!.x - pEnd.x,
+      lefts[lefts.length - 1]!.y - pEnd.y,
+    );
+    const tipIdx = polygon.length;
+    polygon.push({ x: pEnd.x + tEnd.x * half, y: pEnd.y + tEnd.y * half });
+    const rightStartIdxT = polygon.length;
+    for (let i = rights.length - 1; i >= 0; i--) polygon.push(rights[i]!);
+    rightIdx = rights.map(
+      (_, i) => rightStartIdxT + (rights.length - 1 - i),
+    );
+    triangles.push([endLeftIdx, tipIdx, rightIdx[rightIdx.length - 1]!]);
+  } else {
+    // flat: no extra vertices; the polygon edge from leftLast to rightLast
+    // closes the cap directly. The quad strip already meets the chord.
+    const rightStartIdxF = polygon.length;
+    for (let i = rights.length - 1; i >= 0; i--) polygon.push(rights[i]!);
+    rightIdx = rights.map(
+      (_, i) => rightStartIdxF + (rights.length - 1 - i),
+    );
   }
 
-  // Start cap fan: arc around pStart, from rightFirst → leftFirst, bowing
-  // out away from the spine (in −tStart direction).
-  const startCenterIdx = polygon.length;
-  polygon.push(pStart);
-  const startFan: number[] = [rightIdx[0]!];
-  const startStartAngle = Math.atan2(
-    rights[0]!.y - pStart.y,
-    rights[0]!.x - pStart.x,
-  );
-  const startEndAngle = Math.atan2(
-    lefts[0]!.y - pStart.y,
-    lefts[0]!.x - pStart.x,
-  );
-  let dStart = startEndAngle - startStartAngle;
-  while (dStart <= -Math.PI) dStart += Math.PI * 2;
-  while (dStart > Math.PI) dStart -= Math.PI * 2;
-  const sMid = startStartAngle + dStart * 0.5;
-  if (Math.cos(sMid) * -tStart.x + Math.sin(sMid) * -tStart.y < 0) {
-    dStart = dStart > 0 ? dStart - Math.PI * 2 : dStart + Math.PI * 2;
-  }
-  const startRadius = Math.hypot(
-    rights[0]!.x - pStart.x,
-    rights[0]!.y - pStart.y,
-  );
-  for (let k = 1; k < CAP_FAN_STEPS; k++) {
-    const t = k / CAP_FAN_STEPS;
-    const ang = startStartAngle + dStart * t;
+  // ----- Start cap -----
+  // Mirrors the end cap. Bows out in -tStart direction.
+  const startRightIdx = rightIdx[0]!;
+  const startLeftIdx = leftIdx[0]!;
+  if (startCapKind === 'round') {
+    const startCenterIdx = polygon.length;
+    polygon.push(pStart);
+    const startFan: number[] = [startRightIdx];
+    const startStartAngle = Math.atan2(
+      rights[0]!.y - pStart.y,
+      rights[0]!.x - pStart.x,
+    );
+    const startEndAngle = Math.atan2(
+      lefts[0]!.y - pStart.y,
+      lefts[0]!.x - pStart.x,
+    );
+    let dStart = startEndAngle - startStartAngle;
+    while (dStart <= -Math.PI) dStart += Math.PI * 2;
+    while (dStart > Math.PI) dStart -= Math.PI * 2;
+    const sMid = startStartAngle + dStart * 0.5;
+    if (Math.cos(sMid) * -tStart.x + Math.sin(sMid) * -tStart.y < 0) {
+      dStart = dStart > 0 ? dStart - Math.PI * 2 : dStart + Math.PI * 2;
+    }
+    const startRadius = Math.hypot(
+      rights[0]!.x - pStart.x,
+      rights[0]!.y - pStart.y,
+    );
+    for (let k = 1; k < CAP_FAN_STEPS; k++) {
+      const t = k / CAP_FAN_STEPS;
+      const ang = startStartAngle + dStart * t;
+      polygon.push({
+        x: pStart.x + Math.cos(ang) * startRadius,
+        y: pStart.y + Math.sin(ang) * startRadius,
+      });
+      startFan.push(polygon.length - 1);
+    }
+    startFan.push(startLeftIdx);
+    for (let k = 0; k < startFan.length - 1; k++) {
+      triangles.push([startCenterIdx, startFan[k]!, startFan[k + 1]!]);
+    }
+  } else if (startCapKind === 'tapered') {
+    const half = Math.hypot(
+      rights[0]!.x - pStart.x,
+      rights[0]!.y - pStart.y,
+    );
+    const tipIdx = polygon.length;
     polygon.push({
-      x: pStart.x + Math.cos(ang) * startRadius,
-      y: pStart.y + Math.sin(ang) * startRadius,
+      x: pStart.x - tStart.x * half,
+      y: pStart.y - tStart.y * half,
     });
-    startFan.push(polygon.length - 1);
+    triangles.push([startRightIdx, tipIdx, startLeftIdx]);
   }
-  startFan.push(leftIdx[0]!);
-  for (let k = 0; k < startFan.length - 1; k++) {
-    triangles.push([startCenterIdx, startFan[k]!, startFan[k + 1]!]);
-  }
+  // flat: nothing to emit.
 
   // Quad strip between consecutive samples (2 triangles per quad).
   for (let i = 0; i < lefts.length - 1; i++) {
