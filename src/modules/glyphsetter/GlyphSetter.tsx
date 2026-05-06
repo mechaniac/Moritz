@@ -57,7 +57,7 @@ const PADDING = 20;
 const DEFAULT_BOX = 140;
 
 // Fixed widths for the outer columns. Center canvas takes the rest.
-const GRID_W = 260;
+const GRID_W = 360;
 const INSPECTOR_W = 300;
 
 type Selection =
@@ -164,7 +164,7 @@ export function GlyphSetter(): JSX.Element {
 
 /** Pixels per font unit in the grid thumbnails. Fixed so all glyphs render at
  *  the same zoom level — the grid wraps and tiles take their natural size. */
-const GRID_PX_PER_UNIT = 0.6;
+const GRID_PX_PER_UNIT = 0.35;
 
 function GlyphGrid(props: {
   chars: string[];
@@ -181,7 +181,7 @@ function GlyphGrid(props: {
         height: '100%',
         padding: 8,
         overflowY: 'auto',
-        background: 'transparent',
+        background: '#2a2a2a',
         boxSizing: 'border-box',
       }}
     >
@@ -201,30 +201,49 @@ function GlyphGrid(props: {
           const w = g.box.w * GRID_PX_PER_UNIT;
           const h = g.box.h * GRID_PX_PER_UNIT;
           return (
-            <button
+            <div
               key={c}
-              className={`mz-glyph-thumb${active ? ' mz-glyph-thumb--active' : ''}`}
-              data-char={c}
-              onClick={() => props.onSelect(c)}
-              title={c}
+              className="mz-glyph-cell"
               style={{
-                width: w + 4,
-                background: active ? '#222' : '#fff',
-                color: active ? '#fff' : '#222',
-                border: '1px solid #ccc',
-                borderRadius: 4,
-                cursor: 'pointer',
-                padding: 2,
                 display: 'flex',
                 flexDirection: 'column',
+                alignItems: 'center',
+                gap: 2,
                 flex: '0 0 auto',
               }}
             >
-              <div style={{ width: w, height: h }}>
-                <ThumbSvg glyph={g} font={props.font} view={props.view} />
+              <button
+                className={`mz-glyph-thumb${active ? ' mz-glyph-thumb--active' : ''}`}
+                data-char={c}
+                onClick={() => props.onSelect(c)}
+                title={c}
+                style={{
+                  width: w + 4,
+                  background: active ? '#222' : '#fff',
+                  color: active ? '#fff' : '#222',
+                  border: '1px solid #ccc',
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  padding: 2,
+                  display: 'block',
+                }}
+              >
+                <div style={{ width: w, height: h }}>
+                  <ThumbSvg glyph={g} font={props.font} view={props.view} />
+                </div>
+              </button>
+              <div
+                className="mz-glyph-cell__label"
+                style={{
+                  fontSize: 9,
+                  lineHeight: 1,
+                  color: '#999',
+                  fontFamily: 'monospace',
+                }}
+              >
+                {c}
               </div>
-              <div style={{ fontSize: 10, marginTop: 2, lineHeight: 1 }}>{c}</div>
-            </button>
+            </div>
           );
         })}
       </div>
