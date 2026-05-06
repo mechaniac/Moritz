@@ -76,6 +76,17 @@ select {
   padding: 2px 4px;
 }
 
+/* Compact numeric inputs sitting next to range sliders. */
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 input:focus,
 select:focus,
 button:focus,

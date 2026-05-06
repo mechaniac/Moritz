@@ -307,16 +307,24 @@ function Slider(props: {
         onChange={(e) => props.onChange(parseFloat(e.target.value))}
         style={{ flex: 1, minWidth: 0 }}
       />
-      <span
+      <input
+        type="number"
+        min={props.min}
+        max={props.max}
+        step={props.step}
+        value={Number(props.value.toFixed(4))}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value);
+          if (Number.isFinite(v)) props.onChange(v);
+        }}
         style={{
-          width: 40,
+          width: 56,
           textAlign: 'right',
           fontVariantNumeric: 'tabular-nums',
           color: modified ? 'inherit' : 'var(--mz-text-mute)',
+          padding: '1px 4px',
         }}
-      >
-        {props.value.toFixed(2)}
-      </span>
+      />
     </label>
   );
 }

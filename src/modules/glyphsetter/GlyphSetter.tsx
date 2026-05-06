@@ -1652,9 +1652,24 @@ function NumSlider(props: {
         onChange={(e) => props.onChange(parseFloat(e.target.value))}
         style={{ flex: 1, minWidth: 0 }}
       />
-      <span style={{ width: 36, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
-        {fmt(props.value)}
-      </span>
+      <input
+        type="number"
+        min={props.min}
+        max={props.max}
+        step={props.step}
+        value={Number(props.value.toFixed(4))}
+        onChange={(e) => {
+          const v = parseFloat(e.target.value);
+          if (Number.isFinite(v)) props.onChange(v);
+        }}
+        style={{
+          width: 52,
+          textAlign: 'right',
+          fontVariantNumeric: 'tabular-nums',
+          padding: '1px 4px',
+        }}
+        title={fmt(props.value)}
+      />
     </div>
   );
 }

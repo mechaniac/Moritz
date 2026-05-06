@@ -520,7 +520,18 @@ function CalligraphySlider(props: {
         style={{ flex: 1 }}
         title={props.help}
       />
-      <span style={{ width: 36, textAlign: 'right' }}>{v.toFixed(2)}</span>
+      <input
+        type="number"
+        min={r.min}
+        max={r.max}
+        step={0.005}
+        value={Number(v.toFixed(4))}
+        onChange={(e) => {
+          const n = parseFloat(e.target.value);
+          if (Number.isFinite(n)) props.onChange({ ...props.kind, [props.field]: n });
+        }}
+        style={{ width: 52, textAlign: 'right', padding: '1px 4px' }}
+      />
     </Row>
   );
 }
