@@ -497,11 +497,9 @@ function GlyphEditor(props: {
 
   return (
     <>
-      {/* Canvas — fills remaining space. The editing toolbar lives inside
-          this column, sitting directly above the SVG so the action
-          buttons are right next to the artwork they affect. The bar
-          spans the full editor width and reserves slots for contextual
-          controls so it doesn't reflow as the selection changes. */}
+      {/* Canvas — fills remaining space. The editing toolbar is anchored
+          to (and exactly the width of) the .mz-glyph-canvas SVG so it
+          tracks the artwork rather than the column. */}
       <div
         className="mz-glyphsetter__canvas"
         style={{
@@ -513,7 +511,7 @@ function GlyphEditor(props: {
           padding: 12,
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'stretch',
+          alignItems: 'center',
           justifyContent: 'flex-start',
           gap: 8,
         }}
@@ -530,7 +528,7 @@ function GlyphEditor(props: {
             background: '#eaeaea',
             fontSize: 13,
             flexShrink: 0,
-            width: '100%',
+            width: viewW,
             boxSizing: 'border-box',
             minHeight: 32,
           }}
@@ -596,7 +594,7 @@ function GlyphEditor(props: {
           viewBox={`0 0 ${viewW} ${viewH}`}
           width={viewW}
           height={viewH}
-          style={{ display: 'block', touchAction: 'none', flexShrink: 0, alignSelf: 'center' }}
+          style={{ display: 'block', touchAction: 'none', flexShrink: 0 }}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerLeave={onPointerUp}
