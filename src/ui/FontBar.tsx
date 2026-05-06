@@ -5,7 +5,7 @@ import {
   exportFontJson,
   importFontJson,
   listFontIds,
-  loadFont,
+  loadFontEnvelope,
   saveFont,
 } from '../state/persistence.js';
 import { useAppStore } from '../state/store.js';
@@ -16,9 +16,11 @@ import {
   resetBuiltInFont,
 } from '../data/builtInFonts.js';
 
-/** Save / load / import / export the active font. */
+/** Save / load / import / export the active font (and the UI view
+ *  settings captured alongside it). */
 export function FontBar(): JSX.Element {
   const font = useAppStore((s) => s.font);
+  const view = useAppStore((s) => s.glyphView);
   const setFont = useAppStore.setState;
   const [savedIds, setSavedIds] = useState<string[]>(() => listFontIds());
   const [name, setName] = useState(font.name);
@@ -34,7 +36,7 @@ export function FontBar(): JSX.Element {
     // For user fonts, the id is derived from the typed name as before.
     const id = builtIn ? font.id : sanitizeId(name);
     const toSave = { ...font, id, name };
-    saveFont(toSave);
+    saveFont(toSave, view);
     setSavedIds(listFontIds());
     setFont({ font: toSave });
   };
@@ -46,21 +48,22 @@ export function FontBar(): JSX.Element {
     if (original) setFont({ font: original });
   };
   const onLoad = (id: string) => {
-    const f = loadFont(id);
-    if (f) setFont({ font: f });
+    const env = loadFontEnvelope(id);
+    if (!env) return;
+    setFont(env.view ? { font: env.font, glyphView: env.view } : { font: env.font });
   };
   const onDelete = (id: string) => {
     deleteFont(id);
     setSavedIds(listFontIds());
   };
   const onExport = () => {
-    downloadBlob(`${font.id}.moritz.json`, exportFontJson(font), 'application/json');
+    downloadBlob(`${font.id}.moritz.json`, exportFontJson(font, view), 'application/json');
   };
   const onImport = async (file: File) => {
     const text = await file.text();
     try {
-      const f = importFontJson(text);
-      setFont({ font: f });
+      const env = importFontJson(text);
+      setFont(env.view ? { font: env.font, glyphView: env.view } : { font: env.font });
     } catch (err) {
       alert((err as Error).message);
     }
@@ -73,7 +76,7 @@ export function FontBar(): JSX.Element {
         value={builtInFonts.some((f) => f.id === font.id) ? font.id : ''}
         onChange={(e) => {
           const f = getBuiltInFont(e.target.value);
-          if (f) setFont({ font: f });
+          if (f) setFont(f.view ? { font: f.font, glyphView: f.view } : { font: f.font });
         }}
         title="Switch built-in font"
       >

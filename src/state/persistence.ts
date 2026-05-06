@@ -2,19 +2,27 @@
  * Persistence for fonts. localStorage-backed, with JSON import/export.
  *
  * Wire-format note: a `Font` is plain JSON; we don't add a custom codec.
- * We do tag exports with a small envelope so future versions can migrate.
+ * The envelope optionally carries the user's interface settings
+ * (`view`: `GlyphViewOptions`) alongside the font, kept structurally
+ * separate so the `Font` itself stays a pure typeface description.
  */
 
 import type { Font } from '../core/types.js';
+import type { GlyphViewOptions } from './store.js';
 
 const PREFIX = 'moritz.fonts.';
 const INDEX_KEY = 'moritz.fonts.index';
 
 export type FontEnvelope = {
   readonly format: 'moritz-font';
-  readonly version: 1;
+  readonly version: 2;
   readonly font: Font;
+  /** Optional UI / view settings captured at save time. The Font itself
+   *  is unaware of this — it lives next to it in the envelope. */
+  readonly view?: GlyphViewOptions;
 };
+
+export type LoadedFont = { font: Font; view?: GlyphViewOptions };
 
 export function listFontIds(): string[] {
   try {
@@ -27,18 +35,38 @@ export function listFontIds(): string[] {
   }
 }
 
-export function loadFont(id: string): Font | null {
+/** Parse a stored payload into `{font, view?}`. Accepts both v2 envelopes
+ *  and bare `Font` records (as written by older builds). */
+function parseStored(raw: string): LoadedFont | null {
   try {
-    const raw = localStorage.getItem(PREFIX + id);
-    if (!raw) return null;
-    return JSON.parse(raw) as Font;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.format === 'moritz-font' && parsed.font) {
+      return { font: parsed.font as Font, view: parsed.view as GlyphViewOptions | undefined };
+    }
+    if (parsed && parsed.id && parsed.glyphs && parsed.style) {
+      return { font: parsed as Font };
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
-export function saveFont(font: Font): void {
-  localStorage.setItem(PREFIX + font.id, JSON.stringify(font));
+export function loadFont(id: string): Font | null {
+  const raw = localStorage.getItem(PREFIX + id);
+  if (!raw) return null;
+  return parseStored(raw)?.font ?? null;
+}
+
+export function loadFontEnvelope(id: string): LoadedFont | null {
+  const raw = localStorage.getItem(PREFIX + id);
+  if (!raw) return null;
+  return parseStored(raw);
+}
+
+export function saveFont(font: Font, view?: GlyphViewOptions): void {
+  const env: FontEnvelope = { format: 'moritz-font', version: 2, font, view };
+  localStorage.setItem(PREFIX + font.id, JSON.stringify(env));
   const ids = new Set(listFontIds());
   ids.add(font.id);
   localStorage.setItem(INDEX_KEY, JSON.stringify([...ids]));
@@ -50,19 +78,18 @@ export function deleteFont(id: string): void {
   localStorage.setItem(INDEX_KEY, JSON.stringify(ids));
 }
 
-export function exportFontJson(font: Font): string {
-  const env: FontEnvelope = { format: 'moritz-font', version: 1, font };
+export function exportFontJson(font: Font, view?: GlyphViewOptions): string {
+  const env: FontEnvelope = { format: 'moritz-font', version: 2, font, view };
   return JSON.stringify(env, null, 2);
 }
 
-export function importFontJson(text: string): Font {
+export function importFontJson(text: string): LoadedFont {
   const parsed = JSON.parse(text);
-  // Accept both raw `Font` and envelope.
   if (parsed && parsed.format === 'moritz-font' && parsed.font) {
-    return parsed.font as Font;
+    return { font: parsed.font as Font, view: parsed.view as GlyphViewOptions | undefined };
   }
   if (parsed && parsed.id && parsed.glyphs && parsed.style) {
-    return parsed as Font;
+    return { font: parsed as Font };
   }
   throw new Error('Not a Moritz font file.');
 }
