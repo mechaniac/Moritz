@@ -77,27 +77,42 @@ export function GlyphSetter(): JSX.Element {
     <div
       className="mz-glyphsetter"
       style={{
-        display: 'grid',
-        gridTemplateColumns: `${GRID_W}px 1fr ${INSPECTOR_W}px`,
+        position: 'relative',
+        width: '100%',
         height: '100%',
-        minHeight: 0,
+        overflow: 'hidden',
       }}
     >
-      <GlyphGrid
-        chars={Object.keys(font.glyphs)}
-        selected={selectedChar}
-        onSelect={selectGlyph}
-        font={font}
-        view={view}
-      />
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: 0,
+          width: GRID_W,
+          overflow: 'hidden',
+        }}
+      >
+        <GlyphGrid
+          chars={Object.keys(font.glyphs)}
+          selected={selectedChar}
+          onSelect={selectGlyph}
+          font={font}
+          view={view}
+        />
+      </div>
       <div
         className="mz-glyphsetter__editor"
         style={{
-          minWidth: 0,
-          minHeight: 0,
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: GRID_W,
+          right: INSPECTOR_W,
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
+          borderLeft: '1px solid #999',
           borderRight: '1px solid #999',
         }}
       >
@@ -114,12 +129,25 @@ export function GlyphSetter(): JSX.Element {
           <p style={{ padding: 16 }}>No glyph selected.</p>
         )}
       </div>
-      <Inspector
-        view={view}
-        setView={setGlyphView}
-        style={font.style}
-        setStyle={setStyle}
-      />
+      <div
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          right: 0,
+          width: INSPECTOR_W,
+          overflow: 'hidden',
+        }}
+      >
+        <Inspector
+          view={view}
+          setView={setGlyphView}
+          style={font.style}
+          setStyle={setStyle}
+          glyph={glyph}
+          updateGlyph={updateSelectedGlyph}
+        />
+      </div>
     </div>
   );
 }
@@ -150,12 +178,12 @@ function GlyphGrid(props: {
     <aside
       className="mz-glyphsetter__grid"
       style={{
-        width: GRID_W,
-        borderRight: '1px solid #999',
+        width: '100%',
+        height: '100%',
         padding: 8,
         overflowY: 'auto',
         background: 'transparent',
-        flexShrink: 0,
+        boxSizing: 'border-box',
       }}
     >
       <div className="mz-glyph-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }}>
@@ -413,6 +441,9 @@ function GlyphEditor(props: {
           overflow: 'auto',
           background: 'transparent',
           padding: 12,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
       >
         <svg
@@ -421,7 +452,7 @@ function GlyphEditor(props: {
           viewBox={`0 0 ${viewW} ${viewH}`}
           width={viewW}
           height={viewH}
-          style={{ display: 'block', touchAction: 'none' }}
+          style={{ display: 'block', touchAction: 'none', flexShrink: 0 }}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerLeave={onPointerUp}
@@ -445,6 +476,38 @@ function GlyphEditor(props: {
             stroke="#888"
             pointerEvents="none"
           />
+          {/* sidebearing guides — vertical lines indicating advance edges */}
+          {(() => {
+            const lsb = glyph.sidebearings?.left ?? 0;
+            const rsb = glyph.sidebearings?.right ?? 0;
+            if (lsb === 0 && rsb === 0) return null;
+            const xLeft = PADDING - lsb * SCALE;
+            const xRight = PADDING + (glyph.box.w + rsb) * SCALE;
+            const y0 = PADDING;
+            const y1 = PADDING + glyph.box.h * SCALE;
+            return (
+              <g className="mz-sidebearings" pointerEvents="none">
+                <line
+                  x1={xLeft}
+                  x2={xLeft}
+                  y1={y0}
+                  y2={y1}
+                  stroke="#0a84ff"
+                  strokeDasharray="4 3"
+                  strokeWidth={1}
+                />
+                <line
+                  x1={xRight}
+                  x2={xRight}
+                  y1={y0}
+                  y2={y1}
+                  stroke="#0a84ff"
+                  strokeDasharray="4 3"
+                  strokeWidth={1}
+                />
+              </g>
+            );
+          })()}
           {/* guides — under the glyph fill, above the box stroke */}
           {view.guides.enabled && (
             <g
@@ -511,7 +574,7 @@ function GlyphEditor(props: {
           {view.showFillPreview && (
             <g
               transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
-              fill="rgba(0,0,0,0.15)"
+              fill={`rgba(0,0,0,${view.fillOpacity})`}
               pointerEvents="none"
             >
               {glyph.strokes.map((s, i) => {
@@ -630,20 +693,23 @@ function Inspector(props: {
   setView: (patch: Partial<GlyphViewOptions>) => void;
   style: StyleSettings;
   setStyle: (patch: Partial<StyleSettings>) => void;
+  glyph: Glyph | undefined;
+  updateGlyph: (fn: (g: Glyph) => Glyph) => void;
 }): JSX.Element {
-  const { view, setView, style, setStyle } = props;
+  const { view, setView, style, setStyle, glyph, updateGlyph } = props;
   return (
     <aside
       className="mz-glyphsetter__inspector"
       style={{
-        width: INSPECTOR_W,
-        flexShrink: 0,
+        width: '100%',
+        height: '100%',
         overflowY: 'auto',
         background: 'transparent',
         padding: 8,
         display: 'flex',
         flexDirection: 'column',
         gap: 12,
+        boxSizing: 'border-box',
       }}
     >
       <Section title="View" tone="local">
@@ -657,6 +723,16 @@ function Inspector(props: {
           checked={view.showFillPreview}
           onChange={(v) => setView({ showFillPreview: v })}
         />
+        {view.showFillPreview && (
+          <NumSlider
+            label="Fill opacity"
+            min={0}
+            max={1}
+            step={0.01}
+            value={view.fillOpacity}
+            onChange={(v) => setView({ fillOpacity: v })}
+          />
+        )}
         <Check
           label="Other glyphs (faint)"
           checked={view.showOtherGlyphs}
@@ -673,6 +749,72 @@ function Inspector(props: {
           onChange={(v) => setView({ showTriangles: v })}
         />
       </Section>
+      {glyph && (
+        <Section title="Glyph" tone="local" subtitle="Per-glyph metrics">
+          <NumSlider
+            label="Box width"
+            min={20}
+            max={300}
+            step={1}
+            value={glyph.box.w}
+            onChange={(v) =>
+              updateGlyph((g) => ({ ...g, box: { ...g.box, w: Math.round(v) } }))
+            }
+          />
+          <NumSlider
+            label="Box height"
+            min={20}
+            max={300}
+            step={1}
+            value={glyph.box.h}
+            onChange={(v) =>
+              updateGlyph((g) => ({ ...g, box: { ...g.box, h: Math.round(v) } }))
+            }
+          />
+          <NumSlider
+            label="Left bearing"
+            min={-40}
+            max={80}
+            step={1}
+            value={glyph.sidebearings?.left ?? 0}
+            onChange={(v) =>
+              updateGlyph((g) => ({
+                ...g,
+                sidebearings: {
+                  left: Math.round(v),
+                  right: g.sidebearings?.right ?? 0,
+                },
+              }))
+            }
+          />
+          <NumSlider
+            label="Right bearing"
+            min={-40}
+            max={80}
+            step={1}
+            value={glyph.sidebearings?.right ?? 0}
+            onChange={(v) =>
+              updateGlyph((g) => ({
+                ...g,
+                sidebearings: {
+                  left: g.sidebearings?.left ?? 0,
+                  right: Math.round(v),
+                },
+              }))
+            }
+          />
+          <NumSlider
+            label="Baseline ↕"
+            min={-60}
+            max={60}
+            step={1}
+            value={glyph.baselineOffset ?? 0}
+            onChange={(v) =>
+              updateGlyph((g) => ({ ...g, baselineOffset: Math.round(v) }))
+            }
+          />
+        </Section>
+      )}
       <Section
         title="Preview style"
         tone="style"

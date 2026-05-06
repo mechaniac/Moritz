@@ -60,7 +60,7 @@ export function App(): JSX.Element {
       </header>
       <main
         className={`mz-main mz-main--${module}`}
-        style={{ flex: 1, overflow: 'auto', background: '#bdbdbd' }}
+        style={{ flex: 1, minWidth: 0, minHeight: 0, overflow: 'auto', background: '#bdbdbd' }}
       >
         {module === 'glyphsetter' && <GlyphSetter />}
         {module === 'stylesetter' && <StyleSetter />}

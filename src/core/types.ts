@@ -51,9 +51,20 @@ export type Stroke = {
 export type Glyph = {
   /** Single grapheme; matches the key in `Font.glyphs`. */
   readonly char: string;
-  /** Glyph advance box in font units. */
+  /** Glyph ink box in font units (the editing canvas size). */
   readonly box: { readonly w: number; readonly h: number };
   readonly strokes: readonly Stroke[];
+  /**
+   * Optional per-glyph horizontal padding, in font units (post-style scale).
+   * Advance width = `lsb + box.w * scaleX + rsb` (then plus style.tracking).
+   * Both default to 0 when undefined.
+   */
+  readonly sidebearings?: { readonly left: number; readonly right: number };
+  /**
+   * Vertical offset relative to the baseline, in font units. Positive moves
+   * the glyph down. Defaults to 0.
+   */
+  readonly baselineOffset?: number;
 };
 
 /**
@@ -97,6 +108,21 @@ export type StyleSettings = {
   readonly ribbonSpread?: number;
   /** 0..1 — bias samples toward anchors with active tangents. */
   readonly ribbonAnchorPull?: number;
+
+  // ---- Spacing & metrics (all in font units; all optional w/ sane defaults) ---
+
+  /** Extra horizontal space added between every pair of glyphs. Default 0. */
+  readonly tracking?: number;
+  /** Width of a literal space character. Default = 0.4 * line height. */
+  readonly spaceWidth?: number;
+  /** Multiplier on the tallest glyph for line stepping. Default 1.2. */
+  readonly lineHeight?: number;
+  /**
+   * Kerning pair table, keyed by the 2-character pair (e.g. `"AV"`).
+   * Value is added to the advance after the first character of the pair.
+   * Negative values bring the second glyph closer.
+   */
+  readonly kerning?: Readonly<Record<string, number>>;
 };
 
 export type TriMode = 'earcut' | 'ribbon-fixed' | 'ribbon-density';

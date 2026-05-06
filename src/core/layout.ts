@@ -1,9 +1,13 @@
 /**
  * Text → positioned glyph instances. Pure function; no DOM, no measurement
- * services. Layout uses the per-glyph `box.w` (post-style transform) as advance.
+ * services.
  *
- * v1: single line, no kerning, no word wrap. Newlines split lines and stack
- * downward by line height = max(box.h) * lineHeightFactor.
+ * Advance for a non-space glyph is:
+ *     advance = (lsb ?? 0) + glyph.box.w + (rsb ?? 0)
+ *               + (style.tracking ?? 0)
+ *               + (style.kerning?.[prevChar+ch] ?? 0)
+ *
+ * v1: single line per `\n`, no word wrap.
  */
 
 import { transformGlyph } from './transform.js';
@@ -21,8 +25,12 @@ export type LayoutResult = {
 };
 
 export type LayoutOptions = {
-  readonly tracking?: number; // extra spacing between glyphs in font units
-  readonly lineHeightFactor?: number; // multiplier on max glyph height
+  /** Override `style.tracking`. */
+  readonly tracking?: number;
+  /** Override `style.lineHeight`. */
+  readonly lineHeightFactor?: number;
+  /** Override `style.spaceWidth`. */
+  readonly spaceWidth?: number;
   readonly missingChar?: string; // fallback glyph key, default '?'
 };
 
@@ -31,9 +39,11 @@ export function layout(
   font: Font,
   opts: LayoutOptions = {},
 ): LayoutResult {
-  const tracking = opts.tracking ?? 0;
-  const lineHeightFactor = opts.lineHeightFactor ?? 1.2;
+  const tracking = opts.tracking ?? font.style.tracking ?? 0;
+  const lineHeightFactor =
+    opts.lineHeightFactor ?? font.style.lineHeight ?? 1.2;
   const fallbackKey = opts.missingChar ?? '?';
+  const kerning = font.style.kerning;
 
   const lines = text.split('\n');
   const placed: PositionedGlyph[] = [];
@@ -62,20 +72,33 @@ export function layout(
   }
   if (maxLineHeight === 0) maxLineHeight = 100;
   const lineStep = maxLineHeight * lineHeightFactor;
+  const spaceW = opts.spaceWidth ?? font.style.spaceWidth ?? maxLineHeight * 0.4;
 
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li]!;
     let cursorX = 0;
+    let prevChar = '';
     const y = li * lineStep;
     for (const ch of line) {
       if (ch === ' ') {
-        cursorX += maxLineHeight * 0.4 + tracking;
+        cursorX += spaceW + tracking;
+        prevChar = ch;
         continue;
       }
       const g = getGlyph(ch);
       if (!g) continue;
-      placed.push({ glyph: g, origin: { x: cursorX, y } });
-      cursorX += g.box.w + tracking;
+      // Apply kerning between previous non-space char and this char.
+      if (prevChar && prevChar !== ' ' && kerning) {
+        const k = kerning[prevChar + ch];
+        if (k !== undefined) cursorX += k;
+      }
+      const lsb = g.sidebearings?.left ?? 0;
+      const rsb = g.sidebearings?.right ?? 0;
+      const yOff = g.baselineOffset ?? 0;
+      cursorX += lsb;
+      placed.push({ glyph: g, origin: { x: cursorX, y: y + yOff } });
+      cursorX += g.box.w + rsb + tracking;
+      prevChar = ch;
     }
     maxWidth = Math.max(maxWidth, cursorX);
   }

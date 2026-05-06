@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useState } from 'react';
 import { layout } from '../../core/layout.js';
 import { renderLayoutToSvg } from '../../core/export/svg.js';
 import { useAppStore } from '../../state/store.js';
@@ -192,6 +193,39 @@ export function StyleSetter(): JSX.Element {
             />
           </>
         )}
+
+        <h3 className="mz-stylesetter__section-title" style={{ margin: '12px 0 0', fontSize: 13 }}>
+          Spacing
+        </h3>
+        <Slider
+          label="Tracking"
+          min={-30}
+          max={60}
+          step={1}
+          value={font.style.tracking ?? 0}
+          onChange={(v) => setStyle({ tracking: v })}
+        />
+        <Slider
+          label="Space width"
+          min={0}
+          max={200}
+          step={1}
+          value={font.style.spaceWidth ?? 56}
+          onChange={(v) => setStyle({ spaceWidth: v })}
+        />
+        <Slider
+          label="Line height"
+          min={0.8}
+          max={2.5}
+          step={0.05}
+          value={font.style.lineHeight ?? 1.2}
+          onChange={(v) => setStyle({ lineHeight: v })}
+        />
+
+        <KerningEditor
+          pairs={font.style.kerning ?? {}}
+          onChange={(kerning) => setStyle({ kerning })}
+        />
       </div>
 
       <div
@@ -261,5 +295,101 @@ function CapPicker(props: {
         <option value="tapered">tapered</option>
       </select>
     </label>
+  );
+}
+
+function KerningEditor(props: {
+  pairs: Readonly<Record<string, number>>;
+  onChange: (pairs: Record<string, number>) => void;
+}): JSX.Element {
+  const [draftPair, setDraftPair] = useState('');
+  const entries = Object.entries(props.pairs).sort(([a], [b]) =>
+    a.localeCompare(b),
+  );
+
+  const setValue = (pair: string, v: number): void => {
+    props.onChange({ ...props.pairs, [pair]: v });
+  };
+  const remove = (pair: string): void => {
+    const next = { ...props.pairs };
+    delete next[pair];
+    props.onChange(next);
+  };
+  const add = (): void => {
+    const p = [...draftPair].slice(0, 2).join('');
+    if (p.length !== 2) return;
+    if (props.pairs[p] !== undefined) return;
+    setValue(p, 0);
+    setDraftPair('');
+  };
+
+  return (
+    <div className="mz-kerning" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <h3 className="mz-stylesetter__section-title" style={{ margin: '12px 0 0', fontSize: 13 }}>
+        Kerning pairs
+      </h3>
+      <div className="mz-kerning__add" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+        <input
+          className="mz-kerning__pair"
+          type="text"
+          value={draftPair}
+          onChange={(e) => setDraftPair(e.target.value)}
+          placeholder="AV"
+          maxLength={2}
+          style={{ width: 50, padding: '2px 4px', fontFamily: 'monospace' }}
+        />
+        <button
+          className="mz-kerning__add-btn"
+          type="button"
+          onClick={add}
+          disabled={[...draftPair].length !== 2}
+        >
+          + Pair
+        </button>
+        <span style={{ fontSize: 11, color: '#888' }}>
+          {entries.length} pair{entries.length === 1 ? '' : 's'}
+        </span>
+      </div>
+      {entries.length === 0 && (
+        <p style={{ fontSize: 11, color: '#888', margin: '4px 0' }}>
+          No kerning pairs. Type two characters above and click + Pair.
+        </p>
+      )}
+      {entries.map(([pair, value]) => (
+        <div
+          key={pair}
+          className="mz-kerning__row"
+          style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12 }}
+        >
+          <code style={{ width: 36, fontFamily: 'monospace', fontSize: 13 }}>
+            {pair}
+          </code>
+          <input
+            type="range"
+            min={-60}
+            max={60}
+            step={1}
+            value={value}
+            onChange={(e) => setValue(pair, parseFloat(e.target.value))}
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <input
+            type="number"
+            value={value}
+            step={1}
+            onChange={(e) => setValue(pair, parseFloat(e.target.value) || 0)}
+            style={{ width: 56, padding: '2px 4px', fontVariantNumeric: 'tabular-nums' }}
+          />
+          <button
+            type="button"
+            onClick={() => remove(pair)}
+            title="Remove"
+            style={{ padding: '0 6px', fontSize: 11 }}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }

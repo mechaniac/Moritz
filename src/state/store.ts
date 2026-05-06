@@ -13,6 +13,7 @@ export type ModuleId = 'glyphsetter' | 'stylesetter' | 'typesetter';
 export type GlyphViewOptions = {
   showAnchors: boolean;
   showFillPreview: boolean;
+  fillOpacity: number; // 0..1; opacity of the fill preview
   showOtherGlyphs: boolean; // overlay all other glyphs' fills behind the edited one
   showBorders: boolean; // colorized debug overlay of left/right/caps
   showTriangles: boolean; // overlay of the active triangulation
@@ -50,6 +51,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   glyphView: {
     showAnchors: true,
     showFillPreview: true,
+    fillOpacity: 0.6,
     showOtherGlyphs: false,
     showBorders: false,
     showTriangles: false,

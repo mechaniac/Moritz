@@ -70,6 +70,14 @@ export function transformGlyph(style: StyleSettings, g: Glyph): Glyph {
   return {
     ...g,
     box: { w: g.box.w * style.scaleX, h: g.box.h * style.scaleY },
+    sidebearings: g.sidebearings
+      ? {
+          left: g.sidebearings.left * style.scaleX,
+          right: g.sidebearings.right * style.scaleX,
+        }
+      : undefined,
+    baselineOffset:
+      g.baselineOffset !== undefined ? g.baselineOffset * style.scaleY : undefined,
     strokes: g.strokes.map((s) => transformStroke(m, s)),
   };
 }
