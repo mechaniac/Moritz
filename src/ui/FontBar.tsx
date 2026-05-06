@@ -29,32 +29,44 @@ export function FontBar(): JSX.Element {
   useEffect(() => setName(font.name), [font.id, font.name]);
 
   const builtIn = isBuiltInId(font.id);
+  const hasOverride = savedIds.includes(font.id);
+  const canDelete = builtIn ? hasOverride : hasOverride;
 
   const onSave = () => {
-    // For a built-in font we keep its id stable so the next reload
-    // (and the Built-in dropdown) picks up the override automatically.
-    // For user fonts, the id is derived from the typed name as before.
-    const id = builtIn ? font.id : sanitizeId(name);
+    // The id is derived from the typed name. If that id matches a
+    // built-in, this transparently becomes an override of the built-in
+    // (and Delete will offer to reset it). Otherwise it's a user font.
+    const id = sanitizeId(name);
     const toSave = { ...font, id, name };
     saveFont(toSave, view);
     setSavedIds(listFontIds());
     setFont({ font: toSave });
   };
-  const onResetBuiltIn = () => {
-    if (!builtIn) return;
-    if (!confirm(`Discard saved changes to "${font.name}" and reload the original?`)) return;
-    const original = resetBuiltInFont(font.id);
-    setSavedIds(listFontIds());
-    if (original) setFont({ font: original });
-  };
   const onLoad = (id: string) => {
+    if (!id) return;
+    if (isBuiltInId(id)) {
+      const f = getBuiltInFont(id);
+      if (f) setFont(f.view ? { font: f.font, glyphView: f.view } : { font: f.font });
+      return;
+    }
     const env = loadFontEnvelope(id);
     if (!env) return;
     setFont(env.view ? { font: env.font, glyphView: env.view } : { font: env.font });
   };
-  const onDelete = (id: string) => {
-    deleteFont(id);
-    setSavedIds(listFontIds());
+  const onDeleteCurrent = () => {
+    if (!canDelete) return;
+    const label = builtIn
+      ? `Discard saved changes to "${font.name}" and reload the bundled original?`
+      : `Delete saved font "${font.name}"?`;
+    if (!confirm(label)) return;
+    if (builtIn) {
+      const original = resetBuiltInFont(font.id);
+      setSavedIds(listFontIds());
+      if (original) setFont({ font: original });
+    } else {
+      deleteFont(font.id);
+      setSavedIds(listFontIds());
+    }
   };
   const onExport = () => {
     downloadBlob(`${font.id}.moritz.json`, exportFontJson(font, view), 'application/json');
@@ -69,21 +81,41 @@ export function FontBar(): JSX.Element {
     }
   };
 
+  // Unified picker: built-ins first, then user-saved fonts. A built-in
+  // with an override is marked with " *". The current font is always
+  // present in the list (added under "Unsaved" if it doesn't exist on
+  // disk yet, e.g. a freshly imported font).
+  const builtInIdSet = new Set(builtInFonts.map((f) => f.id));
+  const userIds = savedIds.filter((id) => !builtInIdSet.has(id));
+  const options: { id: string; label: string; disabled?: boolean }[] = [];
+  options.push({ id: '__h_built', label: '— Built-in —', disabled: true });
+  for (const f of builtInFonts) {
+    options.push({
+      id: f.id,
+      label: savedIds.includes(f.id) ? `${f.name} *` : f.name,
+    });
+  }
+  if (userIds.length > 0) {
+    options.push({ id: '__h_user', label: '— Saved —', disabled: true });
+    for (const id of userIds) options.push({ id, label: id });
+  }
+  if (!options.some((o) => o.id === font.id)) {
+    options.push({ id: '__h_unsaved', label: '— Unsaved —', disabled: true });
+    options.push({ id: font.id, label: `${font.name} (unsaved)` });
+  }
+
   return (
     <div className="mz-fontbar" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
       <select
-        className="mz-fontbar__builtin"
-        value={builtInFonts.some((f) => f.id === font.id) ? font.id : ''}
-        onChange={(e) => {
-          const f = getBuiltInFont(e.target.value);
-          if (f) setFont(f.view ? { font: f.font, glyphView: f.view } : { font: f.font });
-        }}
-        title="Switch built-in font"
+        className="mz-fontbar__pick"
+        value={font.id}
+        onChange={(e) => onLoad(e.target.value)}
+        title="Switch font"
+        style={{ minWidth: 180 }}
       >
-        <option value="">Built-in…</option>
-        {builtInFonts.map((f) => (
-          <option key={f.id} value={f.id}>
-            {f.name}
+        {options.map((o) => (
+          <option key={o.id} value={o.id} disabled={o.disabled}>
+            {o.label}
           </option>
         ))}
       </select>
@@ -93,61 +125,23 @@ export function FontBar(): JSX.Element {
         onChange={(e) => setName(e.target.value)}
         style={{ padding: '4px 6px', width: 140 }}
         placeholder="Font name"
+        title="Saving uses this name's id; matching a built-in id overwrites it (Reset restores the original)."
       />
+      <button className="mz-fontbar__save" onClick={onSave} title="Save the current font + view settings.">
+        Save
+      </button>
       <button
-        className="mz-fontbar__save"
-        onClick={onSave}
+        className="mz-fontbar__delete"
+        onClick={onDeleteCurrent}
+        disabled={!canDelete}
         title={
           builtIn
-            ? `Overwrite the built-in "${font.name}" with your edits (stored locally; original is always recoverable via Reset).`
-            : 'Save the current font under the typed name.'
+            ? 'Discard saved changes to this built-in and reload the bundled original.'
+            : 'Delete this saved font.'
         }
       >
-        {builtIn ? 'Save (overwrite built-in)' : 'Save'}
+        {builtIn ? 'Reset' : 'Delete'}
       </button>
-      {builtIn && savedIds.includes(font.id) && (
-        <button
-          className="mz-fontbar__reset"
-          onClick={onResetBuiltIn}
-          title="Discard saved changes and reload the bundled original."
-        >
-          Reset
-        </button>
-      )}
-      <select
-        className="mz-fontbar__load"
-        value=""
-        onChange={(e) => {
-          if (e.target.value) onLoad(e.target.value);
-          e.target.value = '';
-        }}
-      >
-        <option value="">Load…</option>
-        {savedIds.map((id) => (
-          <option key={id} value={id}>
-            {id}
-          </option>
-        ))}
-      </select>
-      {savedIds.length > 0 && (
-        <select
-          className="mz-fontbar__delete"
-          value=""
-          onChange={(e) => {
-            if (e.target.value && confirm(`Delete ${e.target.value}?`)) {
-              onDelete(e.target.value);
-            }
-            e.target.value = '';
-          }}
-        >
-          <option value="">Delete…</option>
-          {savedIds.map((id) => (
-            <option key={id} value={id}>
-              {id}
-            </option>
-          ))}
-        </select>
-      )}
       <button className="mz-fontbar__export" onClick={onExport}>Export</button>
       <button className="mz-fontbar__import" onClick={() => fileInput.current?.click()}>Import</button>
       <input
