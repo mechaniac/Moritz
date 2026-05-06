@@ -514,3 +514,52 @@ export function moveLayer(s: GuideSettings, id: string, dir: -1 | 1): GuideSetti
   arr.splice(j, 0, it!);
   return { ...s, layers: arr };
 }
+
+/* ---------- defaults per kind (used by the 'reset' button) -------------- */
+
+/**
+ * Return a fresh `GuideKind` with the same `kind` discriminator and all
+ * tunable fields restored to their preset defaults. Used by the per-layer
+ * "reset" button so the user can drop a layer back to a sensible baseline
+ * without losing its color/opacity/visibility/order.
+ */
+export function defaultKindFor(kind: GuideKind): GuideKind {
+  switch (kind.kind) {
+    case 'subdivisions':
+      return { kind: 'subdivisions', axis: kind.axis, n: kind.axis === 'x' ? 8 : 4 };
+    case 'golden':
+      return {
+        kind: 'golden',
+        depth: 5,
+        axis: kind.axis ?? 'x',
+        spiral: true,
+        splits: false,
+        rotation: 0,
+        offsetX: 0,
+        offsetY: 0,
+        scale: 1,
+      };
+    case 'diagonals':
+      return { kind: 'diagonals', cross: true };
+    case 'calligraphy':
+      return {
+        kind: 'calligraphy',
+        capHeight: CALLIGRAPHY_RANGES.capHeight.default,
+        xHeight: CALLIGRAPHY_RANGES.xHeight.default,
+        ascender: CALLIGRAPHY_RANGES.ascender.default,
+        descender: CALLIGRAPHY_RANGES.descender.default,
+        weight: CALLIGRAPHY_RANGES.weight.default,
+      };
+    case 'slant':
+      return { kind: 'slant', angle: (12 * Math.PI) / 180, spacing: 10 };
+    case 'rings':
+      return { kind: 'rings', count: 4, innerRatio: 0.2 };
+    case 'dots':
+      return { kind: 'dots', spacing: 10, radiusUnits: 0.5 };
+    default: {
+      const _exh: never = kind;
+      void _exh;
+      return kind;
+    }
+  }
+}

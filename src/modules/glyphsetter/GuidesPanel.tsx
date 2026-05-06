@@ -11,6 +11,8 @@ import type { JSX } from 'react';
 import {
   addLayer,
   CALLIGRAPHY_RANGES,
+  defaultGuides,
+  defaultKindFor,
   moveLayer,
   presetCalligraphy,
   presetDiagonals,
@@ -57,6 +59,14 @@ export function GuidesPanel(props: Props): JSX.Element {
           onChange={(e) => onChange({ ...value, enabled: e.target.checked })}
         />
         <strong>Guides</strong>
+        <button
+          type="button"
+          onClick={() => onChange(defaultGuides())}
+          title="Reset all guide layers to the built-in defaults (calligraphy + golden + columns)."
+          style={{ marginLeft: 'auto', fontSize: 10, padding: '0 6px' }}
+        >
+          Reset all
+        </button>
       </label>
       <select
         defaultValue=""
@@ -157,6 +167,14 @@ function LayerRow(props: {
           title="Move down"
         >
           ↓
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange({ kind: defaultKindFor(layer.kind) })}
+          style={{ fontSize: 10, padding: '0 4px' }}
+          title="Reset this layer's parameters to the preset defaults."
+        >
+          ↺
         </button>
         <button
           type="button"
