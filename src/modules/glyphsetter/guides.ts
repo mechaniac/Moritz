@@ -198,14 +198,15 @@ export function presetDots(spacing = 10, radius = 0.5): GuideLayer {
   };
 }
 
-/** Default seed: a calligraphy frame + golden split + 8-col grid. */
+/** Default seed: calligraphy frame + 8-col grid + concentric rings + diagonals. */
 export function defaultGuides(): GuideSettings {
   return {
     enabled: true,
     layers: [
       presetCalligraphy(),
-      presetGolden('x', 2),
       presetSubdivisions(8, 'x'),
+      presetRings(4, 0.2),
+      presetDiagonals(true),
     ],
   };
 }
