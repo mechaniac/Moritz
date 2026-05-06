@@ -1,9 +1,20 @@
 /**
- * SVG-based glyph editor: thumbnails of all glyphs on the left,
- * editable canvas on the right with anchors and tangent handles.
+ * SVG-based glyph editor.
  *
- * Pure mutations come from `core/glyphOps.ts`; this file only handles
- * pointer events and rendering.
+ * Layout is a fixed 3-column shell (grid | canvas | inspector) so first-level
+ * panels never re-flow when sub-controls change.
+ *
+ *   - Glyph grid (left, fixed width)        : pick the glyph to edit.
+ *   - Canvas    (center, flex)              : draws + manipulates anchors and
+ *                                             tangent handles.
+ *   - Inspector (right, fixed width)        : view options, "Preview style"
+ *                                             (live-edits font.style — also
+ *                                             editable in StyleSetter), and
+ *                                             guides.
+ *
+ * Anchor positions and tangent handles are the ONLY per-glyph editable data
+ * here. Everything else (caps, triangulation, ribbon density, etc.) lives in
+ * `font.style` and is shared with StyleSetter.
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -25,10 +36,22 @@ import {
   moveHandle,
   setBreakTangent,
 } from '../../core/glyphOps.js';
-import type { CapShape, Font, Glyph, Stroke, Vec2 } from '../../core/types.js';
+import type {
+  CapShape,
+  Font,
+  Glyph,
+  Stroke,
+  StyleSettings,
+  TriMode,
+  Vec2,
+} from '../../core/types.js';
 import { useAppStore } from '../../state/store.js';
 
 const PADDING = 20;
+
+// Fixed widths for the outer columns. Center canvas takes the rest.
+const GRID_W = 260;
+const INSPECTOR_W = 300;
 
 type Selection =
   | { kind: 'none' }
@@ -46,11 +69,19 @@ export function GlyphSetter(): JSX.Element {
   const updateSelectedGlyph = useAppStore((s) => s.updateSelectedGlyph);
   const view = useAppStore((s) => s.glyphView);
   const setGlyphView = useAppStore((s) => s.setGlyphView);
+  const setStyle = useAppStore((s) => s.setStyle);
 
   const glyph = font.glyphs[selectedChar];
 
   return (
-    <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: `${GRID_W}px 1fr ${INSPECTOR_W}px`,
+        height: '100%',
+        minHeight: 0,
+      }}
+    >
       <GlyphGrid
         chars={Object.keys(font.glyphs)}
         selected={selectedChar}
@@ -60,12 +91,11 @@ export function GlyphSetter(): JSX.Element {
       />
       <div
         style={{
-          flex: 1,
-          padding: 16,
-          overflow: 'auto',
+          minWidth: 0,
+          minHeight: 0,
           display: 'flex',
           flexDirection: 'column',
-          minWidth: 0,
+          borderRight: '1px solid #999',
         }}
       >
         {glyph ? (
@@ -75,16 +105,23 @@ export function GlyphSetter(): JSX.Element {
             onChange={updateSelectedGlyph}
             view={view}
             setView={setGlyphView}
+            font={font}
           />
         ) : (
-          <p>No glyph selected.</p>
+          <p style={{ padding: 16 }}>No glyph selected.</p>
         )}
       </div>
+      <Inspector
+        view={view}
+        setView={setGlyphView}
+        style={font.style}
+        setStyle={setStyle}
+      />
     </div>
   );
 }
 
-// ---------- Sidebar ---------------------------------------------------------
+// ---------- Sidebar: glyph grid --------------------------------------------
 
 function GlyphGrid(props: {
   chars: string[];
@@ -109,7 +146,7 @@ function GlyphGrid(props: {
   return (
     <aside
       style={{
-        width: 260,
+        width: GRID_W,
         borderRight: '1px solid #999',
         padding: 8,
         overflowY: 'auto',
@@ -154,14 +191,14 @@ function ThumbSvg(props: {
   refBox: { w: number; h: number };
   view: GlyphViewOptions;
 }): JSX.Element {
-  const { glyph, font, refBox, view } = props;
+  const { glyph, font, refBox } = props;
   const paths = useMemo(
     () =>
       glyph.strokes.map((s) => {
-        const { polygon, triangles } = triangulateForView(s, font.style, view);
+        const { polygon, triangles } = triangulateForStyle(s, font.style);
         return trianglesD(polygon, triangles);
       }),
-    [glyph, font.style, view],
+    [glyph, font.style],
   );
   // Center this glyph within the shared reference box so relative sizes show.
   const dx = (refBox.w - glyph.box.w) / 2;
@@ -181,20 +218,17 @@ function ThumbSvg(props: {
   );
 }
 
-// ---------- Editor ----------------------------------------------------------
+// ---------- Editor (canvas column) -----------------------------------------
 
 function GlyphEditor(props: {
   char: string;
   glyph: Glyph;
   onChange: (fn: (g: Glyph) => Glyph) => void;
   view: GlyphViewOptions;
-  setView: (
-    patch: Partial<GlyphViewOptions>,
-  ) => void;
+  setView: (patch: Partial<GlyphViewOptions>) => void;
+  font: Font;
 }): JSX.Element {
-  const { char, glyph, onChange, view, setView } = props;
-  const font = useAppStore((s) => s.font);
-  const setStyle = useAppStore((s) => s.setStyle);
+  const { char, glyph, onChange, view, font } = props;
   const [selection, setSelection] = useState<Selection>({ kind: 'none' });
   const [scale, setScale] = useState<number>(5);
   const SCALE = scale;
@@ -303,15 +337,32 @@ function GlyphEditor(props: {
     }
   };
 
+  const selectedAnchor =
+    selection.kind === 'anchor'
+      ? glyph.strokes[selection.strokeIdx]?.vertices[selection.vIdx]
+      : undefined;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0 }}>Editing: {char}</h2>
+    <>
+      {/* Toolbar: glyph-editing actions only (anchors/strokes are the per-
+          glyph data). Style/preview controls live in the Inspector panel. */}
+      <div
+        style={{
+          height: 40,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          padding: '0 12px',
+          borderBottom: '1px solid #999',
+          background: '#eaeaea',
+          flexShrink: 0,
+          overflow: 'hidden',
+          fontSize: 13,
+        }}
+      >
+        <strong style={{ fontSize: 14 }}>Editing: {char}</strong>
         <button onClick={onAddStroke}>+ Stroke</button>
-        <button
-          onClick={onDeleteSelected}
-          disabled={selection.kind === 'none'}
-        >
+        <button onClick={onDeleteSelected} disabled={selection.kind === 'none'}>
           − Delete selected
         </button>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -326,399 +377,477 @@ function GlyphEditor(props: {
             style={{ width: 100 }}
           />
         </span>
-        <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <input
-            type="checkbox"
-            checked={view.showFillPreview}
-            onChange={(e) => setView({ showFillPreview: e.target.checked })}
-          />
-          Fill preview
-        </label>
-        <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <input
-            type="checkbox"
-            checked={view.showOtherGlyphs}
-            onChange={(e) => setView({ showOtherGlyphs: e.target.checked })}
-          />
-          Other glyphs
-        </label>
-        <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <input
-            type="checkbox"
-            checked={view.showAnchors}
-            onChange={(e) => setView({ showAnchors: e.target.checked })}
-          />
-          Anchors
-        </label>
-        <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <input
-            type="checkbox"
-            checked={view.showBorders}
-            onChange={(e) => setView({ showBorders: e.target.checked })}
-          />
-          Debug borders
-        </label>
-        <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <input
-            type="checkbox"
-            checked={view.showTriangles}
-            onChange={(e) => setView({ showTriangles: e.target.checked })}
-          />
-          Triangles
-        </label>
-        <select
-          value={view.triMode}
-          onChange={(e) => setView({ triMode: e.target.value as GlyphViewOptions['triMode'] })}
-          style={{ fontSize: 12 }}
-          title="Triangulation algorithm"
-        >
-          <option value="earcut">earcut (minimal)</option>
-          <option value="ribbon-fixed">ribbon (fixed N)</option>
-          <option value="ribbon-density">ribbon (density)</option>
-        </select>
-        {view.triMode === 'ribbon-fixed' && (
+        {selectedAnchor && selection.kind === 'anchor' && (
           <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            samples/seg
             <input
-              type="range"
-              min={0}
-              max={64}
-              step={1}
-              value={view.ribbonSamples}
+              type="checkbox"
+              checked={selectedAnchor.breakTangent === true}
               onChange={(e) =>
-                setView({ ribbonSamples: Math.max(0, Math.round(Number(e.target.value) || 0)) })
+                onChange((g) =>
+                  setBreakTangent(g, selection.strokeIdx, selection.vIdx, e.target.checked),
+                )
               }
-              style={{ width: 100 }}
             />
-            <span style={{ width: 24, textAlign: 'right' }}>{view.ribbonSamples}</span>
+            Break tangent
           </label>
         )}
-        {view.triMode === 'ribbon-density' && (
-          <label
-            style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-            title="Higher = more triangles per glyph unit. Internally spacing = 1/density."
-          >
-            density
-            <input
-              type="range"
-              min={0.05}
-              max={4}
-              step={0.05}
-              value={1 / Math.max(0.0001, view.ribbonSpacing)}
-              onChange={(e) => {
-                const d = Math.max(0.05, Number(e.target.value) || 0.05);
-                setView({ ribbonSpacing: 1 / d });
-              }}
-              style={{ width: 100 }}
-            />
-            <span style={{ width: 36, textAlign: 'right' }}>
-              {(1 / Math.max(0.0001, view.ribbonSpacing)).toFixed(2)}
-            </span>
-          </label>
-        )}
-        {(view.triMode === 'ribbon-fixed' || view.triMode === 'ribbon-density') && (
-          <label
-            style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-            title="0 = parameter-uniform (clusters near anchors on curved segments). 1 = arc-length-uniform (even spacing along the actual curve)."
-          >
-            spread
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={view.ribbonSpread}
-              onChange={(e) =>
-                setView({ ribbonSpread: Math.max(0, Math.min(1, Number(e.target.value))) })
-              }
-              style={{ width: 80 }}
-            />
-            <span style={{ width: 24, textAlign: 'right' }}>
-              {view.ribbonSpread.toFixed(2)}
-            </span>
-          </label>
-        )}
-        {(view.triMode === 'ribbon-fixed' || view.triMode === 'ribbon-density') && (
-          <label
-            style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-            title="Bias samples toward both endpoints of each segment with active tangents, mimicking the natural distribution of a zero-tangent anchor. Has no effect on degenerate-straight segments (both handles zero) since they already cluster naturally."
-          >
-            anchor pull
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={view.ribbonAnchorPull}
-              onChange={(e) =>
-                setView({ ribbonAnchorPull: Math.max(0, Math.min(1, Number(e.target.value))) })
-              }
-              style={{ width: 80 }}
-            />
-            <span style={{ width: 24, textAlign: 'right' }}>
-              {view.ribbonAnchorPull.toFixed(2)}
-            </span>
-          </label>
-        )}
-        {selection.kind === 'anchor' && (() => {
-          const v = glyph.strokes[selection.strokeIdx]?.vertices[selection.vIdx];
-          if (!v) return null;
-          return (
-            <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <input
-                type="checkbox"
-                checked={v.breakTangent === true}
-                onChange={(e) =>
-                  onChange((g) =>
-                    setBreakTangent(g, selection.strokeIdx, selection.vIdx, e.target.checked),
-                  )
-                }
-              />
-              Break tangent
-            </label>
-          );
-        })()}
-        <CapSelect
-          label="Cap start"
-          value={normalizeSimpleCap(font.style.capStart)}
-          onChange={(v) => setStyle({ capStart: v })}
-        />
-        <CapSelect
-          label="Cap end"
-          value={normalizeSimpleCap(font.style.capEnd)}
-          onChange={(v) => setStyle({ capEnd: v })}
-        />
         <span style={{ color: '#666', fontSize: 12, marginLeft: 'auto' }}>
           Drag anchors / handles. Alt-click stroke = insert anchor. Alt-click
           anchor = toggle corner/smooth.
         </span>
       </div>
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 8 }}>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', background: 'transparent' }}>
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${viewW} ${viewH}`}
-        width={viewW}
-        height={viewH}
-        style={{ display: 'block', touchAction: 'none' }}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerLeave={onPointerUp}
-      >
-        {/* background — clicking empty space deselects */}
-        <rect
-          x={0}
-          y={0}
-          width={viewW}
-          height={viewH}
-          fill="transparent"
-          onPointerDown={() => setSelection({ kind: 'none' })}
-        />
-        {/* glyph box — the 'sheet' the character sits on */}
-        <rect
-          x={PADDING}
-          y={PADDING}
-          width={glyph.box.w * SCALE}
-          height={glyph.box.h * SCALE}
-          fill="#ffffff"
-          stroke="#888"
-          pointerEvents="none"
-        />
-        {/* guides — under the glyph fill, above the box stroke */}
-        {view.guides.enabled && (
-          <g
-            transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
-            pointerEvents="none"
-          >
-            {view.guides.layers.map((l) => {
-              if (!l.visible) return null;
-              const g = computeLayerGeometry(l, glyph.box.w, glyph.box.h);
-              const sw = l.strokeWidth / SCALE;
-              return (
-                <g key={l.id} stroke={l.color} fill={l.color} opacity={l.opacity}>
-                  {g.lines.map((ln, i) => (
-                    <line
-                      key={`l${i}`}
-                      x1={ln.x1}
-                      y1={ln.y1}
-                      x2={ln.x2}
-                      y2={ln.y2}
-                      strokeWidth={sw}
-                      fill="none"
-                    />
-                  ))}
-                  {g.circles.map((c, i) => (
-                    <circle
-                      key={`c${i}`}
-                      cx={c.cx}
-                      cy={c.cy}
-                      r={c.r}
-                      strokeWidth={sw}
-                      fill="none"
-                    />
-                  ))}
-                  {g.dots.map((d, i) => (
-                    <circle key={`d${i}`} cx={d.cx} cy={d.cy} r={d.r} stroke="none" />
-                  ))}
-                </g>
-              );
-            })}
-          </g>
-        )}
-        {/* other glyphs of the set, faint red — to see how shapes overlap.
-            Each glyph is drawn at 5% on its own <g> so opacities accumulate
-            (5 overlapping glyphs ≈ 23%). */}
-        {view.showOtherGlyphs && (
-          <g
-            transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
-            fill="rgb(220,30,30)"
-            pointerEvents="none"
-          >
-            {Object.entries(font.glyphs).map(([c, g]) => {
-              if (c === char) return null;
-              return (
-                <g key={`other-${c}`} opacity={0.05}>
-                  {g.strokes.map((s, i) => {
-                    const { polygon, triangles } = triangulateForView(s, font.style, view);
-                    return <path key={`o${i}`} d={trianglesD(polygon, triangles)} />;
-                  })}
-                </g>
-              );
-            })}
-          </g>
-        )}
-        {/* outlined preview (faded) — fill comes from the triangulated mesh */}
-        {view.showFillPreview && (
-          <g
-            transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
-            fill="rgba(0,0,0,0.15)"
-            pointerEvents="none"
-          >
-            {glyph.strokes.map((s, i) => {
-              const { polygon, triangles } = triangulateForView(s, font.style, view);
-              return <path key={`o${i}`} d={trianglesD(polygon, triangles)} />;
-            })}
-          </g>
-        )}
-        {/* debug border overlay */}
-        {view.showBorders && (
-          <g
-            transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
-            fill="none"
-            pointerEvents="none"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          >
-            {glyph.strokes.map((s, i) => {
-              const poly = outlineStroke(s, font.style);
-              const sw = 1.4 / SCALE;
-              const dotR = 2.6 / SCALE;
-              const fontPx = 9 / SCALE;
-              // Single source of truth: the outline path drawn here is the
-              // EXACT same closed polygon `outlineStroke` returns to the
-              // renderer, so debug overlay and rendered shape can never
-              // disagree.
-              const closed = poly.length > 0 ? [...poly, poly[0]!] : [];
-              return (
-                <g key={`b${i}`}>
-                  <path d={polylineD(closed)} stroke="#0a84ff" strokeWidth={sw} />
-                  {poly.map((p, k) => (
-                    <g key={`v${i}-${k}`}>
-                      <circle
-                        cx={p.x}
-                        cy={p.y}
-                        r={dotR}
-                        fill="#111"
-                        stroke="#fff"
-                        strokeWidth={sw * 0.6}
-                      />
-                      <text
-                        x={p.x + dotR * 1.4}
-                        y={p.y - dotR * 1.4}
-                        fontSize={fontPx}
-                        fill="#111"
-                        stroke="#fff"
-                        strokeWidth={sw * 0.4}
-                        paintOrder="stroke"
-                        style={{ userSelect: 'none' }}
-                      >
-                        {k}
-                      </text>
-                    </g>
-                  ))}
-                </g>
-              );
-            })}
-          </g>
-        )}
-        {/* triangulation overlay */}
-        {view.showTriangles && (
-          <g
-            transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
-            fill="none"
-            pointerEvents="none"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          >
-            {glyph.strokes.map((s, i) => {
-              const { polygon, triangles } = triangulateForView(s, font.style, view);
-              const sw = 0.6 / SCALE;
-              return (
-                <g key={`t${i}`}>
-                  {triangles.map((tri, k) => {
-                    const a = polygon[tri[0]]!;
-                    const b = polygon[tri[1]]!;
-                    const c = polygon[tri[2]]!;
-                    const d = `M ${a.x} ${a.y} L ${b.x} ${b.y} L ${c.x} ${c.y} Z`;
-                    return (
-                      <path
-                        key={`t${i}-${k}`}
-                        d={d}
-                        stroke="#e0457b"
-                        strokeWidth={sw}
-                        fill="rgba(224, 69, 123, 0.06)"
-                      />
-                    );
-                  })}
-                </g>
-              );
-            })}
-          </g>
-        )}
-        {/* control geometry */}
-        <g transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}>
-          {glyph.strokes.map((s, sIdx) => (
-            <StrokeOverlay
-              key={s.id}
-              stroke={s}
-              strokeIdx={sIdx}
-              selection={selection}
-              showAnchors={view.showAnchors}
-              scale={SCALE}
-              onStrokeClick={onStrokeClick}
-              onAnchorPointerDown={startAnchorDrag}
-              onHandlePointerDown={startHandleDrag}
-            />
-          ))}
-        </g>
-      </svg>
-      </div>
-      <aside
+      {/* Canvas — fills remaining space */}
+      <div
         style={{
-          width: 240,
-          flexShrink: 0,
-          overflowY: 'auto',
+          flex: 1,
+          minHeight: 0,
+          overflow: 'auto',
           background: 'transparent',
-          borderLeft: '1px solid #999',
-          padding: 8,
+          padding: 12,
         }}
       >
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${viewW} ${viewH}`}
+          width={viewW}
+          height={viewH}
+          style={{ display: 'block', touchAction: 'none' }}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerLeave={onPointerUp}
+        >
+          {/* background — clicking empty space deselects */}
+          <rect
+            x={0}
+            y={0}
+            width={viewW}
+            height={viewH}
+            fill="transparent"
+            onPointerDown={() => setSelection({ kind: 'none' })}
+          />
+          {/* glyph box — the 'sheet' the character sits on */}
+          <rect
+            x={PADDING}
+            y={PADDING}
+            width={glyph.box.w * SCALE}
+            height={glyph.box.h * SCALE}
+            fill="#ffffff"
+            stroke="#888"
+            pointerEvents="none"
+          />
+          {/* guides — under the glyph fill, above the box stroke */}
+          {view.guides.enabled && (
+            <g
+              transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
+              pointerEvents="none"
+            >
+              {view.guides.layers.map((l) => {
+                if (!l.visible) return null;
+                const g = computeLayerGeometry(l, glyph.box.w, glyph.box.h);
+                const sw = l.strokeWidth / SCALE;
+                return (
+                  <g key={l.id} stroke={l.color} fill={l.color} opacity={l.opacity}>
+                    {g.lines.map((ln, i) => (
+                      <line
+                        key={`l${i}`}
+                        x1={ln.x1}
+                        y1={ln.y1}
+                        x2={ln.x2}
+                        y2={ln.y2}
+                        strokeWidth={sw}
+                        fill="none"
+                      />
+                    ))}
+                    {g.circles.map((c, i) => (
+                      <circle
+                        key={`c${i}`}
+                        cx={c.cx}
+                        cy={c.cy}
+                        r={c.r}
+                        strokeWidth={sw}
+                        fill="none"
+                      />
+                    ))}
+                    {g.dots.map((d, i) => (
+                      <circle key={`d${i}`} cx={d.cx} cy={d.cy} r={d.r} stroke="none" />
+                    ))}
+                  </g>
+                );
+              })}
+            </g>
+          )}
+          {/* other glyphs of the set, faint red — to see how shapes overlap.
+              Each glyph is drawn at 5% on its own <g> so opacities accumulate. */}
+          {view.showOtherGlyphs && (
+            <g
+              transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
+              fill="rgb(220,30,30)"
+              pointerEvents="none"
+            >
+              {Object.entries(font.glyphs).map(([c, g]) => {
+                if (c === char) return null;
+                return (
+                  <g key={`other-${c}`} opacity={0.05}>
+                    {g.strokes.map((s, i) => {
+                      const { polygon, triangles } = triangulateForStyle(s, font.style);
+                      return <path key={`o${i}`} d={trianglesD(polygon, triangles)} />;
+                    })}
+                  </g>
+                );
+              })}
+            </g>
+          )}
+          {/* outlined preview (faded) — fill comes from the triangulated mesh */}
+          {view.showFillPreview && (
+            <g
+              transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
+              fill="rgba(0,0,0,0.15)"
+              pointerEvents="none"
+            >
+              {glyph.strokes.map((s, i) => {
+                const { polygon, triangles } = triangulateForStyle(s, font.style);
+                return <path key={`o${i}`} d={trianglesD(polygon, triangles)} />;
+              })}
+            </g>
+          )}
+          {/* debug border overlay */}
+          {view.showBorders && (
+            <g
+              transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
+              fill="none"
+              pointerEvents="none"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            >
+              {glyph.strokes.map((s, i) => {
+                const poly = outlineStroke(s, font.style);
+                const sw = 1.4 / SCALE;
+                const dotR = 2.6 / SCALE;
+                const fontPx = 9 / SCALE;
+                const closed = poly.length > 0 ? [...poly, poly[0]!] : [];
+                return (
+                  <g key={`b${i}`}>
+                    <path d={polylineD(closed)} stroke="#0a84ff" strokeWidth={sw} />
+                    {poly.map((p, k) => (
+                      <g key={`v${i}-${k}`}>
+                        <circle
+                          cx={p.x}
+                          cy={p.y}
+                          r={dotR}
+                          fill="#111"
+                          stroke="#fff"
+                          strokeWidth={sw * 0.6}
+                        />
+                        <text
+                          x={p.x + dotR * 1.4}
+                          y={p.y - dotR * 1.4}
+                          fontSize={fontPx}
+                          fill="#111"
+                          stroke="#fff"
+                          strokeWidth={sw * 0.4}
+                          paintOrder="stroke"
+                          style={{ userSelect: 'none' }}
+                        >
+                          {k}
+                        </text>
+                      </g>
+                    ))}
+                  </g>
+                );
+              })}
+            </g>
+          )}
+          {/* triangulation overlay */}
+          {view.showTriangles && (
+            <g
+              transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
+              fill="none"
+              pointerEvents="none"
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            >
+              {glyph.strokes.map((s, i) => {
+                const { polygon, triangles } = triangulateForStyle(s, font.style);
+                const sw = 0.6 / SCALE;
+                return (
+                  <g key={`t${i}`}>
+                    {triangles.map((tri, k) => {
+                      const a = polygon[tri[0]]!;
+                      const b = polygon[tri[1]]!;
+                      const c = polygon[tri[2]]!;
+                      const d = `M ${a.x} ${a.y} L ${b.x} ${b.y} L ${c.x} ${c.y} Z`;
+                      return (
+                        <path
+                          key={`t${i}-${k}`}
+                          d={d}
+                          stroke="#e0457b"
+                          strokeWidth={sw}
+                          fill="rgba(224, 69, 123, 0.06)"
+                        />
+                      );
+                    })}
+                  </g>
+                );
+              })}
+            </g>
+          )}
+          {/* control geometry */}
+          <g transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}>
+            {glyph.strokes.map((s, sIdx) => (
+              <StrokeOverlay
+                key={s.id}
+                stroke={s}
+                strokeIdx={sIdx}
+                selection={selection}
+                showAnchors={view.showAnchors}
+                scale={SCALE}
+                onStrokeClick={onStrokeClick}
+                onAnchorPointerDown={startAnchorDrag}
+                onHandlePointerDown={startHandleDrag}
+              />
+            ))}
+          </g>
+        </svg>
+      </div>
+    </>
+  );
+}
+
+// ---------- Inspector (right column) ---------------------------------------
+
+function Inspector(props: {
+  view: GlyphViewOptions;
+  setView: (patch: Partial<GlyphViewOptions>) => void;
+  style: StyleSettings;
+  setStyle: (patch: Partial<StyleSettings>) => void;
+}): JSX.Element {
+  const { view, setView, style, setStyle } = props;
+  return (
+    <aside
+      style={{
+        width: INSPECTOR_W,
+        flexShrink: 0,
+        overflowY: 'auto',
+        background: 'transparent',
+        padding: 8,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}
+    >
+      <Section title="View" tone="local">
+        <Check
+          label="Anchors"
+          checked={view.showAnchors}
+          onChange={(v) => setView({ showAnchors: v })}
+        />
+        <Check
+          label="Fill preview"
+          checked={view.showFillPreview}
+          onChange={(v) => setView({ showFillPreview: v })}
+        />
+        <Check
+          label="Other glyphs (faint)"
+          checked={view.showOtherGlyphs}
+          onChange={(v) => setView({ showOtherGlyphs: v })}
+        />
+        <Check
+          label="Debug borders"
+          checked={view.showBorders}
+          onChange={(v) => setView({ showBorders: v })}
+        />
+        <Check
+          label="Triangles"
+          checked={view.showTriangles}
+          onChange={(v) => setView({ showTriangles: v })}
+        />
+      </Section>
+      <Section
+        title="Preview style"
+        tone="style"
+        subtitle="Shared with StyleSetter"
+      >
+        <Row label="Algorithm">
+          <select
+            value={style.triMode ?? 'earcut'}
+            onChange={(e) => setStyle({ triMode: e.target.value as TriMode })}
+            style={{ fontSize: 12, flex: 1 }}
+          >
+            <option value="earcut">earcut (minimal)</option>
+            <option value="ribbon-fixed">ribbon (fixed N)</option>
+            <option value="ribbon-density">ribbon (density)</option>
+          </select>
+        </Row>
+        {style.triMode === 'ribbon-fixed' && (
+          <NumSlider
+            label="samples / seg"
+            min={0}
+            max={64}
+            step={1}
+            value={style.ribbonSamples ?? 6}
+            onChange={(v) => setStyle({ ribbonSamples: Math.round(v) })}
+            format={(v) => v.toFixed(0)}
+          />
+        )}
+        {style.triMode === 'ribbon-density' && (
+          <NumSlider
+            label="density"
+            min={0.05}
+            max={4}
+            step={0.05}
+            value={1 / Math.max(0.0001, style.ribbonSpacing ?? 4)}
+            onChange={(v) => setStyle({ ribbonSpacing: 1 / Math.max(0.05, v) })}
+            format={(v) => v.toFixed(2)}
+          />
+        )}
+        {(style.triMode === 'ribbon-fixed' || style.triMode === 'ribbon-density') && (
+          <>
+            <NumSlider
+              label="spread"
+              min={0}
+              max={1}
+              step={0.05}
+              value={style.ribbonSpread ?? 1}
+              onChange={(v) => setStyle({ ribbonSpread: v })}
+            />
+            <NumSlider
+              label="anchor pull"
+              min={0}
+              max={1}
+              step={0.05}
+              value={style.ribbonAnchorPull ?? 0}
+              onChange={(v) => setStyle({ ribbonAnchorPull: v })}
+            />
+          </>
+        )}
+        <Row label="Cap start">
+          <CapSelect
+            value={normalizeSimpleCap(style.capStart)}
+            onChange={(v) => setStyle({ capStart: v })}
+          />
+        </Row>
+        <Row label="Cap end">
+          <CapSelect
+            value={normalizeSimpleCap(style.capEnd)}
+            onChange={(v) => setStyle({ capEnd: v })}
+          />
+        </Row>
+        <NumSlider
+          label="cap bulge"
+          min={0}
+          max={2}
+          step={0.05}
+          value={style.capRoundBulge ?? 1}
+          onChange={(v) => setStyle({ capRoundBulge: v })}
+        />
+      </Section>
+      <Section title="Guides" tone="local">
         <GuidesPanel
           value={view.guides}
           onChange={(guides) => setView({ guides })}
         />
-      </aside>
-      </div>
+      </Section>
+    </aside>
+  );
+}
+
+function Section(props: {
+  title: string;
+  tone: 'local' | 'style';
+  subtitle?: string;
+  children: React.ReactNode;
+}): JSX.Element {
+  const isStyle = props.tone === 'style';
+  return (
+    <section
+      style={{
+        border: `1px solid ${isStyle ? '#c98a2c' : '#bbb'}`,
+        borderRadius: 4,
+        background: isStyle ? 'rgba(201, 138, 44, 0.06)' : 'transparent',
+        padding: 8,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}
+    >
+      <header style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <strong
+          style={{
+            fontSize: 12,
+            textTransform: 'uppercase',
+            letterSpacing: 0.6,
+            color: isStyle ? '#7a4f10' : '#444',
+          }}
+        >
+          {props.title}
+        </strong>
+        {props.subtitle && (
+          <span style={{ fontSize: 11, color: '#888' }}>{props.subtitle}</span>
+        )}
+      </header>
+      {props.children}
+    </section>
+  );
+}
+
+function Check(props: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}): JSX.Element {
+  return (
+    <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+      <input
+        type="checkbox"
+        checked={props.checked}
+        onChange={(e) => props.onChange(e.target.checked)}
+      />
+      {props.label}
+    </label>
+  );
+}
+
+function Row(props: { label: string; children: React.ReactNode }): JSX.Element {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        fontSize: 12,
+      }}
+    >
+      <span style={{ color: '#666', width: 80, flexShrink: 0 }}>{props.label}</span>
+      {props.children}
+    </div>
+  );
+}
+
+function NumSlider(props: {
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChange: (v: number) => void;
+  format?: (v: number) => string;
+}): JSX.Element {
+  const fmt = props.format ?? ((v: number) => v.toFixed(2));
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+      <span style={{ color: '#666', width: 80, flexShrink: 0 }}>{props.label}</span>
+      <input
+        type="range"
+        min={props.min}
+        max={props.max}
+        step={props.step}
+        value={props.value}
+        onChange={(e) => props.onChange(parseFloat(e.target.value))}
+        style={{ flex: 1, minWidth: 0 }}
+      />
+      <span style={{ width: 36, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+        {fmt(props.value)}
+      </span>
     </div>
   );
 }
@@ -856,38 +985,25 @@ function StrokeOverlay(props: {
 
 // ---------- helpers ---------------------------------------------------------
 
-function polygonD(_points: readonly Vec2[]): string {
-  // Kept around for potential reuse; current renderer routes all fills
-  // through trianglesD() to keep a single source of truth with the debug
-  // overlay. Prefix arg with `_` so strict unused-vars stays quiet.
-  return '';
-}
-// Silence "declared but unused" — exposed for future reuse by other tools.
-void polygonD;
-
 type SimpleCap = 'round' | 'flat' | 'tapered';
 function normalizeSimpleCap(c: CapShape): SimpleCap {
   return c === 'round' || c === 'flat' || c === 'tapered' ? c : 'round';
 }
 
 function CapSelect(props: {
-  label: string;
   value: SimpleCap;
   onChange: (v: SimpleCap) => void;
 }): JSX.Element {
   return (
-    <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-      <span style={{ color: '#666' }}>{props.label}</span>
-      <select
-        value={props.value}
-        onChange={(e) => props.onChange(e.target.value as SimpleCap)}
-        style={{ fontSize: 12 }}
-      >
-        <option value="round">round</option>
-        <option value="flat">flat</option>
-        <option value="tapered">tapered</option>
-      </select>
-    </label>
+    <select
+      value={props.value}
+      onChange={(e) => props.onChange(e.target.value as SimpleCap)}
+      style={{ fontSize: 12, flex: 1 }}
+    >
+      <option value="round">round</option>
+      <option value="flat">flat</option>
+      <option value="tapered">tapered</option>
+    </select>
   );
 }
 
@@ -909,29 +1025,29 @@ function trianglesD(
 }
 
 /**
- * Triangulate one stroke using the active view-options mode. Single source
- * of truth: callers use this for both the rendered fill AND the debug
- * triangle overlay so they can never disagree.
+ * Triangulate one stroke using the active style's triMode. Single source of
+ * truth: the editor canvas, thumbnail grid, and SVG export all funnel
+ * through this OR the matching helper in `core/export/svg.ts`.
  */
-function triangulateForView(
-  stroke: import('../../core/types.js').Stroke,
-  style: import('../../core/types.js').StyleSettings,
-  view: GlyphViewOptions,
+function triangulateForStyle(
+  stroke: Stroke,
+  style: StyleSettings,
 ): { polygon: readonly Vec2[]; triangles: readonly (readonly [number, number, number])[] } {
-  if (view.triMode === 'ribbon-fixed') {
+  const mode = style.triMode ?? 'earcut';
+  if (mode === 'ribbon-fixed') {
     return triangulateStrokeRibbon(stroke, style, {
       kind: 'fixed',
-      samplesPerSegment: view.ribbonSamples,
-      spread: view.ribbonSpread,
-      anchorPull: view.ribbonAnchorPull,
+      samplesPerSegment: style.ribbonSamples ?? 6,
+      spread: style.ribbonSpread ?? 1,
+      anchorPull: style.ribbonAnchorPull ?? 0,
     });
   }
-  if (view.triMode === 'ribbon-density') {
+  if (mode === 'ribbon-density') {
     return triangulateStrokeRibbon(stroke, style, {
       kind: 'density',
-      spacing: view.ribbonSpacing,
-      spread: view.ribbonSpread,
-      anchorPull: view.ribbonAnchorPull,
+      spacing: style.ribbonSpacing ?? 4,
+      spread: style.ribbonSpread ?? 1,
+      anchorPull: style.ribbonAnchorPull ?? 0,
     });
   }
   const poly = outlineStroke(stroke, style);

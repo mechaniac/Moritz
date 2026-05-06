@@ -8,7 +8,8 @@
 import type { LayoutResult } from '../layout.js';
 import { outlineStroke } from '../stroke.js';
 import { triangulatePolygon } from '../triangulate.js';
-import type { Font, Vec2 } from '../types.js';
+import { triangulateStrokeRibbon } from '../ribbon.js';
+import type { Font, Stroke, StyleSettings, Vec2 } from '../types.js';
 
 export type SvgRenderOptions = {
   readonly fill?: string; // CSS color for glyph polygons. Default 'black'.
@@ -20,8 +21,16 @@ export type SvgRenderOptions = {
 function polygonToPathD(points: readonly Vec2[]): string {
   if (points.length === 0) return '';
   const tris = triangulatePolygon(points);
-  // Render the polygon as the union of its triangles — single source of
-  // truth shared with the editor preview and debug overlay.
+  return trianglesD(points, tris);
+}
+// Kept for potential reuse by other tools/exporters; silence "unused" check.
+void polygonToPathD;
+
+function trianglesD(
+  points: readonly Vec2[],
+  tris: readonly (readonly [number, number, number])[],
+): string {
+  if (points.length === 0 || tris.length === 0) return '';
   const parts: string[] = [];
   for (const t of tris) {
     const a = points[t[0]]!;
@@ -30,6 +39,32 @@ function polygonToPathD(points: readonly Vec2[]): string {
     parts.push(`M ${fmt(a.x)} ${fmt(a.y)} L ${fmt(b.x)} ${fmt(b.y)} L ${fmt(c.x)} ${fmt(c.y)} Z`);
   }
   return parts.join(' ');
+}
+
+/** Triangulate one stroke using whichever algorithm `style.triMode` selects. */
+function triangulateForStyle(
+  stroke: Stroke,
+  style: StyleSettings,
+): { polygon: readonly Vec2[]; triangles: readonly (readonly [number, number, number])[] } {
+  const mode = style.triMode ?? 'earcut';
+  if (mode === 'ribbon-fixed') {
+    return triangulateStrokeRibbon(stroke, style, {
+      kind: 'fixed',
+      samplesPerSegment: style.ribbonSamples ?? 6,
+      spread: style.ribbonSpread ?? 1,
+      anchorPull: style.ribbonAnchorPull ?? 0,
+    });
+  }
+  if (mode === 'ribbon-density') {
+    return triangulateStrokeRibbon(stroke, style, {
+      kind: 'density',
+      spacing: style.ribbonSpacing ?? 4,
+      spread: style.ribbonSpread ?? 1,
+      anchorPull: style.ribbonAnchorPull ?? 0,
+    });
+  }
+  const poly = outlineStroke(stroke, style);
+  return { polygon: poly, triangles: triangulatePolygon(poly) };
 }
 
 const fmt = (n: number): string =>
@@ -52,14 +87,14 @@ export function renderLayoutToSvg(
   const paths: string[] = [];
   for (const pg of layoutResult.glyphs) {
     for (const stroke of pg.glyph.strokes) {
-      const polygon = outlineStroke(stroke, font.style);
-      if (polygon.length === 0) continue;
+      const { polygon, triangles } = triangulateForStyle(stroke, font.style);
+      if (polygon.length === 0 || triangles.length === 0) continue;
       // Translate polygon by glyph origin + padding.
       const translated = polygon.map((p) => ({
         x: p.x + pg.origin.x + padding,
         y: p.y + pg.origin.y + padding,
       }));
-      paths.push(`<path d="${polygonToPathD(translated)}" />`);
+      paths.push(`<path d="${trianglesD(translated, triangles)}" />`);
     }
   }
 

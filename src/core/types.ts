@@ -81,7 +81,25 @@ export type StyleSettings = {
    * Only affects caps whose resolved kind is `'round'`.
    */
   readonly capRoundBulge?: number;
+  /**
+   * Triangulation algorithm used by all renderers (StyleSetter preview,
+   * GlyphSetter preview, SVG export).
+   *   - 'earcut'         : minimal ear-clipping of the outline polygon.
+   *   - 'ribbon-fixed'   : quad strip with N samples per Bezier segment.
+   *   - 'ribbon-density' : quad strip with density-driven subdivision.
+   */
+  readonly triMode?: TriMode;
+  /** When triMode === 'ribbon-fixed': samples per Bezier segment (≥0). */
+  readonly ribbonSamples?: number;
+  /** When triMode === 'ribbon-density': spacing in glyph units. */
+  readonly ribbonSpacing?: number;
+  /** 0..1 — parameter-uniform vs arc-length-uniform interior sample placement. */
+  readonly ribbonSpread?: number;
+  /** 0..1 — bias samples toward anchors with active tangents. */
+  readonly ribbonAnchorPull?: number;
 };
+
+export type TriMode = 'earcut' | 'ribbon-fixed' | 'ribbon-density';
 
 export type Font = {
   readonly id: string;

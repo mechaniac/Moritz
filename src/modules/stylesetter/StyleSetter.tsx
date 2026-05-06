@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { layout } from '../../core/layout.js';
 import { renderLayoutToSvg } from '../../core/export/svg.js';
 import { useAppStore } from '../../state/store.js';
-import type { CapShape } from '../../core/types.js';
+import type { CapShape, TriMode } from '../../core/types.js';
 
 /**
  * StyleSetter — sliders bound to StyleSettings, with live SVG preview of the
@@ -26,8 +26,12 @@ export function StyleSetter(): JSX.Element {
 
   return (
     <div style={{ display: 'flex', gap: 24, padding: 16, height: '100%' }}>
-      <div style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}>
+      <div style={{ width: 340, display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0, overflowY: 'auto' }}>
         <h2 style={{ margin: 0 }}>StyleSetter</h2>
+        <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
+          Font-wide style. All settings here also appear in the GlyphSetter
+          inspector under <em>Preview style</em>.
+        </p>
 
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span>Text</span>
@@ -134,6 +138,60 @@ export function StyleSetter(): JSX.Element {
           value={font.style.capRoundBulge ?? 1}
           onChange={(v) => setStyle({ capRoundBulge: v })}
         />
+
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <span>Triangulation</span>
+          <select
+            value={font.style.triMode ?? 'earcut'}
+            onChange={(e) => setStyle({ triMode: e.target.value as TriMode })}
+            style={{ padding: 4 }}
+          >
+            <option value="earcut">earcut (minimal)</option>
+            <option value="ribbon-fixed">ribbon (fixed N)</option>
+            <option value="ribbon-density">ribbon (density)</option>
+          </select>
+        </label>
+        {font.style.triMode === 'ribbon-fixed' && (
+          <Slider
+            label="Samples / segment"
+            min={0}
+            max={64}
+            step={1}
+            value={font.style.ribbonSamples ?? 6}
+            onChange={(v) => setStyle({ ribbonSamples: Math.round(v) })}
+          />
+        )}
+        {font.style.triMode === 'ribbon-density' && (
+          <Slider
+            label="Density"
+            min={0.05}
+            max={4}
+            step={0.05}
+            value={1 / Math.max(0.0001, font.style.ribbonSpacing ?? 4)}
+            onChange={(v) => setStyle({ ribbonSpacing: 1 / Math.max(0.05, v) })}
+          />
+        )}
+        {(font.style.triMode === 'ribbon-fixed' ||
+          font.style.triMode === 'ribbon-density') && (
+          <>
+            <Slider
+              label="Spread"
+              min={0}
+              max={1}
+              step={0.05}
+              value={font.style.ribbonSpread ?? 1}
+              onChange={(v) => setStyle({ ribbonSpread: v })}
+            />
+            <Slider
+              label="Anchor pull"
+              min={0}
+              max={1}
+              step={0.05}
+              value={font.style.ribbonAnchorPull ?? 0}
+              onChange={(v) => setStyle({ ribbonAnchorPull: v })}
+            />
+          </>
+        )}
       </div>
 
       <div

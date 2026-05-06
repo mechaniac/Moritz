@@ -10,19 +10,12 @@ import { defaultGuides, type GuideSettings } from '../modules/glyphsetter/guides
 
 export type ModuleId = 'glyphsetter' | 'stylesetter' | 'typesetter';
 
-export type TriMode = 'earcut' | 'ribbon-fixed' | 'ribbon-density';
-
 export type GlyphViewOptions = {
   showAnchors: boolean;
   showFillPreview: boolean;
   showOtherGlyphs: boolean; // overlay all other glyphs' fills behind the edited one
   showBorders: boolean; // colorized debug overlay of left/right/caps
-  showTriangles: boolean; // ear-clip triangulation of the outline polygon
-  triMode: TriMode;
-  ribbonSamples: number; // samples per Bezier segment when triMode='ribbon-fixed'
-  ribbonSpacing: number; // target arc-length spacing in glyph units when triMode='ribbon-density'
-  ribbonSpread: number; // 0..1: blend interior sample placement from parameter-uniform (0) to arc-length-uniform (1)
-  ribbonAnchorPull: number; // 0..1: bias arc-length targets via smoothstep so samples cluster near anchors (mimics zero-tangent anchor distribution on a tangent curve)
+  showTriangles: boolean; // overlay of the active triangulation
   guides: GuideSettings;
 };
 
@@ -60,11 +53,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     showOtherGlyphs: false,
     showBorders: false,
     showTriangles: false,
-    triMode: 'earcut',
-    ribbonSamples: 6,
-    ribbonSpacing: 4,
-    ribbonSpread: 1,
-    ribbonAnchorPull: 0,
     guides: defaultGuides(),
   },
   setStyle: (patch) =>
