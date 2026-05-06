@@ -70,3 +70,55 @@ export function measureFontMetrics(family: string): FontMetricsEm {
   cache.set(family, m);
   return m;
 }
+
+/**
+ * Per-glyph metrics for a single character in a CSS font-family stack.
+ * All values are in em (1em = font-size). Mirrors the OpenType notion of
+ * advance width + side bearings.
+ *
+ *   advance     = full advance width (TextMetrics.width)
+ *   inkLeft     = how far the ink starts to the right of the origin
+ *   inkRight    = how far the ink ends to the right of the origin
+ *   leftBearing = inkLeft (positive = ink starts inside the box)
+ *   rightBearing = advance - inkRight (positive = trailing whitespace)
+ */
+export type GlyphMetricsEm = {
+  advance: number;
+  inkLeft: number;
+  inkRight: number;
+  leftBearing: number;
+  rightBearing: number;
+};
+
+const glyphCache = new Map<string, GlyphMetricsEm>();
+
+export function measureGlyphMetrics(family: string, char: string): GlyphMetricsEm | null {
+  if (!family || !char) return null;
+  const key = `${family}\u0000${char}`;
+  const cached = glyphCache.get(key);
+  if (cached) return cached;
+  const c = ctx();
+  if (!c) return null;
+  const SIZE = 1000;
+  c.font = `${SIZE}px ${family}`;
+  c.textBaseline = 'alphabetic';
+  const t = c.measureText(char);
+  const advance = (t.width ?? 0) / SIZE;
+  // Canvas reports actualBoundingBoxLeft as a positive value when ink lies
+  // to the LEFT of the origin (because of italic overhang etc.). For
+  // standard upright Latin glyphs this is ~0 and our left bearing equals
+  // the distance from origin to ink start = -boxLeft (signed).
+  const boxLeft  = (t.actualBoundingBoxLeft  ?? 0) / SIZE;
+  const boxRight = (t.actualBoundingBoxRight ?? 0) / SIZE;
+  const inkLeft  = -boxLeft;
+  const inkRight =  boxRight;
+  const m: GlyphMetricsEm = {
+    advance,
+    inkLeft,
+    inkRight,
+    leftBearing: inkLeft,
+    rightBearing: advance - inkRight,
+  };
+  glyphCache.set(key, m);
+  return m;
+}

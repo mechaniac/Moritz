@@ -26,7 +26,7 @@ import { layout as layoutText } from '../../core/layout.js';
 import type { GlyphViewOptions } from '../../state/store.js';
 import { computeLayerGeometry } from './guides.js';
 import { GuidesPanel } from './GuidesPanel.js';
-import { measureFontMetrics } from './fontMetrics.js';
+import { measureFontMetrics, measureGlyphMetrics } from './fontMetrics.js';
 import {
   addStroke,
   deleteAnchor,
@@ -903,6 +903,48 @@ function Inspector(props: {
       </Section>
       {glyph && (
         <Section title="Glyph" tone="local" subtitle="Per-glyph metrics">
+          <button
+            type="button"
+            disabled={!view.refFontFamily}
+            onClick={() => {
+              if (!view.refFontFamily) return;
+              const fm = measureFontMetrics(view.refFontFamily);
+              const gm = measureGlyphMetrics(view.refFontFamily, glyph.char);
+              if (!gm) return;
+              // Same vertical scale as 'Align to reference font':
+              // 1em maps to box.h / (ascent + descent) font units.
+              updateGlyph((g) => {
+                const emToUnits = g.box.h / Math.max(1e-6, fm.ascent + fm.descent);
+                const newW = Math.max(1, Math.round(gm.advance * emToUnits));
+                const lsb = Math.round(gm.leftBearing * emToUnits);
+                const rsb = Math.round(gm.rightBearing * emToUnits);
+                const dx = (newW - g.box.w) / 2;
+                const strokes = dx === 0
+                  ? g.strokes
+                  : g.strokes.map((s) => ({
+                      ...s,
+                      vertices: s.vertices.map((vx) => ({
+                        ...vx,
+                        p: { x: vx.p.x + dx, y: vx.p.y },
+                      })),
+                    }));
+                return {
+                  ...g,
+                  box: { ...g.box, w: newW },
+                  sidebearings: { left: lsb, right: rsb },
+                  strokes,
+                };
+              });
+            }}
+            title={
+              view.refFontFamily
+                ? "Set this glyph's box width and side bearings from the reference font's measured advance width and ink bounds. Vertical scale matches 'Align to reference font'."
+                : 'Pick a Reference font in the View section first.'
+            }
+            style={{ fontSize: 11, padding: '2px 6px', marginBottom: 4 }}
+          >
+            Import metrics from reference font
+          </button>
           <NumSlider
             label="Box width"
             min={20}
