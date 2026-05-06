@@ -315,18 +315,18 @@ function GlyphEditor(props: {
   const viewW = Math.max(DEFAULT_BOX, glyph.box.w) * SCALE + PADDING * 2;
   const viewH = Math.max(DEFAULT_BOX, glyph.box.h) * SCALE + PADDING * 2;
 
-  // Glyph artwork is anchored relative to the *default* box, which is itself
-  // pinned to the canvas centre. This way the glyph and the default reference
-  // frame never move on screen — only the current glyph-box outline grows or
-  // shrinks symmetrically around the centre when the user resizes box.{w,h}.
+  // The glyph's strokes are anchored to the glyph's own box (so the artwork
+  // always sits inside the solid rectangle in the editor — same as the grid
+  // and the StyleSetter preview). The default-box outline is a separate
+  // reference frame, drawn centred on the canvas for orientation.
   const cx = viewW / 2;
   const cy = viewH / 2;
-  const originX = cx - (DEFAULT_BOX * SCALE) / 2; // glyph (0,0) on screen
-  const originY = cy - (DEFAULT_BOX * SCALE) / 2;
-  const defBoxX = originX;
-  const defBoxY = originY;
   const gBoxX = cx - (glyph.box.w * SCALE) / 2;
   const gBoxY = cy - (glyph.box.h * SCALE) / 2;
+  const originX = gBoxX; // glyph (0,0) on screen
+  const originY = gBoxY;
+  const defBoxX = cx - (DEFAULT_BOX * SCALE) / 2;
+  const defBoxY = cy - (DEFAULT_BOX * SCALE) / 2;
   const xform = `translate(${originX} ${originY}) scale(${SCALE})`;
 
   const toGlyph = useCallback(
