@@ -9,7 +9,12 @@ import {
   saveFont,
 } from '../state/persistence.js';
 import { useAppStore } from '../state/store.js';
-import { builtInFonts, getBuiltInFont } from '../data/builtInFonts.js';
+import {
+  builtInFonts,
+  getBuiltInFont,
+  isBuiltInId,
+  resetBuiltInFont,
+} from '../data/builtInFonts.js';
 
 /** Save / load / import / export the active font. */
 export function FontBar(): JSX.Element {
@@ -21,12 +26,24 @@ export function FontBar(): JSX.Element {
 
   useEffect(() => setName(font.name), [font.id, font.name]);
 
+  const builtIn = isBuiltInId(font.id);
+
   const onSave = () => {
-    const id = sanitizeId(name);
+    // For a built-in font we keep its id stable so the next reload
+    // (and the Built-in dropdown) picks up the override automatically.
+    // For user fonts, the id is derived from the typed name as before.
+    const id = builtIn ? font.id : sanitizeId(name);
     const toSave = { ...font, id, name };
     saveFont(toSave);
     setSavedIds(listFontIds());
     setFont({ font: toSave });
+  };
+  const onResetBuiltIn = () => {
+    if (!builtIn) return;
+    if (!confirm(`Discard saved changes to "${font.name}" and reload the original?`)) return;
+    const original = resetBuiltInFont(font.id);
+    setSavedIds(listFontIds());
+    if (original) setFont({ font: original });
   };
   const onLoad = (id: string) => {
     const f = loadFont(id);
@@ -74,7 +91,26 @@ export function FontBar(): JSX.Element {
         style={{ padding: '4px 6px', width: 140 }}
         placeholder="Font name"
       />
-      <button className="mz-fontbar__save" onClick={onSave}>Save</button>
+      <button
+        className="mz-fontbar__save"
+        onClick={onSave}
+        title={
+          builtIn
+            ? `Overwrite the built-in "${font.name}" with your edits (stored locally; original is always recoverable via Reset).`
+            : 'Save the current font under the typed name.'
+        }
+      >
+        {builtIn ? 'Save (overwrite built-in)' : 'Save'}
+      </button>
+      {builtIn && savedIds.includes(font.id) && (
+        <button
+          className="mz-fontbar__reset"
+          onClick={onResetBuiltIn}
+          title="Discard saved changes and reload the bundled original."
+        >
+          Reset
+        </button>
+      )}
       <select
         className="mz-fontbar__load"
         value=""
