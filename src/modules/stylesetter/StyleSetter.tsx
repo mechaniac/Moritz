@@ -346,6 +346,148 @@ export function StyleSetter(): JSX.Element {
           tooltip="instance = each glyph occurrence different. glyph = every 'a' identical (but ≠ 'b'). text = one offset for everything."
         />
         <Slider
+          label="Width wiggle"
+          min={0}
+          max={1}
+          step={0.01}
+          value={font.style.effects?.widthWiggle?.amount ?? 0}
+          onChange={(v) =>
+            setStyle({
+              effects: {
+                ...font.style.effects,
+                widthWiggle: {
+                  ...(font.style.effects?.widthWiggle ?? { frequency: 0.05, scope: 'instance', seed: 3 }),
+                  amount: v,
+                },
+              },
+            })
+          }
+          defaultValue={0}
+          tooltip="Random multiplicative wobble of stroke width along the path. 0 = off; 1 = ±100% width swing."
+        />
+        <Slider
+          label="Wiggle freq"
+          min={0.005}
+          max={0.5}
+          step={0.005}
+          value={font.style.effects?.widthWiggle?.frequency ?? 0.05}
+          onChange={(v) =>
+            setStyle({
+              effects: {
+                ...font.style.effects,
+                widthWiggle: {
+                  ...(font.style.effects?.widthWiggle ?? { amount: 0, scope: 'instance', seed: 3 }),
+                  frequency: v,
+                },
+              },
+            })
+          }
+          defaultValue={0.05}
+          tooltip="Cycles per font unit of arc length. Higher = tighter wobble."
+        />
+        <EffectScopePicker
+          label="Wiggle scope"
+          value={font.style.effects?.widthWiggle?.scope ?? 'instance'}
+          onChange={(scope) =>
+            setStyle({
+              effects: {
+                ...font.style.effects,
+                widthWiggle: {
+                  ...(font.style.effects?.widthWiggle ?? { amount: 0, frequency: 0.05, seed: 3 }),
+                  scope,
+                },
+              },
+            })
+          }
+          tooltip="instance = each glyph occurrence different. glyph = every 'a' identical. text = one wobble pattern everywhere."
+        />
+        <Slider
+          label="Taper start"
+          min={0}
+          max={2}
+          step={0.01}
+          value={font.style.effects?.widthTaper?.start ?? 1}
+          onChange={(v) =>
+            setStyle({
+              effects: {
+                ...font.style.effects,
+                widthTaper: {
+                  ...(font.style.effects?.widthTaper ?? { end: 1, mode: 'stroke' }),
+                  start: v,
+                },
+              },
+            })
+          }
+          defaultValue={1}
+          tooltip="Width multiplier at the start of the stroke (or each taper period). 1 = no change."
+        />
+        <Slider
+          label="Taper end"
+          min={0}
+          max={2}
+          step={0.01}
+          value={font.style.effects?.widthTaper?.end ?? 1}
+          onChange={(v) =>
+            setStyle({
+              effects: {
+                ...font.style.effects,
+                widthTaper: {
+                  ...(font.style.effects?.widthTaper ?? { start: 1, mode: 'stroke' }),
+                  end: v,
+                },
+              },
+            })
+          }
+          defaultValue={1}
+          tooltip="Width multiplier at the end of the stroke (or each taper period)."
+        />
+        <label
+          title="Stroke = ramp spans the whole stroke, regardless of length. Length = ramp repeats every N font units (set below) so all strokes get the same physical taper period."
+          style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}
+        >
+          <span style={{ width: 110, flexShrink: 0 }}>Taper mode</span>
+          <select
+            value={font.style.effects?.widthTaper?.mode ?? 'stroke'}
+            onChange={(e) =>
+              setStyle({
+                effects: {
+                  ...font.style.effects,
+                  widthTaper: {
+                    ...(font.style.effects?.widthTaper ?? { start: 1, end: 1 }),
+                    mode: e.target.value as 'stroke' | 'length',
+                  },
+                },
+              })
+            }
+            style={{ flex: 1, padding: '1px 4px' }}
+          >
+            <option value="stroke">stroke</option>
+            <option value="length">length</option>
+          </select>
+        </label>
+        {font.style.effects?.widthTaper?.mode === 'length' && (
+          <Slider
+            label="Taper period"
+            min={5}
+            max={400}
+            step={1}
+            value={font.style.effects?.widthTaper?.length ?? 50}
+            onChange={(v) =>
+              setStyle({
+                effects: {
+                  ...font.style.effects,
+                  widthTaper: {
+                    ...(font.style.effects!.widthTaper!),
+                    length: v,
+                  },
+                },
+              })
+            }
+            defaultValue={50}
+            tooltip="In length-mode, taper repeats every this many font units of arc length."
+          />
+        )}
+        <Slider
           label="Effects seed"
           min={0}
           max={1024}

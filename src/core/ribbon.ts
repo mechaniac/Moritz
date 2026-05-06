@@ -30,6 +30,7 @@ import {
 } from './bezier.js';
 import { blendedNormal, resolveWorldWidth, widthAt, type WorldWidth } from './stroke.js';
 import type { Stroke, StyleSettings, Vec2 } from './types.js';
+import type { WidthMod } from './widthEffects.js';
 import type { Triangle } from './triangulate.js';
 
 export type RibbonOptions =
@@ -241,6 +242,7 @@ export function triangulateStrokeRibbon(
   stroke: Stroke,
   style: StyleSettings,
   opts: RibbonOptions,
+  widthMod?: WidthMod | null,
 ): RibbonResult {
   if (stroke.vertices.length < 2) return { polygon: [], triangles: [] };
   const a = stroke.vertices[0]!.p;
@@ -265,7 +267,8 @@ export function triangulateStrokeRibbon(
     const p = pointAt(seg, tLocal);
     const tan = tangentAt(seg, tLocal);
     const tArc = (cum[segIdx]! + lens[segIdx]! * tLocal) / total;
-    const half = widthAt(profile, tArc) * 0.5;
+    const half =
+      widthAt(profile, tArc) * (widthMod ? widthMod(tArc) : 1) * 0.5;
     const n = blendedNormal(tan, world);
     return {
       p,
@@ -285,7 +288,8 @@ export function triangulateStrokeRibbon(
     const tPrev = tangentAt(segPrev, 1);
     const tNext = tangentAt(segNext, 0);
     const tArc = cum[segIdx + 1]! / total;
-    const half = widthAt(profile, tArc) * 0.5;
+    const half =
+      widthAt(profile, tArc) * (widthMod ? widthMod(tArc) : 1) * 0.5;
     const { left, right } = jointOffsetPair(
       p,
       tPrev,

@@ -30,6 +30,7 @@ import type {
   Vec2,
   WidthProfile,
 } from './types.js';
+import type { WidthMod } from './widthEffects.js';
 
 /**
  * Resolved world-orientation context for the renderer.
@@ -141,6 +142,7 @@ function offsetSegment(
   tArcStart: number,
   tArcEnd: number,
   world: WorldWidth | null,
+  widthMod: WidthMod | null,
 ): SegmentOffsets {
   // Adaptive flattening: collect t-values in [0,1] of `seg` such that each
   // consecutive pair bounds a sub-cubic that is "flat enough" both
@@ -156,7 +158,7 @@ function offsetSegment(
     const p = pointAt(seg, t);
     const tangent = tangentAt(seg, t);
     const tArc = tArcStart + (tArcEnd - tArcStart) * t;
-    const half = widthAt(profile, tArc) / 2;
+    const half = (widthAt(profile, tArc) * (widthMod ? widthMod(tArc) : 1)) / 2;
     const { left, right } = offsetPair(p, tangent, half, world);
     lefts.push(left);
     rights.push(right);
@@ -168,8 +170,8 @@ function offsetSegment(
     rights,
     tangentStart,
     tangentEnd,
-    halfStart: widthAt(profile, tArcStart) / 2,
-    halfEnd: widthAt(profile, tArcEnd) / 2,
+    halfStart: (widthAt(profile, tArcStart) * (widthMod ? widthMod(tArcStart) : 1)) / 2,
+    halfEnd: (widthAt(profile, tArcEnd) * (widthMod ? widthMod(tArcEnd) : 1)) / 2,
     pStart: pointAt(seg, 0),
     pEnd: pointAt(seg, 1),
   };
@@ -439,6 +441,7 @@ export type OutlinePolygon = readonly Vec2[];
 function buildSides(
   stroke: Stroke,
   style: StyleSettings,
+  widthMod: WidthMod | null,
 ): {
   lefts: Vec2[];
   rights: Vec2[];
@@ -478,7 +481,7 @@ function buildSides(
     const tA = acc / total;
     const tB = (acc + lens[i]!) / total;
     offsets.push(
-      offsetSegment(segments[i]!, profile, tA, tB, world),
+      offsetSegment(segments[i]!, profile, tA, tB, world, widthMod),
     );
     acc += lens[i]!;
   }
@@ -572,8 +575,9 @@ function buildSides(
 export function outlineStroke(
   stroke: Stroke,
   style: StyleSettings,
+  widthMod?: WidthMod | null,
 ): OutlinePolygon {
-  const sides = buildSides(stroke, style);
+  const sides = buildSides(stroke, style, widthMod ?? null);
   if (!sides) return [];
   const { lefts, rights, pStart, pEnd, tangentStart, tangentEnd } = sides;
   const capStart = stroke.capStart ?? style.capStart;

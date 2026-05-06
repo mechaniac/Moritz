@@ -10,6 +10,8 @@ import { outlineStroke } from '../stroke.js';
 import { triangulatePolygon } from '../triangulate.js';
 import { triangulateStrokeRibbon } from '../ribbon.js';
 import { jitterActive, jitterPolygon, resolveJitterSeed } from '../effects.js';
+import { makeWidthMod, type WidthMod } from '../widthEffects.js';
+import { segmentLength, strokeToSegments } from '../bezier.js';
 import type { Font, Stroke, StyleSettings, Vec2 } from '../types.js';
 
 export type SvgRenderOptions = {
@@ -46,6 +48,7 @@ function trianglesD(
 function triangulateForStyle(
   stroke: Stroke,
   style: StyleSettings,
+  widthMod: WidthMod | null,
 ): { polygon: readonly Vec2[]; triangles: readonly (readonly [number, number, number])[] } {
   const mode = style.triMode ?? 'earcut';
   if (mode === 'ribbon-fixed') {
@@ -54,7 +57,7 @@ function triangulateForStyle(
       samplesPerSegment: style.ribbonSamples ?? 6,
       spread: style.ribbonSpread ?? 1,
       anchorPull: style.ribbonAnchorPull ?? 0,
-    });
+    }, widthMod);
   }
   if (mode === 'ribbon-density') {
     return triangulateStrokeRibbon(stroke, style, {
@@ -62,10 +65,17 @@ function triangulateForStyle(
       spacing: style.ribbonSpacing ?? 4,
       spread: style.ribbonSpread ?? 1,
       anchorPull: style.ribbonAnchorPull ?? 0,
-    });
+    }, widthMod);
   }
-  const poly = outlineStroke(stroke, style);
+  const poly = outlineStroke(stroke, style, widthMod);
   return { polygon: poly, triangles: triangulatePolygon(poly) };
+}
+
+function strokeArcLen(stroke: Stroke): number {
+  const segs = strokeToSegments(stroke);
+  let total = 0;
+  for (const s of segs) total += segmentLength(s);
+  return total;
 }
 
 const fmt = (n: number): string =>
@@ -87,10 +97,20 @@ export function renderLayoutToSvg(
 
   const paths: string[] = [];
   const shapeJitter = font.style.effects?.shapeJitter;
+  const widthFx =
+    font.style.effects?.widthWiggle || font.style.effects?.widthTaper;
   let strokeSalt = 0;
   for (const pg of layoutResult.glyphs) {
-    for (const stroke of pg.glyph.strokes) {
-      const { polygon, triangles } = triangulateForStyle(stroke, font.style);
+    for (let si = 0; si < pg.glyph.strokes.length; si++) {
+      const stroke = pg.glyph.strokes[si]!;
+      const widthMod = widthFx
+        ? makeWidthMod(
+            font.style,
+            { instanceIndex: pg.instanceIndex * 31 + si, char: pg.char },
+            strokeArcLen(stroke),
+          )
+        : null;
+      const { polygon, triangles } = triangulateForStyle(stroke, font.style, widthMod);
       if (polygon.length === 0 || triangles.length === 0) continue;
       const jittered = jitterActive(shapeJitter)
         ? jitterPolygon(

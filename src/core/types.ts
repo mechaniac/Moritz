@@ -163,6 +163,40 @@ export type EffectsSettings = {
   readonly splineJitter?: JitterEffect;
   /** Perturb each outline polygon vertex after stroke outlining. */
   readonly shapeJitter?: JitterEffect;
+  /** Random multiplicative wobble of the stroke width along its arc length. */
+  readonly widthWiggle?: WidthWiggle;
+  /** Deterministic taper applied as a width multiplier along the stroke. */
+  readonly widthTaper?: WidthTaper;
+};
+
+/**
+ * Width multiplied by `1 + amount * noise(arcDistance * frequency)`, where
+ * noise is a value-noise sequence in [-1, 1] seeded by (seed, scope, ctx).
+ *
+ *   amount    : magnitude of the wobble (0 = off, typical 0..1).
+ *   frequency : cycles per font unit along the stroke arc (0..1 typical).
+ */
+export type WidthWiggle = {
+  readonly amount: number;
+  readonly frequency: number;
+  readonly scope?: EffectScope; // default 'instance'
+  readonly seed?: number;
+};
+
+/**
+ * Multiplicative ramp from `start` at the stroke start to `end` at the
+ * stroke end (in normalized arc t, 0..1).
+ *
+ *   mode === 'stroke' : the ramp spans the whole stroke (default).
+ *   mode === 'length' : the ramp REPEATS every `length` font units of arc
+ *                       so all strokes get the same physical taper period
+ *                       regardless of length.
+ */
+export type WidthTaper = {
+  readonly start: number;
+  readonly end: number;
+  readonly mode?: 'stroke' | 'length'; // default 'stroke'
+  readonly length?: number;            // required for mode === 'length'
 };
 
 export type Font = {

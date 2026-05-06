@@ -19,9 +19,10 @@
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { outlineStroke } from '../../core/stroke.js';
-import { strokeToSegments } from '../../core/bezier.js';
+import { segmentLength, strokeToSegments } from '../../core/bezier.js';
 import { triangulatePolygon } from '../../core/triangulate.js';
 import { triangulateStrokeRibbon } from '../../core/ribbon.js';
+import { makeWidthMod } from '../../core/widthEffects.js';
 import { layout as layoutText } from '../../core/layout.js';
 import type { GlyphViewOptions } from '../../state/store.js';
 import { computeLayerGeometry } from './guides.js';
@@ -314,8 +315,11 @@ function ThumbSvg(props: {
   const { glyph, font } = props;
   const paths = useMemo(
     () =>
-      glyph.strokes.map((s) => {
-        const { polygon, triangles } = triangulateForStyle(s, font.style);
+      glyph.strokes.map((s, i) => {
+        const { polygon, triangles } = triangulateForStyle(s, font.style, {
+          instanceIndex: i,
+          char: glyph.char,
+        });
         return trianglesD(polygon, triangles);
       }),
     [glyph, font.style],
@@ -808,7 +812,10 @@ function GlyphEditor(props: {
                 return (
                   <g key={`other-${c}`} opacity={0.05}>
                     {g.strokes.map((s, i) => {
-                      const { polygon, triangles } = triangulateForStyle(s, font.style);
+                      const { polygon, triangles } = triangulateForStyle(s, font.style, {
+                        instanceIndex: i,
+                        char: c,
+                      });
                       return <path key={`o${i}`} d={trianglesD(polygon, triangles)} />;
                     })}
                   </g>
@@ -824,7 +831,10 @@ function GlyphEditor(props: {
               pointerEvents="none"
             >
               {glyph.strokes.map((s, i) => {
-                const { polygon, triangles } = triangulateForStyle(s, font.style);
+                const { polygon, triangles } = triangulateForStyle(s, font.style, {
+                  instanceIndex: i,
+                  char,
+                });
                 return <path key={`o${i}`} d={trianglesD(polygon, triangles)} />;
               })}
             </g>
@@ -886,7 +896,10 @@ function GlyphEditor(props: {
               strokeLinecap="round"
             >
               {glyph.strokes.map((s, i) => {
-                const { polygon, triangles } = triangulateForStyle(s, font.style);
+                const { polygon, triangles } = triangulateForStyle(s, font.style, {
+                  instanceIndex: i,
+                  char,
+                });
                 const sw = 0.6 / SCALE;
                 return (
                   <g key={`t${i}`}>
@@ -1419,8 +1432,11 @@ function KerningEntry(props: {
 
     const groups = result.glyphs.map(({ glyph, origin }) => ({
       origin,
-      paths: glyph.strokes.map((s) => {
-        const { polygon, triangles } = triangulateForStyle(s, font.style);
+      paths: glyph.strokes.map((s, i) => {
+        const { polygon, triangles } = triangulateForStyle(s, font.style, {
+          instanceIndex: i,
+          char: glyph.char,
+        });
         return trianglesD(polygon, triangles);
       }),
     }));
@@ -1888,7 +1904,16 @@ function trianglesD(
 function triangulateForStyle(
   stroke: Stroke,
   style: StyleSettings,
+  ctx?: { instanceIndex: number; char: string },
 ): { polygon: readonly Vec2[]; triangles: readonly (readonly [number, number, number])[] } {
+  const widthFx = style.effects?.widthWiggle || style.effects?.widthTaper;
+  let widthMod = null as ReturnType<typeof makeWidthMod>;
+  if (widthFx && ctx) {
+    const segs = strokeToSegments(stroke);
+    let arc = 0;
+    for (const s of segs) arc += segmentLength(s);
+    widthMod = makeWidthMod(style, ctx, arc);
+  }
   const mode = style.triMode ?? 'earcut';
   if (mode === 'ribbon-fixed') {
     return triangulateStrokeRibbon(stroke, style, {
@@ -1896,7 +1921,7 @@ function triangulateForStyle(
       samplesPerSegment: style.ribbonSamples ?? 6,
       spread: style.ribbonSpread ?? 1,
       anchorPull: style.ribbonAnchorPull ?? 0,
-    });
+    }, widthMod);
   }
   if (mode === 'ribbon-density') {
     return triangulateStrokeRibbon(stroke, style, {
@@ -1904,9 +1929,9 @@ function triangulateForStyle(
       spacing: style.ribbonSpacing ?? 4,
       spread: style.ribbonSpread ?? 1,
       anchorPull: style.ribbonAnchorPull ?? 0,
-    });
+    }, widthMod);
   }
-  const poly = outlineStroke(stroke, style);
+  const poly = outlineStroke(stroke, style, widthMod);
   return { polygon: poly, triangles: triangulatePolygon(poly) };
 }
 
