@@ -582,15 +582,16 @@ function GlyphEditor(props: {
               </g>
             );
           })()}
-          {/* guides — under the glyph fill, above the box stroke */}
+          {/* guides — anchored to the *default* box reference frame, so they
+              never slide when the glyph's own box.{w,h} changes. */}
           {view.guides.enabled && (
             <g
-              transform={xform}
+              transform={`translate(${defBoxX} ${defBoxY}) scale(${SCALE})`}
               pointerEvents="none"
             >
               {view.guides.layers.map((l) => {
                 if (!l.visible) return null;
-                const g = computeLayerGeometry(l, glyph.box.w, glyph.box.h);
+                const g = computeLayerGeometry(l, DEFAULT_BOX, DEFAULT_BOX);
                 const sw = l.strokeWidth / SCALE;
                 return (
                   <g key={l.id} stroke={l.color} fill={l.color} opacity={l.opacity}>
