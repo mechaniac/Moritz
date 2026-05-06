@@ -550,25 +550,59 @@ function GlyphEditor(props: {
             strokeWidth={1}
             pointerEvents="none"
           />
-          {/* reference font (system/web font) traced behind the ink. Sits
-              on the glyph baseline (y = gBoxY + box.h) and is sized so its
-              cap-height matches the box height. */}
-          {view.refFontFamily && (
-            <text
-              className="mz-ref-glyph"
-              x={cx}
-              y={gBoxY + glyph.box.h * SCALE}
-              fontFamily={view.refFontFamily}
-              fontSize={glyph.box.h * SCALE}
-              textAnchor="middle"
-              fill="#000"
-              opacity={view.refFontOpacity}
-              pointerEvents="none"
-              style={{ userSelect: 'none' }}
-            >
-              {char}
-            </text>
-          )}
+          {/* reference font (system/web font) traced behind the ink. The
+              baseline + cap- or x-height are read from the first visible
+              calligraphy guide layer (if any); otherwise it falls back to
+              the glyph box. We assume the browser font has cap-height ≈
+              0.70em and x-height ≈ 0.50em, which is true for nearly all
+              the curated families. */}
+          {view.refFontFamily && (() => {
+            const calli = view.guides.layers.find(
+              (l) => l.visible && l.kind.kind === 'calligraphy',
+            );
+            // Default: baseline at glyph-box bottom, cap-height = box.h.
+            let baselinePx = gBoxY + glyph.box.h * SCALE;
+            let capPx = glyph.box.h * SCALE;
+            let xPx = capPx * 0.5;
+            if (calli && calli.kind.kind === 'calligraphy') {
+              const k = calli.kind;
+              const cap  = Math.max(0.45, Math.min(0.75, k.capHeight));
+              const xr   = Math.max(0.42, Math.min(0.65, k.xHeight));
+              const asc  = Math.max(0.00, Math.min(0.18, k.ascender));
+              const desc = Math.max(0.10, Math.min(0.32, k.descender));
+              const w    = Math.max(-0.10, Math.min(0.10, k.weight));
+              const total = asc + cap + desc;
+              const minB = asc + cap;
+              const maxB = 1 - desc;
+              const natural = (1 - total) * 0.5 + asc + cap;
+              const baseline = Math.max(minB, Math.min(maxB, natural + w));
+              baselinePx = defBoxY + baseline * DEFAULT_BOX * SCALE;
+              capPx = cap * DEFAULT_BOX * SCALE;
+              xPx = xr * cap * DEFAULT_BOX * SCALE;
+            }
+            // Use x-height for lowercase ascii letters that have no ascender,
+            // cap-height for everything else (uppercase, digits, ascender
+            // lowercase like b/d/f/h/k/l/t, punctuation).
+            const isXHeight = /^[acemnorsuvwxz]$/.test(char);
+            // CSS font cap-height ≈ 0.70em, x-height ≈ 0.50em (curated set).
+            const fontSize = isXHeight ? xPx / 0.5 : capPx / 0.7;
+            return (
+              <text
+                className="mz-ref-glyph"
+                x={cx}
+                y={baselinePx}
+                fontFamily={view.refFontFamily}
+                fontSize={fontSize}
+                textAnchor="middle"
+                fill="#000"
+                opacity={view.refFontOpacity}
+                pointerEvents="none"
+                style={{ userSelect: 'none' }}
+              >
+                {char}
+              </text>
+            );
+          })()}
           {/* sidebearing guides — vertical lines indicating advance edges */}
           {(() => {
             const lsb = glyph.sidebearings?.left ?? 0;
