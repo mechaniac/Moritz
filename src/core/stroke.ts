@@ -303,11 +303,7 @@ function trimHead(
  * bulge into — defined by `dir` pointing OUTWARD from the stroke (i.e. for
  * an end cap pass the forward tangent; for a start cap pass the reverse of
  * the start tangent). The arc midpoint always lies on the +dir side.
- *
- * Currently unused: while we tune the bevel logic with minimum-vertex
- * polygons, all caps draw flat. Kept for re-enabling later.
  */
-// @ts-expect-error temporarily unused
 function roundCap(
   center: Vec2,
   from: Vec2,
@@ -324,7 +320,6 @@ function roundCap(
   let dRaw = a1 - a0;
   while (dRaw > Math.PI) dRaw -= 2 * Math.PI;
   while (dRaw < -Math.PI) dRaw += 2 * Math.PI;
-  // Now dRaw is in (-π, π]. The other sweep is dRaw ± 2π (opposite sign).
   const dOther = dRaw > 0 ? dRaw - 2 * Math.PI : dRaw + 2 * Math.PI;
   const midDot = (d: number): number => {
     const a = a0 + d / 2;
@@ -347,15 +342,36 @@ function buildCap(
   to: Vec2,
   dir: Vec2,
 ): Vec2[] {
-  // TODO: while we're tuning the bevel logic with minimum-vertex polygons,
-  // ALL cap shapes draw flat (zero subdivisions). Re-enable round / tapered
-  // / custom once joins are stable.
-  void cap;
-  void center;
-  void from;
-  void to;
-  void dir;
-  return [];
+  // `from` and `to` are the perpendicular offset endpoints of the stroke at
+  // this cap; the polygon edge from→...→to closes the outline. Returning []
+  // gives a FLAT cap (a straight chord between from and to).
+  const kind = typeof cap === 'string' ? cap : cap.kind;
+  switch (kind) {
+    case 'flat':
+      return [];
+    case 'round': {
+      // Half-width = distance from center to either offset endpoint.
+      // Use 12 fan points by default — visually smooth at typical glyph zoom.
+      return roundCap(center, from, to, dir, 12);
+    }
+    case 'tapered': {
+      // A single tip point pushed OUT along `dir` by one half-width, so the
+      // cap forms a simple triangle from `from` to tip to `to`.
+      const half = Math.hypot(from.x - center.x, from.y - center.y);
+      const dlen = Math.hypot(dir.x, dir.y) || 1;
+      return [
+        {
+          x: center.x + (dir.x / dlen) * half,
+          y: center.y + (dir.y / dlen) * half,
+        },
+      ];
+    }
+    case 'custom':
+      // TODO: custom path caps (CapShape.path). For now fall back to flat.
+      return [];
+    default:
+      return [];
+  }
 }
 
 export type OutlinePolygon = readonly Vec2[];

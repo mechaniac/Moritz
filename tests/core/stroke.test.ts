@@ -45,6 +45,7 @@ describe('stroke', () => {
   });
 
   it('outlineStroke produces a closed-ish polygon for a horizontal segment', () => {
+    const flatStyle: StyleSettings = { ...style, capStart: 'flat', capEnd: 'flat' };
     const s: Stroke = {
       id: 'a',
       vertices: [
@@ -52,8 +53,8 @@ describe('stroke', () => {
         { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO },
       ],
     };
-    const poly = outlineStroke(s, style);
-    // Minimum-vertex regime: 2 endpoints × 2 sides = 4 vertices.
+    const poly = outlineStroke(s, flatStyle);
+    // Flat caps + minimum-vertex regime: 2 endpoints × 2 sides = 4 vertices.
     expect(poly.length).toBe(4);
     // For a horizontal segment with width 10, max |y| should be ~5.
     const maxAbsY = poly.reduce((m, p) => Math.max(m, Math.abs(p.y)), 0);
@@ -110,9 +111,7 @@ describe('stroke', () => {
     }
   });
 
-  it('outlineStroke: round cap currently draws flat (cap subdivision disabled)', () => {
-    // While we tune the bevel logic with minimum-vertex polygons, all caps
-    // render flat — no samples beyond the endpoint.
+  it('outlineStroke: round cap bulges past the endpoint by ~half-width', () => {
     const s: Stroke = {
       id: 'rc',
       vertices: [
@@ -120,12 +119,17 @@ describe('stroke', () => {
         { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO },
       ],
     };
-    const poly = outlineStroke(s, style);
-    const maxX = poly.reduce((m, p) => Math.max(m, p.x), 0);
-    expect(maxX).toBeLessThanOrEqual(100.01);
+    const poly = outlineStroke(s, style); // default capStart/capEnd = 'round'
+    const maxX = poly.reduce((m, p) => Math.max(m, p.x), -Infinity);
+    const minX = poly.reduce((m, p) => Math.min(m, p.x), Infinity);
+    // Width is 10 → half = 5 → round cap reaches ~x=105 / x=-5.
+    expect(maxX).toBeGreaterThan(104);
+    expect(maxX).toBeLessThan(106);
+    expect(minX).toBeLessThan(-4);
+    expect(minX).toBeGreaterThan(-6);
   });
 
-  it('outlineStroke: tapered cap currently draws flat (cap subdivision disabled)', () => {
+  it('outlineStroke: tapered cap forms a triangular tip past the endpoint', () => {
     const taperStyle: StyleSettings = { ...style, capStart: 'tapered', capEnd: 'tapered' };
     const s: Stroke = {
       id: 'tc',
@@ -135,11 +139,11 @@ describe('stroke', () => {
       ],
     };
     const poly = outlineStroke(s, taperStyle);
-    // No samples beyond the endpoints in either direction.
-    for (const p of poly) {
-      expect(p.x).toBeGreaterThanOrEqual(-0.01);
-      expect(p.x).toBeLessThanOrEqual(100.01);
-    }
+    // Half-width = 5 → tip extends to x = 105 / x = -5.
+    const maxX = poly.reduce((m, p) => Math.max(m, p.x), -Infinity);
+    const minX = poly.reduce((m, p) => Math.min(m, p.x), Infinity);
+    expect(maxX).toBeCloseTo(105, 1);
+    expect(minX).toBeCloseTo(-5, 1);
   });
 
   it('outlineStroke: flat cap adds no extra points past the endpoint', () => {

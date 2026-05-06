@@ -25,7 +25,7 @@ import {
   moveHandle,
   setBreakTangent,
 } from '../../core/glyphOps.js';
-import type { Font, Glyph, Stroke, Vec2 } from '../../core/types.js';
+import type { CapShape, Font, Glyph, Stroke, Vec2 } from '../../core/types.js';
 import { useAppStore } from '../../state/store.js';
 
 const PADDING = 20;
@@ -194,6 +194,7 @@ function GlyphEditor(props: {
 }): JSX.Element {
   const { char, glyph, onChange, view, setView } = props;
   const font = useAppStore((s) => s.font);
+  const setStyle = useAppStore((s) => s.setStyle);
   const [selection, setSelection] = useState<Selection>({ kind: 'none' });
   const [scale, setScale] = useState<number>(5);
   const SCALE = scale;
@@ -477,6 +478,16 @@ function GlyphEditor(props: {
             </label>
           );
         })()}
+        <CapSelect
+          label="Cap start"
+          value={normalizeSimpleCap(font.style.capStart)}
+          onChange={(v) => setStyle({ capStart: v })}
+        />
+        <CapSelect
+          label="Cap end"
+          value={normalizeSimpleCap(font.style.capEnd)}
+          onChange={(v) => setStyle({ capEnd: v })}
+        />
         <span style={{ color: '#666', fontSize: 12, marginLeft: 'auto' }}>
           Drag anchors / handles. Alt-click stroke = insert anchor. Alt-click
           anchor = toggle corner/smooth.
@@ -853,6 +864,32 @@ function polygonD(_points: readonly Vec2[]): string {
 }
 // Silence "declared but unused" — exposed for future reuse by other tools.
 void polygonD;
+
+type SimpleCap = 'round' | 'flat' | 'tapered';
+function normalizeSimpleCap(c: CapShape): SimpleCap {
+  return c === 'round' || c === 'flat' || c === 'tapered' ? c : 'round';
+}
+
+function CapSelect(props: {
+  label: string;
+  value: SimpleCap;
+  onChange: (v: SimpleCap) => void;
+}): JSX.Element {
+  return (
+    <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+      <span style={{ color: '#666' }}>{props.label}</span>
+      <select
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value as SimpleCap)}
+        style={{ fontSize: 12 }}
+      >
+        <option value="round">round</option>
+        <option value="flat">flat</option>
+        <option value="tapered">tapered</option>
+      </select>
+    </label>
+  );
+}
 
 // SINGLE SOURCE OF TRUTH for the rendered fill: build the path d from the
 // SAME triangle list the debug overlay uses, so the visible shape is
