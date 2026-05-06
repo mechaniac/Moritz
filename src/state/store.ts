@@ -21,6 +21,8 @@ export type GlyphViewOptions = {
    *  reference. Empty string = none. */
   refFontFamily: string;
   refFontOpacity: number; // 0..1
+  /** Pixels-per-font-unit zoom in the glyph editor canvas. */
+  editorScale: number;
   guides: GuideSettings;
 };
 
@@ -63,6 +65,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     showTriangles: false,
     refFontFamily: '',
     refFontOpacity: 0.18,
+    editorScale: 5,
     guides: defaultGuides(),
   },
   setStyle: (patch) =>

@@ -347,8 +347,7 @@ function GlyphEditor(props: {
 }): JSX.Element {
   const { char, glyph, onChange, view, font } = props;
   const [selection, setSelection] = useState<Selection>({ kind: 'none' });
-  const [scale, setScale] = useState<number>(5);
-  const SCALE = scale;
+  const SCALE = view.editorScale;
   const dragRef = useRef<Drag | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
@@ -540,18 +539,6 @@ function GlyphEditor(props: {
           <button onClick={onDeleteSelected} disabled={selection.kind === 'none'}>
             − Delete selected
           </button>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ color: '#666', fontSize: 12 }}>Zoom</span>
-            <input
-              type="range"
-              min={1}
-              max={10}
-              step={0.5}
-              value={scale}
-              onChange={(e) => setScale(parseFloat(e.target.value))}
-              style={{ width: 100 }}
-            />
-          </span>
           {/* Reserved slot for the per-anchor 'Break tangent' control so
               the bar layout doesn't shift when an anchor is selected. */}
           <label

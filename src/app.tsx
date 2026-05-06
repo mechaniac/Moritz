@@ -13,6 +13,8 @@ const tabs: { id: ModuleId; label: string }[] = [
 export function App(): JSX.Element {
   const module = useAppStore((s) => s.module);
   const setModule = useAppStore((s) => s.setModule);
+  const editorScale = useAppStore((s) => s.glyphView.editorScale);
+  const setGlyphView = useAppStore((s) => s.setGlyphView);
 
   return (
     <div
@@ -56,6 +58,24 @@ export function App(): JSX.Element {
           ))}
         </nav>
         <div style={{ flex: 1 }} />
+        {module === 'glyphsetter' && (
+          <label
+            className="mz-header__zoom"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#444' }}
+            title="Glyph editor zoom"
+          >
+            Zoom
+            <input
+              type="range"
+              min={1}
+              max={10}
+              step={0.5}
+              value={editorScale}
+              onChange={(e) => setGlyphView({ editorScale: parseFloat(e.target.value) })}
+              style={{ width: 120 }}
+            />
+          </label>
+        )}
         <FontBar />
       </header>
       <main
