@@ -300,6 +300,20 @@ function GlyphEditor(props: {
   const viewW = Math.max(DEFAULT_BOX, glyph.box.w) * SCALE + PADDING * 2;
   const viewH = Math.max(DEFAULT_BOX, glyph.box.h) * SCALE + PADDING * 2;
 
+  // Glyph artwork is anchored relative to the *default* box, which is itself
+  // pinned to the canvas centre. This way the glyph and the default reference
+  // frame never move on screen — only the current glyph-box outline grows or
+  // shrinks symmetrically around the centre when the user resizes box.{w,h}.
+  const cx = viewW / 2;
+  const cy = viewH / 2;
+  const originX = cx - (DEFAULT_BOX * SCALE) / 2; // glyph (0,0) on screen
+  const originY = cy - (DEFAULT_BOX * SCALE) / 2;
+  const defBoxX = originX;
+  const defBoxY = originY;
+  const gBoxX = cx - (glyph.box.w * SCALE) / 2;
+  const gBoxY = cy - (glyph.box.h * SCALE) / 2;
+  const xform = `translate(${originX} ${originY}) scale(${SCALE})`;
+
   const toGlyph = useCallback(
     (clientX: number, clientY: number): Vec2 | null => {
       const svg = svgRef.current;
@@ -311,11 +325,11 @@ function GlyphEditor(props: {
       if (!ctm) return null;
       const local = pt.matrixTransform(ctm.inverse());
       return {
-        x: (local.x - PADDING) / SCALE,
-        y: (local.y - PADDING) / SCALE,
+        x: (local.x - originX) / SCALE,
+        y: (local.y - originY) / SCALE,
       };
     },
-    [SCALE],
+    [SCALE, originX, originY],
   );
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -498,8 +512,8 @@ function GlyphEditor(props: {
               to the current glyph box read as deviations from default */}
           <rect
             className="mz-default-box"
-            x={PADDING}
-            y={PADDING}
+            x={defBoxX}
+            y={defBoxY}
             width={DEFAULT_BOX * SCALE}
             height={DEFAULT_BOX * SCALE}
             fill="none"
@@ -512,8 +526,8 @@ function GlyphEditor(props: {
               default-box reference frame stays visible at all times. */}
           <rect
             className="mz-glyph-box"
-            x={PADDING}
-            y={PADDING}
+            x={gBoxX}
+            y={gBoxY}
             width={glyph.box.w * SCALE}
             height={glyph.box.h * SCALE}
             fill="none"
@@ -526,10 +540,10 @@ function GlyphEditor(props: {
             const lsb = glyph.sidebearings?.left ?? 0;
             const rsb = glyph.sidebearings?.right ?? 0;
             if (lsb === 0 && rsb === 0) return null;
-            const xLeft = PADDING - lsb * SCALE;
-            const xRight = PADDING + (glyph.box.w + rsb) * SCALE;
-            const y0 = PADDING;
-            const y1 = PADDING + glyph.box.h * SCALE;
+            const xLeft = gBoxX - lsb * SCALE;
+            const xRight = gBoxX + (glyph.box.w + rsb) * SCALE;
+            const y0 = gBoxY;
+            const y1 = gBoxY + glyph.box.h * SCALE;
             return (
               <g className="mz-sidebearings" pointerEvents="none">
                 <line
@@ -556,7 +570,7 @@ function GlyphEditor(props: {
           {/* guides — under the glyph fill, above the box stroke */}
           {view.guides.enabled && (
             <g
-              transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
+              transform={xform}
               pointerEvents="none"
             >
               {view.guides.layers.map((l) => {
@@ -598,7 +612,7 @@ function GlyphEditor(props: {
               Each glyph is drawn at 5% on its own <g> so opacities accumulate. */}
           {view.showOtherGlyphs && (
             <g
-              transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
+              transform={xform}
               fill="rgb(220,30,30)"
               pointerEvents="none"
             >
@@ -618,7 +632,7 @@ function GlyphEditor(props: {
           {/* outlined preview (faded) — fill comes from the triangulated mesh */}
           {view.showFillPreview && (
             <g
-              transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
+              transform={xform}
               fill={`rgba(0,0,0,${view.fillOpacity})`}
               pointerEvents="none"
             >
@@ -631,7 +645,7 @@ function GlyphEditor(props: {
           {/* debug border overlay */}
           {view.showBorders && (
             <g
-              transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
+              transform={xform}
               fill="none"
               pointerEvents="none"
               strokeLinejoin="round"
@@ -678,7 +692,7 @@ function GlyphEditor(props: {
           {/* triangulation overlay */}
           {view.showTriangles && (
             <g
-              transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
+              transform={xform}
               fill="none"
               pointerEvents="none"
               strokeLinejoin="round"
@@ -710,7 +724,7 @@ function GlyphEditor(props: {
             </g>
           )}
           {/* control geometry */}
-          <g transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}>
+          <g transform={xform}>
             {glyph.strokes.map((s, sIdx) => (
               <StrokeOverlay
                 key={s.id}
