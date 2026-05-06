@@ -52,12 +52,12 @@ describe('layout', () => {
     expect(r.glyphs[2]!.origin.x).toBe(210);
   });
 
-  it('applies kerning between matching pairs only', () => {
-    const A = baseGlyph({ char: 'A' });
+  it('applies per-glyph kerning to the matching next char only', () => {
+    const A = baseGlyph({ char: 'A', kerning: { V: -15 } });
     const V = baseGlyph({ char: 'V' });
-    const f = fontWith({ A, V }, { kerning: { AV: -15 } });
+    const f = fontWith({ A, V });
     const r = layout('AVA', f);
-    // A at 0, V at 100 + (-15) = 85, A at 85 + 100 = 185 (no AA pair)
+    // A at 0, V at 100 + (-15) = 85, A at 85 + 100 = 185 (V has no kerning to A)
     expect(r.glyphs[1]!.origin.x).toBe(85);
     expect(r.glyphs[2]!.origin.x).toBe(185);
   });

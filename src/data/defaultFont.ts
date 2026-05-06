@@ -499,6 +499,25 @@ const allGlyphs: Glyph[] = [
 const glyphsRecord: Record<string, Glyph> = {};
 for (const g of allGlyphs) glyphsRecord[g.char] = g;
 
+// Sensible default kerning pairs for the base font. Values are in font units
+// (post-style scale). Negative tightens, positive opens up. Keyed by the
+// FIRST char of the pair; the inner record maps the SECOND char to its delta.
+const KERNING_DEFAULTS: Readonly<Record<string, Readonly<Record<string, number>>>> = {
+  A: { V: -10, W: -10, T: -8, Y: -10, v: -6, w: -6, y: -6 },
+  F: { A: -8, a: -4, '.': -12, ',': -12 },
+  L: { T: -10, V: -10, W: -10, Y: -10, y: -6 },
+  P: { A: -10, a: -4, '.': -12, ',': -12 },
+  T: { A: -10, a: -10, e: -10, o: -10, u: -8, r: -6, '.': -10, ',': -10 },
+  V: { A: -10, a: -8, e: -6, o: -6, r: -4, '.': -10, ',': -10 },
+  W: { A: -8, a: -6, e: -6, o: -6, '.': -8, ',': -8 },
+  Y: { A: -10, a: -8, e: -8, o: -8, u: -6, '.': -10, ',': -10 },
+  r: { ',': -6, '.': -6 },
+};
+for (const [ch, kerning] of Object.entries(KERNING_DEFAULTS)) {
+  const g = glyphsRecord[ch];
+  if (g) glyphsRecord[ch] = { ...g, kerning };
+}
+
 export const defaultFont: Font = {
   id: 'moritz-base',
   name: 'Moritz Base',

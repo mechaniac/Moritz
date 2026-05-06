@@ -78,6 +78,11 @@ export function transformGlyph(style: StyleSettings, g: Glyph): Glyph {
       : undefined,
     baselineOffset:
       g.baselineOffset !== undefined ? g.baselineOffset * style.scaleY : undefined,
+    kerning: g.kerning
+      ? Object.fromEntries(
+          Object.entries(g.kerning).map(([k, v]) => [k, v * style.scaleX]),
+        )
+      : undefined,
     strokes: g.strokes.map((s) => transformStroke(m, s)),
   };
 }

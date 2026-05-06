@@ -65,6 +65,12 @@ export type Glyph = {
    * the glyph down. Defaults to 0.
    */
   readonly baselineOffset?: number;
+  /**
+   * Per-glyph kerning to the *next* glyph. Keyed by the next glyph's char
+   * (single grapheme). Value is added to the advance after this glyph.
+   * Negative tightens, positive opens up. In font units (post-style scale).
+   */
+  readonly kerning?: Readonly<Record<string, number>>;
 };
 
 /**
@@ -117,12 +123,6 @@ export type StyleSettings = {
   readonly spaceWidth?: number;
   /** Multiplier on the tallest glyph for line stepping. Default 1.2. */
   readonly lineHeight?: number;
-  /**
-   * Kerning pair table, keyed by the 2-character pair (e.g. `"AV"`).
-   * Value is added to the advance after the first character of the pair.
-   * Negative values bring the second glyph closer.
-   */
-  readonly kerning?: Readonly<Record<string, number>>;
 };
 
 export type TriMode = 'earcut' | 'ribbon-fixed' | 'ribbon-density';

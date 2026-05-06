@@ -22,6 +22,7 @@ import { outlineStroke } from '../../core/stroke.js';
 import { strokeToSegments } from '../../core/bezier.js';
 import { triangulatePolygon } from '../../core/triangulate.js';
 import { triangulateStrokeRibbon } from '../../core/ribbon.js';
+import { layout as layoutText } from '../../core/layout.js';
 import type { GlyphViewOptions } from '../../state/store.js';
 import { computeLayerGeometry } from './guides.js';
 import { GuidesPanel } from './GuidesPanel.js';
@@ -152,6 +153,7 @@ export function GlyphSetter(): JSX.Element {
           setStyle={setStyle}
           glyph={glyph}
           updateGlyph={updateSelectedGlyph}
+          font={font}
         />
       </div>
     </div>
@@ -167,19 +169,6 @@ function GlyphGrid(props: {
   font: Font;
   view: GlyphViewOptions;
 }): JSX.Element {
-  // Uniform thumbnail viewport across all glyphs so relative sizes are visible.
-  const refBox = useMemo(() => {
-    let w = 0;
-    let h = 0;
-    for (const c of props.chars) {
-      const g = props.font.glyphs[c];
-      if (!g) continue;
-      if (g.box.w > w) w = g.box.w;
-      if (g.box.h > h) h = g.box.h;
-    }
-    return { w: w || 100, h: h || 140 };
-  }, [props.chars, props.font]);
-
   return (
     <aside
       className="mz-glyphsetter__grid"
@@ -204,7 +193,7 @@ function GlyphGrid(props: {
               onClick={() => props.onSelect(c)}
               title={c}
               style={{
-                aspectRatio: `${refBox.w} / ${refBox.h}`,
+                aspectRatio: `${g.box.w} / ${g.box.h}`,
                 background: active ? '#222' : '#fff',
                 color: active ? '#fff' : '#222',
                 border: '1px solid #ccc',
@@ -215,7 +204,7 @@ function GlyphGrid(props: {
                 flexDirection: 'column',
               }}
             >
-              <ThumbSvg glyph={g} font={props.font} refBox={refBox} view={props.view} />
+              <ThumbSvg glyph={g} font={props.font} view={props.view} />
               <div style={{ fontSize: 10, marginTop: 2 }}>{c}</div>
             </button>
           );
@@ -228,10 +217,9 @@ function GlyphGrid(props: {
 function ThumbSvg(props: {
   glyph: Glyph;
   font: Font;
-  refBox: { w: number; h: number };
   view: GlyphViewOptions;
 }): JSX.Element {
-  const { glyph, font, refBox } = props;
+  const { glyph, font } = props;
   const paths = useMemo(
     () =>
       glyph.strokes.map((s) => {
@@ -240,16 +228,13 @@ function ThumbSvg(props: {
       }),
     [glyph, font.style],
   );
-  // Center this glyph within the shared reference box so relative sizes show.
-  const dx = (refBox.w - glyph.box.w) / 2;
-  const dy = (refBox.h - glyph.box.h) / 2;
   return (
     <svg
-      viewBox={`0 0 ${refBox.w} ${refBox.h}`}
+      viewBox={`0 0 ${glyph.box.w} ${glyph.box.h}`}
       style={{ flex: 1, width: '100%', height: 'auto', display: 'block' }}
       preserveAspectRatio="xMidYMid meet"
     >
-      <g transform={`translate(${dx} ${dy})`} fill="currentColor">
+      <g fill="currentColor">
         {paths.map((d, i) => (
           <path key={i} d={d} />
         ))}
@@ -718,8 +703,9 @@ function Inspector(props: {
   setStyle: (patch: Partial<StyleSettings>) => void;
   glyph: Glyph | undefined;
   updateGlyph: (fn: (g: Glyph) => Glyph) => void;
+  font: Font;
 }): JSX.Element {
-  const { view, setView, style, setStyle, glyph, updateGlyph } = props;
+  const { view, setView, style, setStyle, glyph, updateGlyph, font } = props;
   return (
     <aside
       className="mz-glyphsetter__inspector"
@@ -849,6 +835,9 @@ function Inspector(props: {
           />
         </Section>
       )}
+      {glyph && (
+        <KerningSection glyph={glyph} font={font} updateGlyph={updateGlyph} />
+      )}
       <Section
         title="Preview style"
         tone="style"
@@ -940,6 +929,214 @@ function Inspector(props: {
         />
       </Section>
     </aside>
+  );
+}
+
+// ---------- Kerning section ------------------------------------------------
+
+function KerningSection(props: {
+  glyph: Glyph;
+  font: Font;
+  updateGlyph: (fn: (g: Glyph) => Glyph) => void;
+}): JSX.Element {
+  const { glyph, font, updateGlyph } = props;
+  const [draftNext, setDraftNext] = useState('');
+
+  const pairs = glyph.kerning ?? {};
+  const entries = Object.entries(pairs).sort(([a], [b]) => a.localeCompare(b));
+
+  const setValue = (next: string, v: number): void => {
+    updateGlyph((g) => ({
+      ...g,
+      kerning: { ...(g.kerning ?? {}), [next]: v },
+    }));
+  };
+  const remove = (next: string): void => {
+    updateGlyph((g) => {
+      if (!g.kerning) return g;
+      const k = { ...g.kerning };
+      delete k[next];
+      return { ...g, kerning: Object.keys(k).length === 0 ? undefined : k };
+    });
+  };
+  const add = (): void => {
+    const ch = [...draftNext][0];
+    if (!ch) return;
+    if (pairs[ch] !== undefined) return;
+    if (!font.glyphs[ch]) return;
+    setValue(ch, 0);
+    setDraftNext('');
+  };
+
+  const canAdd = (() => {
+    const ch = [...draftNext][0];
+    return !!ch && !!font.glyphs[ch] && pairs[ch] === undefined;
+  })();
+
+  return (
+    <Section
+      title="Kerning"
+      tone="local"
+      subtitle={`${entries.length} pair${entries.length === 1 ? '' : 's'}`}
+    >
+      <div
+        className="mz-kerning__add"
+        title="Type the next character that should kern after this glyph, then click + Pair."
+        style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12 }}
+      >
+        <span style={{ color: '#666', flexShrink: 0 }}>
+          <code style={{ fontFamily: 'monospace' }}>{glyph.char}</code> +
+        </span>
+        <input
+          className="mz-kerning__pair"
+          type="text"
+          value={draftNext}
+          onChange={(e) => setDraftNext(e.target.value.slice(0, 1))}
+          placeholder="?"
+          maxLength={1}
+          title="Next character (must exist in the font)."
+          style={{ width: 32, padding: '2px 4px', fontFamily: 'monospace' }}
+        />
+        <button
+          type="button"
+          className="mz-kerning__add-btn"
+          onClick={add}
+          disabled={!canAdd}
+          title="Add this pair with delta 0."
+        >
+          + Pair
+        </button>
+      </div>
+      {entries.length === 0 && (
+        <p style={{ fontSize: 11, color: '#888', margin: '4px 0' }}>
+          No pairs yet. Type a character above to add one.
+        </p>
+      )}
+      {entries.map(([next, value]) => (
+        <KerningRow
+          key={next}
+          first={glyph.char}
+          second={next}
+          value={value}
+          font={font}
+          onChange={(v) => setValue(next, v)}
+          onRemove={() => remove(next)}
+        />
+      ))}
+    </Section>
+  );
+}
+
+function KerningRow(props: {
+  first: string;
+  second: string;
+  value: number;
+  font: Font;
+  onChange: (v: number) => void;
+  onRemove: () => void;
+}): JSX.Element {
+  const { first, second, value, font, onChange, onRemove } = props;
+
+  // Render the live preview by piping the pair through the same layout +
+  // triangulation pipeline used everywhere else. Override font.glyphs so the
+  // first glyph carries exactly one kerning entry (the current value), even
+  // if it isn't committed to the store yet.
+  const previewSvg = useMemo(() => {
+    const firstGlyph = font.glyphs[first];
+    const secondGlyph = font.glyphs[second];
+    if (!firstGlyph || !secondGlyph) return null;
+    const patchedFirst: Glyph = { ...firstGlyph, kerning: { [second]: value } };
+    const previewFont: Font = {
+      ...font,
+      glyphs: { ...font.glyphs, [first]: patchedFirst },
+    };
+    const result = layoutText(first + second, previewFont);
+    if (result.glyphs.length === 0) return null;
+
+    const groups = result.glyphs.map(({ glyph, origin }) => {
+      const paths = glyph.strokes.map((s) => {
+        const { polygon, triangles } = triangulateForStyle(s, font.style);
+        return trianglesD(polygon, triangles);
+      });
+      return { paths, origin };
+    });
+
+    const w = result.width || 1;
+    const h = result.height || 1;
+    return (
+      <svg
+        viewBox={`0 0 ${w} ${h}`}
+        preserveAspectRatio="xMidYMid meet"
+        style={{
+          display: 'block',
+          width: '100%',
+          height: 36,
+          background: '#fafafa',
+          border: '1px solid #eee',
+          borderRadius: 3,
+        }}
+      >
+        <g fill="#222">
+          {groups.map((grp, gi) => (
+            <g key={gi} transform={`translate(${grp.origin.x} ${grp.origin.y})`}>
+              {grp.paths.map((d, i) => (
+                <path key={i} d={d} />
+              ))}
+            </g>
+          ))}
+        </g>
+      </svg>
+    );
+  }, [first, second, value, font]);
+
+  return (
+    <div
+      className="mz-kerning__row"
+      style={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+    >
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}
+      >
+        <code
+          style={{ width: 32, fontFamily: 'monospace', fontSize: 13 }}
+          title={`Pair: "${first}${second}"`}
+        >
+          {first}
+          {second}
+        </code>
+        <input
+          type="range"
+          min={-60}
+          max={60}
+          step={1}
+          value={value}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          title="Kerning offset (font units). Negative tightens, positive opens up."
+          style={{ flex: 1, minWidth: 0 }}
+        />
+        <input
+          type="number"
+          value={value}
+          step={1}
+          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+          title="Kerning offset (font units)."
+          style={{
+            width: 48,
+            padding: '2px 4px',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        />
+        <button
+          type="button"
+          onClick={onRemove}
+          title="Remove this pair."
+          style={{ padding: '0 6px', fontSize: 11 }}
+        >
+          ×
+        </button>
+      </div>
+      {previewSvg}
+    </div>
   );
 }
 

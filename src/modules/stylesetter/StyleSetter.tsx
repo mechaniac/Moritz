@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { useState } from 'react';
 import { layout } from '../../core/layout.js';
 import { renderLayoutToSvg } from '../../core/export/svg.js';
 import { useAppStore } from '../../state/store.js';
@@ -243,11 +242,6 @@ export function StyleSetter(): JSX.Element {
           onChange={(v) => setStyle({ lineHeight: v })}
           tooltip="Multiplier on the tallest glyph for vertical line stepping."
         />
-
-        <KerningEditor
-          pairs={font.style.kerning ?? {}}
-          onChange={(kerning) => setStyle({ kerning })}
-        />
       </div>
 
       <div
@@ -325,109 +319,5 @@ function CapPicker(props: {
         <option value="tapered">tapered</option>
       </select>
     </label>
-  );
-}
-
-function KerningEditor(props: {
-  pairs: Readonly<Record<string, number>>;
-  onChange: (pairs: Record<string, number>) => void;
-}): JSX.Element {
-  const [draftPair, setDraftPair] = useState('');
-  const entries = Object.entries(props.pairs).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
-
-  const setValue = (pair: string, v: number): void => {
-    props.onChange({ ...props.pairs, [pair]: v });
-  };
-  const remove = (pair: string): void => {
-    const next = { ...props.pairs };
-    delete next[pair];
-    props.onChange(next);
-  };
-  const add = (): void => {
-    const p = [...draftPair].slice(0, 2).join('');
-    if (p.length !== 2) return;
-    if (props.pairs[p] !== undefined) return;
-    setValue(p, 0);
-    setDraftPair('');
-  };
-
-  return (
-    <div className="mz-kerning" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <h3
-        className="mz-stylesetter__section-title"
-        title="Per-pair kerning adjustments. Value is added to the advance after the first character of the pair (negative = tighter, positive = looser). Type two characters above and click + Pair to add."
-        style={{ margin: '12px 0 0', fontSize: 13 }}
-      >
-        Kerning pairs
-      </h3>
-      <div className="mz-kerning__add" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-        <input
-          className="mz-kerning__pair"
-          type="text"
-          value={draftPair}
-          onChange={(e) => setDraftPair(e.target.value)}
-          placeholder="AV"
-          maxLength={2}
-          title="Type the two-character pair to kern (e.g. AV)."
-          style={{ width: 50, padding: '2px 4px', fontFamily: 'monospace' }}
-        />
-        <button
-          className="mz-kerning__add-btn"
-          type="button"
-          onClick={add}
-          disabled={[...draftPair].length !== 2}
-          title="Add this pair with a starting value of 0."
-        >
-          + Pair
-        </button>
-        <span style={{ fontSize: 11, color: '#888' }}>
-          {entries.length} pair{entries.length === 1 ? '' : 's'}
-        </span>
-      </div>
-      {entries.length === 0 && (
-        <p style={{ fontSize: 11, color: '#888', margin: '4px 0' }}>
-          No kerning pairs. Type two characters above and click + Pair.
-        </p>
-      )}
-      {entries.map(([pair, value]) => (
-        <div
-          key={pair}
-          className="mz-kerning__row"
-          style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12 }}
-        >
-          <code style={{ width: 36, fontFamily: 'monospace', fontSize: 13 }}>
-            {pair}
-          </code>
-          <input
-            type="range"
-            min={-60}
-            max={60}
-            step={1}
-            value={value}
-            onChange={(e) => setValue(pair, parseFloat(e.target.value))}
-            title="Kerning offset in font units (negative = tighter, positive = looser)."
-            style={{ flex: 1, minWidth: 0 }}
-          />
-          <input
-            type="number"
-            value={value}
-            step={1}
-            onChange={(e) => setValue(pair, parseFloat(e.target.value) || 0)}
-            title="Kerning offset in font units."
-            style={{ width: 56, padding: '2px 4px', fontVariantNumeric: 'tabular-nums' }}
-          />
-          <button
-            type="button"
-            onClick={() => remove(pair)}
-            title="Remove"
-            style={{ padding: '0 6px', fontSize: 11 }}
-          >
-            ×
-          </button>
-        </div>
-      ))}
-    </div>
   );
 }
