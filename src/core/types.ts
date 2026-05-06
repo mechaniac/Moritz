@@ -75,6 +75,12 @@ export type StyleSettings = {
   readonly worldAngle: number;
   readonly capStart: CapShape;
   readonly capEnd: CapShape;
+  /**
+   * Roundness of `'round'` caps. 1 = true semicircle (default). <1 flattens
+   * the cap toward the chord; >1 pushes the cap further past the endpoint.
+   * Only affects caps whose resolved kind is `'round'`.
+   */
+  readonly capRoundBulge?: number;
 };
 
 export type Font = {

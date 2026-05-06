@@ -401,12 +401,23 @@ export function triangulateStrokeRibbon(
       lefts[lefts.length - 1]!.y - pEnd.y,
     );
     const endSteps = capFanSteps(endRadius, dEnd, opts);
+    // Decompose into (along tEnd, perp tEnd) and scale the along component
+    // by the global bulge knob; chord endpoints have along=0 and stay put.
+    const bulge = style.capRoundBulge ?? 1;
+    const eTx = tEnd.x;
+    const eTy = tEnd.y;
+    const ePx = -tEnd.y;
+    const ePy = tEnd.x;
     for (let k = 1; k < endSteps; k++) {
       const t = k / endSteps;
       const ang = endStartAngle + dEnd * t;
+      const px = Math.cos(ang) * endRadius;
+      const py = Math.sin(ang) * endRadius;
+      const along = px * eTx + py * eTy;
+      const cross = px * ePx + py * ePy;
       polygon.push({
-        x: pEnd.x + Math.cos(ang) * endRadius,
-        y: pEnd.y + Math.sin(ang) * endRadius,
+        x: pEnd.x + along * bulge * eTx + cross * ePx,
+        y: pEnd.y + along * bulge * eTy + cross * ePy,
       });
       endFan.push(polygon.length - 1);
     }
@@ -421,13 +432,14 @@ export function triangulateStrokeRibbon(
       triangles.push([endCenterIdx, endFan[k]!, endFan[k + 1]!]);
     }
   } else if (endCapKind === 'tapered') {
-    // Single tip vertex pushed by half-width along +tEnd.
+    // Single tip vertex pushed by half-width * bulge along +tEnd.
     const half = Math.hypot(
       lefts[lefts.length - 1]!.x - pEnd.x,
       lefts[lefts.length - 1]!.y - pEnd.y,
     );
+    const bulgeT = style.capRoundBulge ?? 1;
     const tipIdx = polygon.length;
-    polygon.push({ x: pEnd.x + tEnd.x * half, y: pEnd.y + tEnd.y * half });
+    polygon.push({ x: pEnd.x + tEnd.x * half * bulgeT, y: pEnd.y + tEnd.y * half * bulgeT });
     const rightStartIdxT = polygon.length;
     for (let i = rights.length - 1; i >= 0; i--) polygon.push(rights[i]!);
     rightIdx = rights.map(
@@ -472,12 +484,22 @@ export function triangulateStrokeRibbon(
       rights[0]!.y - pStart.y,
     );
     const startSteps = capFanSteps(startRadius, dStart, opts);
+    // Bulge along -tStart (the cap's outward direction).
+    const bulgeS = style.capRoundBulge ?? 1;
+    const sTx = -tStart.x;
+    const sTy = -tStart.y;
+    const sPx = -sTy;
+    const sPy = sTx;
     for (let k = 1; k < startSteps; k++) {
       const t = k / startSteps;
       const ang = startStartAngle + dStart * t;
+      const px = Math.cos(ang) * startRadius;
+      const py = Math.sin(ang) * startRadius;
+      const along = px * sTx + py * sTy;
+      const cross = px * sPx + py * sPy;
       polygon.push({
-        x: pStart.x + Math.cos(ang) * startRadius,
-        y: pStart.y + Math.sin(ang) * startRadius,
+        x: pStart.x + along * bulgeS * sTx + cross * sPx,
+        y: pStart.y + along * bulgeS * sTy + cross * sPy,
       });
       startFan.push(polygon.length - 1);
     }
@@ -490,10 +512,11 @@ export function triangulateStrokeRibbon(
       rights[0]!.x - pStart.x,
       rights[0]!.y - pStart.y,
     );
+    const bulgeST = style.capRoundBulge ?? 1;
     const tipIdx = polygon.length;
     polygon.push({
-      x: pStart.x - tStart.x * half,
-      y: pStart.y - tStart.y * half,
+      x: pStart.x - tStart.x * half * bulgeST,
+      y: pStart.y - tStart.y * half * bulgeST,
     });
     triangles.push([startRightIdx, tipIdx, startLeftIdx]);
   }

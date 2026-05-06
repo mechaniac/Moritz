@@ -310,6 +310,7 @@ function roundCap(
   to: Vec2,
   dir: Vec2,
   steps: number,
+  bulge: number,
 ): Vec2[] {
   const a0 = Math.atan2(from.y - center.y, from.x - center.x);
   const a1 = Math.atan2(to.y - center.y, to.x - center.x);
@@ -327,10 +328,24 @@ function roundCap(
   };
   const delta = midDot(dRaw) >= midDot(dOther) ? dRaw : dOther;
   const r = Math.hypot(from.x - center.x, from.y - center.y);
+  // Decompose each fan point into (along-dir, perp-dir). Bulge scales the
+  // along-dir component, so the chord endpoints (along=0) stay anchored.
+  const dlen = Math.hypot(dir.x, dir.y) || 1;
+  const dux = dir.x / dlen;
+  const duy = dir.y / dlen;
+  const pux = -duy;
+  const puy = dux;
   const out: Vec2[] = [];
   for (let i = 1; i < steps; i++) {
     const a = a0 + (delta * i) / steps;
-    out.push({ x: center.x + Math.cos(a) * r, y: center.y + Math.sin(a) * r });
+    const px = Math.cos(a) * r;
+    const py = Math.sin(a) * r;
+    const along = px * dux + py * duy;
+    const cross = px * pux + py * puy;
+    out.push({
+      x: center.x + along * bulge * dux + cross * pux,
+      y: center.y + along * bulge * duy + cross * puy,
+    });
   }
   return out;
 }
@@ -341,6 +356,7 @@ function buildCap(
   from: Vec2,
   to: Vec2,
   dir: Vec2,
+  bulge: number,
 ): Vec2[] {
   // `from` and `to` are the perpendicular offset endpoints of the stroke at
   // this cap; the polygon edge from→...→to closes the outline. Returning []
@@ -352,17 +368,17 @@ function buildCap(
     case 'round': {
       // Half-width = distance from center to either offset endpoint.
       // Use 12 fan points by default — visually smooth at typical glyph zoom.
-      return roundCap(center, from, to, dir, 12);
+      return roundCap(center, from, to, dir, 12, bulge);
     }
     case 'tapered': {
-      // A single tip point pushed OUT along `dir` by one half-width, so the
-      // cap forms a simple triangle from `from` to tip to `to`.
+      // A single tip point pushed OUT along `dir` by `bulge` half-widths, so
+      // the bulge knob also controls how pointy/flat the tapered cap is.
       const half = Math.hypot(from.x - center.x, from.y - center.y);
       const dlen = Math.hypot(dir.x, dir.y) || 1;
       return [
         {
-          x: center.x + (dir.x / dlen) * half,
-          y: center.y + (dir.y / dlen) * half,
+          x: center.x + (dir.x / dlen) * half * bulge,
+          y: center.y + (dir.y / dlen) * half * bulge,
         },
       ];
     }
@@ -527,14 +543,16 @@ export function outlineStroke(
   const { lefts, rights, pStart, pEnd, tangentStart, tangentEnd } = sides;
   const capStart = stroke.capStart ?? style.capStart;
   const capEnd = stroke.capEnd ?? style.capEnd;
+  const bulge = style.capRoundBulge ?? 1;
 
-  const endCap = buildCap(capEnd, pEnd, lefts[lefts.length - 1]!, rights[rights.length - 1]!, tangentEnd);
+  const endCap = buildCap(capEnd, pEnd, lefts[lefts.length - 1]!, rights[rights.length - 1]!, tangentEnd, bulge);
   const startCap = buildCap(
     capStart,
     pStart,
     rights[0]!,
     lefts[0]!,
     { x: -tangentStart.x, y: -tangentStart.y },
+    bulge,
   );
 
   const polygon: Vec2[] = [];

@@ -126,6 +126,14 @@ export function StyleSetter(): JSX.Element {
           value={normalizeCap(font.style.capEnd)}
           onChange={(v) => setStyle({ capEnd: v })}
         />
+        <Slider
+          label="Cap bulge"
+          min={0}
+          max={2}
+          step={0.05}
+          value={font.style.capRoundBulge ?? 1}
+          onChange={(v) => setStyle({ capRoundBulge: v })}
+        />
       </div>
 
       <div
