@@ -33,9 +33,10 @@ describe('triangulateStrokeRibbon', () => {
       kind: 'fixed',
       samplesPerSegment: 4,
     });
-    // 5 samples → 4 quads → 8 quad triangles + 2*(8-1)=14 cap fan triangles? Actually
-    // CAP_FAN_STEPS = 8, so each cap is 8 triangles. Total = 8 + 8 + 8 = 24.
-    expect(r.triangles.length).toBeGreaterThanOrEqual(8 + 8 + 8);
+    // 5 samples → 4 quads → 8 quad triangles + a density-scaled fan per cap.
+    // Cap fan steps now follow the density knob (≥ CAP_FAN_STEPS_MIN = 3 each),
+    // so the lower bound is 8 + 3 + 3 = 14.
+    expect(r.triangles.length).toBeGreaterThanOrEqual(8 + 3 + 3);
     expect(r.polygon.length).toBeGreaterThan(0);
   });
 

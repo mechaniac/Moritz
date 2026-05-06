@@ -41,8 +41,30 @@ export type RibbonResult = {
   readonly triangles: Triangle[];
 };
 
-const CAP_FAN_STEPS = 8;
+const CAP_FAN_STEPS_MIN = 3;
+const CAP_FAN_STEPS_MAX = 64;
 const MITER_LIMIT = 4;
+
+/**
+ * Number of fan steps for a round cap of the given radius sweeping `|sweep|`
+ * radians. Subdivides the cap arc using the same density knob as the spine:
+ *   - density mode: arc-length / spacing
+ *   - fixed   mode: samplesPerSegment (the cap is treated like one segment
+ *                   worth of subdivision, so caps and spine match visually).
+ */
+function capFanSteps(radius: number, sweep: number, opts: RibbonOptions): number {
+  const arc = Math.abs(sweep) * Math.max(0, radius);
+  let n: number;
+  if (opts.kind === 'density') {
+    const spacing = Math.max(0.0001, opts.spacing);
+    n = Math.ceil(arc / spacing);
+  } else {
+    // Scale samplesPerSegment by sweep / PI so a half-circle maps to ~N steps.
+    const base = Math.max(0, opts.samplesPerSegment | 0) + 1;
+    n = Math.ceil(base * (Math.abs(sweep) / Math.PI));
+  }
+  return Math.max(CAP_FAN_STEPS_MIN, Math.min(CAP_FAN_STEPS_MAX, n));
+}
 const ARC_LUT_SAMPLES = 32;
 
 function unitNormal(t: Vec2): Vec2 {
@@ -378,8 +400,9 @@ export function triangulateStrokeRibbon(
       lefts[lefts.length - 1]!.x - pEnd.x,
       lefts[lefts.length - 1]!.y - pEnd.y,
     );
-    for (let k = 1; k < CAP_FAN_STEPS; k++) {
-      const t = k / CAP_FAN_STEPS;
+    const endSteps = capFanSteps(endRadius, dEnd, opts);
+    for (let k = 1; k < endSteps; k++) {
+      const t = k / endSteps;
       const ang = endStartAngle + dEnd * t;
       polygon.push({
         x: pEnd.x + Math.cos(ang) * endRadius,
@@ -448,8 +471,9 @@ export function triangulateStrokeRibbon(
       rights[0]!.x - pStart.x,
       rights[0]!.y - pStart.y,
     );
-    for (let k = 1; k < CAP_FAN_STEPS; k++) {
-      const t = k / CAP_FAN_STEPS;
+    const startSteps = capFanSteps(startRadius, dStart, opts);
+    for (let k = 1; k < startSteps; k++) {
+      const t = k / startSteps;
       const ang = startStartAngle + dStart * t;
       polygon.push({
         x: pStart.x + Math.cos(ang) * startRadius,
