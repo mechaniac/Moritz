@@ -310,24 +310,26 @@ const Z: Glyph = glyph('Z', [
 
 const XHEIGHT = BASELINE - 55; // top of lowercase letters (y=55)
 
-/** Scale an uppercase glyph's strokes down to the x-height band. */
+/** Scale an uppercase glyph's strokes down to the x-height band, and shrink
+ *  the box width to match so lowercase advances are tighter than uppercase
+ *  (otherwise every lowercase inherits the parent's full box and lines look
+ *  uniformly spaced). */
 const smallCap = (lower: string, src: Glyph): Glyph => {
   const sy = (BASELINE - XHEIGHT) / (BASELINE - CAP); // height ratio
   const sx = sy; // keep proportions
   const newW = src.box.w * sx;
-  const offsetX = (src.box.w - newW) / 2;
   const scaledStrokes: Stroke[] = src.strokes.map((s) => ({
     id: `s${++strokeCounter}`,
     vertices: s.vertices.map((v) => ({
       p: v2(
-        offsetX + v.p.x * sx,
+        v.p.x * sx,
         BASELINE - (BASELINE - v.p.y) * sy,
       ),
       inHandle: v2(v.inHandle.x * sx, v.inHandle.y * sy),
       outHandle: v2(v.outHandle.x * sx, v.outHandle.y * sy),
     })),
   }));
-  return { char: lower, box: src.box, strokes: scaledStrokes };
+  return { char: lower, box: { w: Math.round(newW), h: src.box.h }, strokes: scaledStrokes };
 };
 
 const lowercase: Glyph[] = [

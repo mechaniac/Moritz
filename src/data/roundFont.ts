@@ -332,17 +332,16 @@ const smallCap = (lower: string, src: Glyph): Glyph => {
   const sy = (BASELINE - XHEIGHT) / (BASELINE - CAP);
   const sx = sy;
   const newW = src.box.w * sx;
-  const offsetX = (src.box.w - newW) / 2;
   const scaledStrokes: Stroke[] = src.strokes.map((s) => ({
     id: `r${++strokeCounter}`,
     vertices: s.vertices.map((v) => ({
       ...v,
-      p: v2(offsetX + v.p.x * sx, BASELINE - (BASELINE - v.p.y) * sy),
+      p: v2(v.p.x * sx, BASELINE - (BASELINE - v.p.y) * sy),
       inHandle: v2(v.inHandle.x * sx, v.inHandle.y * sy),
       outHandle: v2(v.outHandle.x * sx, v.outHandle.y * sy),
     })),
   }));
-  return { char: lower, box: src.box, strokes: scaledStrokes };
+  return { char: lower, box: { w: Math.round(newW), h: src.box.h }, strokes: scaledStrokes };
 };
 
 const lowercase: Glyph[] = [
