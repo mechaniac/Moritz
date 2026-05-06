@@ -554,18 +554,19 @@ function GlyphEditor(props: {
             })}
           </g>
         )}
-        {/* other glyphs of the set, faint red — to see how shapes overlap */}
+        {/* other glyphs of the set, faint red — to see how shapes overlap.
+            Each glyph is drawn at 5% on its own <g> so opacities accumulate
+            (5 overlapping glyphs ≈ 23%). */}
         {view.showOtherGlyphs && (
           <g
             transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
-            fill="rgba(220,30,30,1)"
-            opacity={0.05}
+            fill="rgb(220,30,30)"
             pointerEvents="none"
           >
             {Object.entries(font.glyphs).map(([c, g]) => {
               if (c === char) return null;
               return (
-                <g key={`other-${c}`}>
+                <g key={`other-${c}`} opacity={0.05}>
                   {g.strokes.map((s, i) => {
                     const { polygon, triangles } = triangulateForView(s, font.style, view);
                     return <path key={`o${i}`} d={trianglesD(polygon, triangles)} />;
