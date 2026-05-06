@@ -26,6 +26,87 @@ Tested with Node 20+.
 
 ---
 
+## For Users
+
+You're letterers, comic artists, or anyone laying out a page who just wants
+clean handwritten text on top of artwork.
+
+- **Open the app, go to TypeSetter.** Drag a comic page in as the background
+  (it stays transparent in exports). Place a rect, a speech bubble, or a
+  thought cloud on top, type into it, and drag the speech tail to the
+  speaker.
+- **Pick a typeface** from the header. Per-block sliders override the
+  typeface size, bold-multiplier, and italic-multiplier — no separate
+  "bold" font to load, those are just stronger settings of the same base.
+- **Export** the selection or the whole page as SVG (vector, infinite
+  zoom) or transparent PNG at the DPI you choose. Both formats keep the
+  page background out — only the lettering and bubbles ship.
+- **Save your work locally.** Fonts and pages live in `localStorage`; use
+  the import/export buttons to move `.moritz.json` files between machines.
+
+---
+
+## For Font Designers
+
+You want to draw and tune a handwritten alphabet without becoming a font
+engineer.
+
+- **Start from a clone, never from blank.** Every new font is a copy of the
+  built-in base font, which already covers `A–Z a–z 0–9 . ? !`. Edit what
+  you want different; leave the rest.
+- **GlyphSetter** is the per-glyph workshop. Each glyph is a set of
+  variable-width strokes built from cubic-Bézier splines:
+  - drag anchors and tangent handles like in Illustrator,
+  - `+ Anchor` inserts on the selected segment, `− Delete` removes,
+  - alt-click an anchor to flip it between corner and smooth,
+  - mark hard corners as `miter` or `bevel`,
+  - import metrics (advance + side bearings) from any installed CSS font
+    so your glyphs sit on the same width grid as a reference family.
+- **The Kerning tab** lets you author pair deltas by hand, or click
+  *Import kerning from reference font* to lift the whole table from your
+  reference family in one pass.
+- **StyleSetter** is where the typeface comes alive without touching a
+  single anchor. Every slider modulates the same base drawings:
+  - slant, X/Y scale, stroke width,
+  - **world↔tangent width blend** for nib-style strokes,
+  - cap shape on each end (round / flat / tapered),
+  - an **Effects** section — spline jitter, shape jitter, width wiggle,
+    width taper — each with a scope (per-instance, per-glyph, per-text)
+    and a shared seed. The preview re-renders within a frame; the seed
+    is deterministic, so the same settings always render the same shapes.
+- **No separate cuts.** "Bold" is just a stronger width; "italic" is just
+  more slant. One base, modulated.
+
+---
+
+## For Engineers
+
+You want to read or extend the code.
+
+- **Stack:** Vite 5 + TypeScript 5 (strict) + React 18, Zustand for state,
+  `bezier-js` for Bézier math, `earcut` for polygon triangulation, Vitest.
+  No CSS framework, no UI kit.
+- **Functional core, imperative shell.** Everything in `src/core/` is pure:
+  no DOM, no React, no `Date.now()`, no `Math.random()`. Side effects live
+  in `src/state/` (Zustand stores wrapping pure reducers) and the module
+  shells under `src/modules/`.
+- **Pipeline.** `layout → transform → outline (stroke) → render (svg/canvas)`,
+  each stage a pure function memoized by reference equality. Style changes
+  re-evaluate Béziers; they never warp the already-rendered shape, so
+  thickness and curvature stay natural under stretch and slant.
+- **Determinism.** Stochastic effects use a `mulberry32` PRNG seeded from
+  the effect's scope, the glyph's position in the run, and a user-controlled
+  seed slider. Same `(font, text, effects)` tuple → same SVG every time.
+- **Data is plain JSON.** A `Font` is `{ id, name, style, glyphs, kerning? }`
+  with no class instances and no functions. `JSON.stringify` round-trips it.
+- **Tests live in `tests/`** mirroring `src/core/`. Every pure helper has at
+  least one Vitest test (76 at the time of writing). Run `npm test` after
+  any change in `core/`.
+- **Conventions** in [.github/copilot-instructions.md](.github/copilot-instructions.md)
+  and the mirror [CLAUDE.md](CLAUDE.md). Keep them in sync.
+
+---
+
 ## The three modules
 
 The app is split into three top-level workspaces, switched from the header bar:
