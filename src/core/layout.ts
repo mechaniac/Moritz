@@ -11,11 +11,15 @@
  */
 
 import { transformGlyph } from './transform.js';
+import { jitterActive, jitterGlyphSpline, resolveJitterSeed } from './effects.js';
 import type { Font, Glyph, Vec2 } from './types.js';
 
 export type PositionedGlyph = {
-  readonly glyph: Glyph; // already style-transformed
+  readonly glyph: Glyph; // already style-transformed (and effect-jittered)
   readonly origin: Vec2; // top-left of the glyph box in layout space
+  readonly char: string;
+  /** Running counter across the whole layout — feeds per-instance effects. */
+  readonly instanceIndex: number;
 };
 
 export type LayoutResult = {
@@ -75,6 +79,9 @@ export function layout(
   const lineStep = maxLineHeight * lineHeightFactor;
   const spaceW = opts.spaceWidth ?? font.style.spaceWidth ?? maxLineHeight * 0.4;
 
+  const splineJitter = font.style.effects?.splineJitter;
+  let instanceIndex = 0;
+
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li]!;
     let cursorX = 0;
@@ -97,9 +104,22 @@ export function layout(
       const rsb = g.sidebearings?.right ?? 0;
       const yOff = g.baselineOffset ?? 0;
       cursorX += lsb;
-      placed.push({ glyph: g, origin: { x: cursorX, y: y + yOff } });
+      const finalGlyph = jitterActive(splineJitter)
+        ? jitterGlyphSpline(
+            g,
+            splineJitter,
+            resolveJitterSeed(splineJitter, { instanceIndex, char: ch }, 0x5a17),
+          )
+        : g;
+      placed.push({
+        glyph: finalGlyph,
+        origin: { x: cursorX, y: y + yOff },
+        char: ch,
+        instanceIndex,
+      });
       cursorX += g.box.w + rsb + tracking;
       prevChar = ch;
+      instanceIndex++;
     }
     maxWidth = Math.max(maxWidth, cursorX);
   }

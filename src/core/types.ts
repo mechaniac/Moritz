@@ -117,9 +117,41 @@ export type StyleSettings = {
   readonly spaceWidth?: number;
   /** Multiplier on the tallest glyph for line stepping. Default 1.2. */
   readonly lineHeight?: number;
+
+  // ---- Effects (optional, all default to off) ------------------------------
+
+  /** Stochastic perturbations applied during layout / rendering. */
+  readonly effects?: EffectsSettings;
 };
 
 export type TriMode = 'earcut' | 'ribbon-fixed' | 'ribbon-density';
+
+/**
+ * Re-roll bucket for a stochastic effect.
+ *   - `'instance'` : every glyph occurrence gets its own random offsets
+ *                    (each set 'a' looks slightly different).
+ *   - `'glyph'`    : every occurrence of the same character shares the
+ *                    same offsets (all 'a's identical, but different from 'b's).
+ *   - `'text'`     : a single random offset set is applied everywhere.
+ */
+export type EffectScope = 'instance' | 'glyph' | 'text';
+
+/**
+ * Random per-vertex displacement, uniform in the square ±amount.
+ * `amount === 0` disables the effect (treated as undefined).
+ */
+export type JitterEffect = {
+  readonly amount: number; // font units
+  readonly scope?: EffectScope; // default 'instance'
+  readonly seed?: number; // default 0
+};
+
+export type EffectsSettings = {
+  /** Perturb each Vertex.p before stroke outlining. Handles unchanged. */
+  readonly splineJitter?: JitterEffect;
+  /** Perturb each outline polygon vertex after stroke outlining. */
+  readonly shapeJitter?: JitterEffect;
+};
 
 export type Font = {
   readonly id: string;

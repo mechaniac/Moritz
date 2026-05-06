@@ -9,6 +9,7 @@ import type { LayoutResult } from '../layout.js';
 import { outlineStroke } from '../stroke.js';
 import { triangulatePolygon } from '../triangulate.js';
 import { triangulateStrokeRibbon } from '../ribbon.js';
+import { jitterActive, jitterPolygon, resolveJitterSeed } from '../effects.js';
 import type { Font, Stroke, StyleSettings, Vec2 } from '../types.js';
 
 export type SvgRenderOptions = {
@@ -85,12 +86,26 @@ export function renderLayoutToSvg(
   const h = innerH * scale;
 
   const paths: string[] = [];
+  const shapeJitter = font.style.effects?.shapeJitter;
+  let strokeSalt = 0;
   for (const pg of layoutResult.glyphs) {
     for (const stroke of pg.glyph.strokes) {
       const { polygon, triangles } = triangulateForStyle(stroke, font.style);
       if (polygon.length === 0 || triangles.length === 0) continue;
+      const jittered = jitterActive(shapeJitter)
+        ? jitterPolygon(
+            polygon,
+            shapeJitter,
+            resolveJitterSeed(
+              shapeJitter,
+              { instanceIndex: pg.instanceIndex, char: pg.char },
+              0x5ec0 ^ strokeSalt,
+            ),
+          )
+        : polygon;
+      strokeSalt++;
       // Translate polygon by glyph origin + padding.
-      const translated = polygon.map((p) => ({
+      const translated = jittered.map((p) => ({
         x: p.x + pg.origin.x + padding,
         y: p.y + pg.origin.y + padding,
       }));

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { layout } from '../../core/layout.js';
 import { renderLayoutToSvg } from '../../core/export/svg.js';
 import { useAppStore } from '../../state/store.js';
-import type { CapShape, TriMode } from '../../core/types.js';
+import type { CapShape, EffectScope, TriMode } from '../../core/types.js';
 import { builtInFonts } from '../../data/builtInFonts.js';
 
 /**
@@ -259,6 +259,107 @@ export function StyleSetter(): JSX.Element {
           defaultValue={original?.lineHeight ?? 1.2}
           tooltip="Multiplier on the tallest glyph for vertical line stepping."
         />
+
+        <h3 className="mz-stylesetter__section-title" style={{ margin: '12px 0 0', fontSize: 13 }}>
+          Effects
+        </h3>
+        <Slider
+          label="Spline jitter"
+          min={0}
+          max={20}
+          step={0.1}
+          value={font.style.effects?.splineJitter?.amount ?? 0}
+          onChange={(v) =>
+            setStyle({
+              effects: {
+                ...font.style.effects,
+                splineJitter: {
+                  ...(font.style.effects?.splineJitter ?? { scope: 'instance', seed: 1 }),
+                  amount: v,
+                },
+              },
+            })
+          }
+          defaultValue={0}
+          tooltip="Random per-anchor displacement (font units) applied before stroke outlining. Each glyph instance gets its own offsets, so every set 'a' is slightly different."
+        />
+        <Slider
+          label="Shape jitter"
+          min={0}
+          max={6}
+          step={0.05}
+          value={font.style.effects?.shapeJitter?.amount ?? 0}
+          onChange={(v) =>
+            setStyle({
+              effects: {
+                ...font.style.effects,
+                shapeJitter: {
+                  ...(font.style.effects?.shapeJitter ?? { scope: 'instance', seed: 2 }),
+                  amount: v,
+                },
+              },
+            })
+          }
+          defaultValue={0}
+          tooltip="Random per-vertex displacement (font units) applied to the outline polygon — wobbly edges without changing the underlying spline."
+        />
+        <EffectScopePicker
+          label="Spline scope"
+          value={font.style.effects?.splineJitter?.scope ?? 'instance'}
+          onChange={(scope) =>
+            setStyle({
+              effects: {
+                ...font.style.effects,
+                splineJitter: {
+                  ...(font.style.effects?.splineJitter ?? { amount: 0, seed: 1 }),
+                  scope,
+                },
+              },
+            })
+          }
+          tooltip="instance = each glyph occurrence different. glyph = every 'a' identical (but ≠ 'b'). text = one offset for everything."
+        />
+        <EffectScopePicker
+          label="Shape scope"
+          value={font.style.effects?.shapeJitter?.scope ?? 'instance'}
+          onChange={(scope) =>
+            setStyle({
+              effects: {
+                ...font.style.effects,
+                shapeJitter: {
+                  ...(font.style.effects?.shapeJitter ?? { amount: 0, seed: 2 }),
+                  scope,
+                },
+              },
+            })
+          }
+          tooltip="instance = each glyph occurrence different. glyph = every 'a' identical (but ≠ 'b'). text = one offset for everything."
+        />
+        <Slider
+          label="Effects seed"
+          min={0}
+          max={1024}
+          step={1}
+          value={font.style.effects?.splineJitter?.seed ?? 1}
+          onChange={(v) => {
+            const s = Math.round(v);
+            setStyle({
+              effects: {
+                ...font.style.effects,
+                splineJitter: {
+                  ...(font.style.effects?.splineJitter ?? { amount: 0, scope: 'instance' }),
+                  seed: s,
+                },
+                shapeJitter: {
+                  ...(font.style.effects?.shapeJitter ?? { amount: 0, scope: 'instance' }),
+                  seed: s + 1,
+                },
+              },
+            });
+          }}
+          defaultValue={1}
+          tooltip="Re-roll the random pattern. Same seed always produces the same image."
+        />
       </div>
 
       <div
@@ -355,6 +456,31 @@ function CapPicker(props: {
         <option value="round">round</option>
         <option value="flat">flat</option>
         <option value="tapered">tapered</option>
+      </select>
+    </label>
+  );
+}
+
+function EffectScopePicker(props: {
+  label: string;
+  value: EffectScope;
+  onChange: (v: EffectScope) => void;
+  tooltip?: string;
+}): JSX.Element {
+  return (
+    <label
+      title={props.tooltip}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}
+    >
+      <span style={{ width: 110, flexShrink: 0 }}>{props.label}</span>
+      <select
+        value={props.value}
+        onChange={(e) => props.onChange(e.target.value as EffectScope)}
+        style={{ flex: 1, padding: '1px 4px' }}
+      >
+        <option value="instance">instance</option>
+        <option value="glyph">glyph</option>
+        <option value="text">text</option>
       </select>
     </label>
   );
