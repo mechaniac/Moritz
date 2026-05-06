@@ -497,61 +497,9 @@ function GlyphEditor(props: {
 
   return (
     <>
-      {/* Toolbar: glyph-editing actions only (anchors/strokes are the per-
-          glyph data). Style/preview controls live in the Inspector panel. */}
-      <div
-        className="mz-glyphsetter__toolbar"
-        style={{
-          height: 40,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 12,
-          padding: '0 12px',
-          borderBottom: '1px solid #999',
-          background: '#eaeaea',
-          flexShrink: 0,
-          overflow: 'hidden',
-          fontSize: 13,
-        }}
-      >
-        <strong style={{ fontSize: 14 }}>Editing: {char}</strong>
-        <button onClick={onAddStroke}>+ Stroke</button>
-        <button onClick={onDeleteSelected} disabled={selection.kind === 'none'}>
-          − Delete selected
-        </button>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ color: '#666', fontSize: 12 }}>Zoom</span>
-          <input
-            type="range"
-            min={1}
-            max={10}
-            step={0.5}
-            value={scale}
-            onChange={(e) => setScale(parseFloat(e.target.value))}
-            style={{ width: 100 }}
-          />
-        </span>
-        {selectedAnchor && selection.kind === 'anchor' && (
-          <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <input
-              type="checkbox"
-              checked={selectedAnchor.breakTangent === true}
-              onChange={(e) =>
-                onChange((g) =>
-                  setBreakTangent(g, selection.strokeIdx, selection.vIdx, e.target.checked),
-                )
-              }
-            />
-            Break tangent
-          </label>
-        )}
-        <span style={{ color: '#666', fontSize: 12, marginLeft: 'auto' }}>
-          Drag anchors / handles. Drag stroke body = move whole stroke.
-          Alt-click stroke = insert anchor. Alt-click anchor = toggle
-          corner/smooth.
-        </span>
-      </div>
-      {/* Canvas — fills remaining space */}
+      {/* Canvas — fills remaining space. The editing toolbar lives inside
+          this column, sitting directly above the SVG so the action
+          buttons are right next to the artwork they affect. */}
       <div
         className="mz-glyphsetter__canvas"
         style={{
@@ -562,10 +510,67 @@ function GlyphEditor(props: {
           background: 'transparent',
           padding: 12,
           display: 'flex',
+          flexDirection: 'column',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: 'flex-start',
+          gap: 8,
         }}
       >
+        <div
+          className="mz-glyphsetter__toolbar"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '4px 10px',
+            border: '1px solid #bbb',
+            borderRadius: 6,
+            background: '#eaeaea',
+            fontSize: 13,
+            flexShrink: 0,
+            maxWidth: '100%',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+          }}
+        >
+          <strong style={{ fontSize: 14 }}>Editing: {char}</strong>
+          <button onClick={onAddStroke}>+ Stroke</button>
+          <button onClick={onDeleteSelected} disabled={selection.kind === 'none'}>
+            − Delete selected
+          </button>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ color: '#666', fontSize: 12 }}>Zoom</span>
+            <input
+              type="range"
+              min={1}
+              max={10}
+              step={0.5}
+              value={scale}
+              onChange={(e) => setScale(parseFloat(e.target.value))}
+              style={{ width: 100 }}
+            />
+          </span>
+          {selectedAnchor && selection.kind === 'anchor' && (
+            <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <input
+                type="checkbox"
+                checked={selectedAnchor.breakTangent === true}
+                onChange={(e) =>
+                  onChange((g) =>
+                    setBreakTangent(g, selection.strokeIdx, selection.vIdx, e.target.checked),
+                  )
+                }
+              />
+              Break tangent
+            </label>
+          )}
+          <span
+            style={{ color: '#666', fontSize: 11 }}
+            title="Drag anchors / handles. Drag stroke body = move whole stroke. Alt-click stroke = insert anchor. Alt-click anchor = toggle corner/smooth."
+          >
+            (?)
+          </span>
+        </div>
         <svg
           ref={svgRef}
           className="mz-glyph-canvas"
