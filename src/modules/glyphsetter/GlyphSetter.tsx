@@ -162,6 +162,10 @@ export function GlyphSetter(): JSX.Element {
 
 // ---------- Sidebar: glyph grid --------------------------------------------
 
+/** Pixels per font unit in the grid thumbnails. Fixed so all glyphs render at
+ *  the same zoom level — the grid wraps and tiles take their natural size. */
+const GRID_PX_PER_UNIT = 0.6;
+
 function GlyphGrid(props: {
   chars: string[];
   selected: string;
@@ -181,10 +185,21 @@ function GlyphGrid(props: {
         boxSizing: 'border-box',
       }}
     >
-      <div className="mz-glyph-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4 }}>
+      <div
+        className="mz-glyph-grid"
+        style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'flex-end',
+          gap: 4,
+        }}
+      >
         {props.chars.map((c) => {
           const g = props.font.glyphs[c]!;
           const active = c === props.selected;
+          // True-to-scale pixel dimensions; +2px padding inside button.
+          const w = g.box.w * GRID_PX_PER_UNIT;
+          const h = g.box.h * GRID_PX_PER_UNIT;
           return (
             <button
               key={c}
@@ -193,7 +208,7 @@ function GlyphGrid(props: {
               onClick={() => props.onSelect(c)}
               title={c}
               style={{
-                aspectRatio: `${g.box.w} / ${g.box.h}`,
+                width: w + 4,
                 background: active ? '#222' : '#fff',
                 color: active ? '#fff' : '#222',
                 border: '1px solid #ccc',
@@ -202,10 +217,13 @@ function GlyphGrid(props: {
                 padding: 2,
                 display: 'flex',
                 flexDirection: 'column',
+                flex: '0 0 auto',
               }}
             >
-              <ThumbSvg glyph={g} font={props.font} view={props.view} />
-              <div style={{ fontSize: 10, marginTop: 2 }}>{c}</div>
+              <div style={{ width: w, height: h }}>
+                <ThumbSvg glyph={g} font={props.font} view={props.view} />
+              </div>
+              <div style={{ fontSize: 10, marginTop: 2, lineHeight: 1 }}>{c}</div>
             </button>
           );
         })}
@@ -231,7 +249,7 @@ function ThumbSvg(props: {
   return (
     <svg
       viewBox={`0 0 ${glyph.box.w} ${glyph.box.h}`}
-      style={{ flex: 1, width: '100%', height: 'auto', display: 'block' }}
+      style={{ width: '100%', height: '100%', display: 'block' }}
       preserveAspectRatio="xMidYMid meet"
     >
       <g fill="currentColor">
