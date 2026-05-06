@@ -488,36 +488,6 @@ function buildSides(
   const first = offsets[0]!;
   const last = offsets[offsets.length - 1]!;
 
-  // Cap-orientation independence: lock the first and last offset pair
-  // (which determine where the start/end caps close across the stroke
-  // width) to the CHORD direction between the first/last two anchors.
-  // Without this, activating a tangent handle on an endpoint anchor
-  // would rotate the cap with the handle direction, making flat caps
-  // appear to round off as the user adds curvature. Caps are now a
-  // function of anchor positions only.
-  if (!worldNormal && lefts.length > 0 && rights.length > 0) {
-    const firstSeg = segments[0]!;
-    const dx0 = firstSeg.p1.x - firstSeg.p0.x;
-    const dy0 = firstSeg.p1.y - firstSeg.p0.y;
-    const l0 = Math.hypot(dx0, dy0);
-    if (l0 >= 1e-9) {
-      const chord0: Vec2 = { x: dx0 / l0, y: dy0 / l0 };
-      const { left, right } = offsetPair(first.pStart, chord0, first.halfStart, null);
-      lefts[0] = left;
-      rights[0] = right;
-    }
-    const lastSeg = segments[segments.length - 1]!;
-    const dxN = lastSeg.p1.x - lastSeg.p0.x;
-    const dyN = lastSeg.p1.y - lastSeg.p0.y;
-    const lN = Math.hypot(dxN, dyN);
-    if (lN >= 1e-9) {
-      const chordN: Vec2 = { x: dxN / lN, y: dyN / lN };
-      const { left, right } = offsetPair(last.pEnd, chordN, last.halfEnd, null);
-      lefts[lefts.length - 1] = left;
-      rights[rights.length - 1] = right;
-    }
-  }
-
   return {
     lefts,
     rights,
