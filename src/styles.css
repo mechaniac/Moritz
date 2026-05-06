@@ -1,0 +1,153 @@
+/* ---------------------------------------------------------------------------
+   Moritz UI — global styles.
+
+   Goals: slim, dark, low-contrast neutral palette. No corporate blue;
+   accent is the same charcoal as text. Slimmer slider thumbs/tracks. A
+   single class (.mz-modified) marks any control whose value differs from
+   the bundled default — applied as a red label colour and tint.
+   --------------------------------------------------------------------------- */
+
+:root {
+  --mz-bg: #d6d6d6;
+  --mz-bg-soft: #e6e6e6;
+  --mz-bg-soft-2: #efefef;
+  --mz-panel: #f4f4f4;
+  --mz-line: #999;
+  --mz-line-soft: #bbb;
+  --mz-text: #1a1a1a;
+  --mz-text-mute: #555;
+  --mz-text-faint: #777;
+  --mz-accent: #222;
+  --mz-accent-soft: #444;
+  --mz-modified: #c2371d;
+  --mz-modified-soft: #e0a497;
+}
+
+html,
+body {
+  background: var(--mz-bg);
+  color: var(--mz-text);
+  font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+  font-size: 13px;
+}
+
+/* Make every native control sit on the dark accent (replaces the
+   browser-default blue on checkboxes, sliders, focus rings, etc). */
+input,
+select,
+button,
+textarea,
+progress {
+  accent-color: var(--mz-accent);
+  color: var(--mz-text);
+}
+
+button {
+  font: inherit;
+  padding: 3px 8px;
+  border: 1px solid var(--mz-line);
+  background: var(--mz-bg-soft);
+  color: var(--mz-text);
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1.2;
+}
+button:hover:not(:disabled) {
+  background: var(--mz-bg-soft-2);
+  border-color: var(--mz-accent);
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+select,
+input[type='text'],
+input[type='number'],
+textarea {
+  font: inherit;
+  padding: 3px 6px;
+  border: 1px solid var(--mz-line);
+  background: #fff;
+  color: var(--mz-text);
+  border-radius: 3px;
+}
+select {
+  padding: 2px 4px;
+}
+
+input:focus,
+select:focus,
+button:focus,
+textarea:focus {
+  outline: 1px solid var(--mz-accent);
+  outline-offset: -1px;
+}
+
+/* ---------- Range sliders ------------------------------------------------- */
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 16px;
+  padding: 0;
+  cursor: pointer;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--mz-line);
+  border-radius: 1px;
+}
+input[type='range']::-moz-range-track {
+  height: 2px;
+  background: var(--mz-line);
+  border-radius: 1px;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  margin-top: -4px;
+  background: var(--mz-accent);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+input[type='range']::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  background: var(--mz-accent);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+/* ---------- Modified-from-default marker ---------------------------------- */
+
+.mz-modified {
+  color: var(--mz-modified);
+}
+.mz-modified input[type='range'] {
+  accent-color: var(--mz-modified);
+}
+.mz-modified input[type='range']::-webkit-slider-thumb {
+  background: var(--mz-modified);
+}
+.mz-modified input[type='range']::-moz-range-thumb {
+  background: var(--mz-modified);
+}
+.mz-modified input[type='range']::-webkit-slider-runnable-track {
+  background: var(--mz-modified-soft);
+}
+.mz-modified input[type='range']::-moz-range-track {
+  background: var(--mz-modified-soft);
+}
+
+/* Mark the FontBar name field red when its value drifts from the saved/
+   built-in original. */
+.mz-modified-input {
+  border-color: var(--mz-modified) !important;
+  color: var(--mz-modified);
+}

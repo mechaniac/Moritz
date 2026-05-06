@@ -228,7 +228,7 @@ function BlockOverlay(props: {
         width: w * zoom,
         height: h * zoom,
         cursor: 'move',
-        outline: props.selected ? '1px dashed #0a84ff' : 'none',
+        outline: props.selected ? '1px dashed #222' : 'none',
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -289,7 +289,7 @@ function TailHandle(props: {
         height: 12,
         borderRadius: '50%',
         background: '#fff',
-        border: '2px solid #0a84ff',
+        border: '2px solid #222',
         cursor: 'grab',
       }}
       onPointerDown={onPointerDown}

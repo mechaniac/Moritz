@@ -3,6 +3,7 @@ import { layout } from '../../core/layout.js';
 import { renderLayoutToSvg } from '../../core/export/svg.js';
 import { useAppStore } from '../../state/store.js';
 import type { CapShape, TriMode } from '../../core/types.js';
+import { builtInFonts } from '../../data/builtInFonts.js';
 
 /**
  * StyleSetter — sliders bound to StyleSettings, with live SVG preview of the
@@ -23,6 +24,14 @@ export function StyleSetter(): JSX.Element {
   }, [text, font, textScale]);
 
   const widthValue = font.style.defaultWidth.samples[0]?.width ?? 8;
+
+  // Bundled original (if this font is a built-in or shares an id with one)
+  // — used to mark sliders red when their value differs from the default.
+  const original = useMemo(
+    () => builtInFonts.find((f) => f.id === font.id)?.style,
+    [font.id],
+  );
+  const origWidth = original?.defaultWidth.samples[0]?.width;
 
   return (
     <div className="mz-stylesetter" style={{ display: 'flex', gap: 24, padding: 16, height: '100%' }}>
@@ -66,6 +75,7 @@ export function StyleSetter(): JSX.Element {
           step={0.01}
           value={font.style.slant}
           onChange={(v) => setStyle({ slant: v })}
+          defaultValue={original?.slant}
           tooltip="Italic shear in radians. Shears x by tan(slant) * y — positive leans glyphs to the right."
         />
         <Slider
@@ -75,6 +85,7 @@ export function StyleSetter(): JSX.Element {
           step={0.01}
           value={font.style.scaleX}
           onChange={(v) => setStyle({ scaleX: v })}
+          defaultValue={original?.scaleX}
           tooltip="Horizontal stretch applied to every glyph (and its sidebearings). 1 = unchanged."
         />
         <Slider
@@ -84,6 +95,7 @@ export function StyleSetter(): JSX.Element {
           step={0.01}
           value={font.style.scaleY}
           onChange={(v) => setStyle({ scaleY: v })}
+          defaultValue={original?.scaleY}
           tooltip="Vertical stretch applied to every glyph (and its baseline offset). 1 = unchanged."
         />
         <Slider
@@ -103,6 +115,7 @@ export function StyleSetter(): JSX.Element {
             })
           }
           tooltip="Default stroke width for every glyph (font units). Per-stroke widths can override this in the GlyphSetter."
+          defaultValue={origWidth}
         />
         <label
           title="Width direction. Off = stroke width is laid down perpendicular to the path tangent (round look). On = width is laid at a fixed world angle (nib-pen / calligraphy look)."
@@ -148,6 +161,7 @@ export function StyleSetter(): JSX.Element {
           step={0.05}
           value={font.style.capRoundBulge ?? 1}
           onChange={(v) => setStyle({ capRoundBulge: v })}
+          defaultValue={original?.capRoundBulge ?? 1}
           tooltip="Roundness of round caps. 0 flattens to the chord, 1 = true semicircle, >1 pushes the cap further out."
         />
 
@@ -222,6 +236,7 @@ export function StyleSetter(): JSX.Element {
           step={1}
           value={font.style.tracking ?? 0}
           onChange={(v) => setStyle({ tracking: v })}
+          defaultValue={original?.tracking ?? 0}
           tooltip="Extra horizontal space added between every pair of glyphs (font units). Negative tightens, positive opens up."
         />
         <Slider
@@ -231,6 +246,7 @@ export function StyleSetter(): JSX.Element {
           step={1}
           value={font.style.spaceWidth ?? 56}
           onChange={(v) => setStyle({ spaceWidth: v })}
+          defaultValue={original?.spaceWidth ?? 56}
           tooltip="Width of a literal space character (font units). Default ≈ 0.4× line height."
         />
         <Slider
@@ -240,6 +256,7 @@ export function StyleSetter(): JSX.Element {
           step={0.05}
           value={font.style.lineHeight ?? 1.2}
           onChange={(v) => setStyle({ lineHeight: v })}
+          defaultValue={original?.lineHeight ?? 1.2}
           tooltip="Multiplier on the tallest glyph for vertical line stepping."
         />
       </div>
@@ -267,17 +284,19 @@ function Slider(props: {
   value: number;
   onChange: (v: number) => void;
   tooltip?: string;
+  defaultValue?: number;
 }): JSX.Element {
+  const modified =
+    props.defaultValue !== undefined &&
+    Math.abs(props.value - props.defaultValue) > 1e-9;
   return (
     <label
       title={props.tooltip}
-      style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
+      className={modified ? 'mz-modified' : undefined}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}
     >
-      <span style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <span>{props.label}</span>
-        <span style={{ fontVariantNumeric: 'tabular-nums', color: '#666' }}>
-          {props.value.toFixed(2)}
-        </span>
+      <span style={{ width: 110, flexShrink: 0, color: 'inherit' }}>
+        {props.label}
       </span>
       <input
         type="range"
@@ -286,7 +305,18 @@ function Slider(props: {
         step={props.step}
         value={props.value}
         onChange={(e) => props.onChange(parseFloat(e.target.value))}
+        style={{ flex: 1, minWidth: 0 }}
       />
+      <span
+        style={{
+          width: 40,
+          textAlign: 'right',
+          fontVariantNumeric: 'tabular-nums',
+          color: modified ? 'inherit' : 'var(--mz-text-mute)',
+        }}
+      >
+        {props.value.toFixed(2)}
+      </span>
     </label>
   );
 }

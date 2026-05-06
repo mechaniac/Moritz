@@ -695,7 +695,7 @@ function GlyphEditor(props: {
                   x2={xLeft}
                   y1={y0}
                   y2={y1}
-                  stroke="#0a84ff"
+                  stroke="#222"
                   strokeDasharray="4 3"
                   strokeWidth={1}
                 />
@@ -704,7 +704,7 @@ function GlyphEditor(props: {
                   x2={xRight}
                   y1={y0}
                   y2={y1}
-                  stroke="#0a84ff"
+                  stroke="#222"
                   strokeDasharray="4 3"
                   strokeWidth={1}
                 />
@@ -812,7 +812,7 @@ function GlyphEditor(props: {
                 const closed = poly.length > 0 ? [...poly, poly[0]!] : [];
                 return (
                   <g key={`b${i}`}>
-                    <path d={polylineD(closed)} stroke="#0a84ff" strokeWidth={sw} />
+                    <path d={polylineD(closed)} stroke="#222" strokeWidth={sw} />
                     {poly.map((p, k) => (
                       <g key={`v${i}-${k}`}>
                         <circle
@@ -1226,7 +1226,7 @@ function LeftTabBar(props: {
           background: active ? '#fff' : 'transparent',
           color: active ? '#222' : '#ccc',
           border: 'none',
-          borderBottom: active ? '2px solid #0a84ff' : '2px solid transparent',
+          borderBottom: active ? '2px solid #222' : '2px solid transparent',
           cursor: 'pointer',
         }}
       >
@@ -1708,7 +1708,7 @@ function StrokeOverlay(props: {
       <path
         d={d}
         fill="none"
-        stroke={isStrokeSelected ? '#0a84ff' : '#888'}
+        stroke={isStrokeSelected ? '#222' : '#888'}
         strokeWidth={HAIR}
         onPointerDown={(e) => props.onStrokePointerDown(e, strokeIdx)}
         style={{ cursor: isStrokeSelected ? 'grabbing' : 'grab' }}
@@ -1729,7 +1729,7 @@ function StrokeOverlay(props: {
                   y1={v.p.y}
                   x2={inAbs.x}
                   y2={inAbs.y}
-                  stroke="#0a84ff"
+                  stroke="#222"
                   strokeWidth={HAIR / 2}
                 />
                 <circle
@@ -1737,7 +1737,7 @@ function StrokeOverlay(props: {
                   cy={inAbs.y}
                   r={HANDLE}
                   fill="#fff"
-                  stroke="#0a84ff"
+                  stroke="#222"
                   strokeWidth={HAIR / 2}
                   style={{ cursor: 'grab' }}
                   onPointerDown={(e) =>
@@ -1753,7 +1753,7 @@ function StrokeOverlay(props: {
                   y1={v.p.y}
                   x2={outAbs.x}
                   y2={outAbs.y}
-                  stroke="#0a84ff"
+                  stroke="#222"
                   strokeWidth={HAIR / 2}
                 />
                 <circle
@@ -1761,7 +1761,7 @@ function StrokeOverlay(props: {
                   cy={outAbs.y}
                   r={HANDLE}
                   fill="#fff"
-                  stroke="#0a84ff"
+                  stroke="#222"
                   strokeWidth={HAIR / 2}
                   style={{ cursor: 'grab' }}
                   onPointerDown={(e) =>
@@ -1775,8 +1775,8 @@ function StrokeOverlay(props: {
               y={v.p.y - ANCHOR / 2}
               width={ANCHOR}
               height={ANCHOR}
-              fill={sel ? '#0a84ff' : '#fff'}
-              stroke="#0a84ff"
+              fill={sel ? '#222' : '#fff'}
+              stroke="#222"
               strokeWidth={HAIR / 2}
               style={{ cursor: 'grab' }}
               onPointerDown={(e) =>

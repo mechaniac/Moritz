@@ -120,7 +120,7 @@ export function FontBar(): JSX.Element {
         ))}
       </select>
       <input
-        className="mz-fontbar__name"
+        className={`mz-fontbar__name${name !== font.name ? ' mz-modified-input' : ''}`}
         value={name}
         onChange={(e) => setName(e.target.value)}
         style={{ padding: '4px 6px', width: 140 }}
