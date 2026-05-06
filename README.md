@@ -32,13 +32,21 @@ The app is split into three top-level workspaces, switched from the header bar:
 
 1. **GlyphSetter** — a raster grid of every glyph in the active font plus a
    single-glyph editor (Illustrator-style splines: drag anchors and tangent
-   handles, alt-click a stroke to insert an anchor, alt-click an anchor to
-   toggle corner ⇄ smooth, choose `miter` or `bevel` join for hard corners).
-   Toolbar toggles for fill preview, anchor visibility, and debug borders.
+   handles, `+ Anchor` inserts a new anchor on the selected segment, alt-click
+   an anchor to toggle corner ⇄ smooth, choose `miter` or `bevel` join for
+   hard corners). Toolbar toggles for fill preview, anchor visibility, and
+   debug borders. The left column also has a **Kerning** tab: edit pair
+   deltas by hand, or click *Import kerning from reference font* to extract
+   them from a CSS reference family in one shot. A per-glyph *Import metrics*
+   button lifts advance + side bearings from the same reference font.
 2. **StyleSetter** — sliders bound to the typeface-wide `StyleSettings`:
-   slant, X/Y scale, stroke width, world-vs-tangent width orientation, start &
-   end cap shape (round / flat / tapered). Live preview of the whole alphabet,
-   plus save/load of named typefaces.
+   slant, X/Y scale, stroke width, **world↔tangent width blend** (continuous
+   0..1, with a world-angle slider for the nib), start & end cap shape
+   (round / flat / tapered), and an **Effects** section: spline jitter, shape
+   jitter, width wiggle, width taper (whole-stroke or repeating by length),
+   each with a scope picker (per-instance / per-glyph / per-text) and a
+   shared deterministic seed. Live preview of the whole alphabet, plus
+   save/load of named typefaces.
 3. **TypeSetter** — work area. Place text blocks (rect / speech bubble /
    thought cloud) on a transparent page, type into them, drag the speech tail,
    override per-block font size / bold / italic. Export selected text or whole
@@ -70,7 +78,15 @@ independently, builds two offset polylines (±half-width along the normal),
 and stitches consecutive segments at corners with a **miter join** —
 trimming any samples that overshoot the intersection so inside corners stay
 clean. Sharp corners fall back to a bevel automatically (or whenever the
-selected anchor is marked `bevel`).
+selected anchor is marked `bevel`). The width orientation is a continuous
+blend between the path tangent normal and a fixed world-angle nib, and the
+width at any point can be modulated by a `widthMod(t)` function (used by the
+width-wiggle and taper effects).
+
+Stochastic effects are deterministic: every `mulberry32` PRNG seed is derived
+from the effect's scope (per-instance / per-glyph / per-text), the glyph's
+position in the run, and a user-controlled seed slider, so the same
+`(font, text, effects)` tuple always renders identically.
 
 ---
 
@@ -103,9 +119,14 @@ src/
     bezier.ts               # cubic-Bézier helpers (wraps bezier-js)
     transform.ts            # affine on control points
     stroke.ts               # variable-width outliner with miter joins
-    layout.ts               # text → positioned glyphs
+    ribbon.ts               # triangulated stroke ribbon (canvas preview)
+    triangulate.ts          # earcut wrapper for filled polygons
+    layout.ts               # text → positioned glyphs (with kerning)
     bubble.ts               # rect / speech / cloud geometry
     glyphOps.ts             # immutable glyph editing operations
+    random.ts               # mulberry32 PRNG + seed hashing
+    effects.ts              # spline + shape jitter
+    widthEffects.ts         # width wiggle + taper modulators
     export/{svg,png}.ts
   data/defaultFont.ts       # built-in base glyph set (A-Z a-z 0-9 . ? !)
   state/                    # zustand stores wrapping pure reducers
