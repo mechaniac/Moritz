@@ -536,6 +536,40 @@ function GlyphEditor(props: {
             Editing: {char}
           </strong>
           <button onClick={onAddStroke}>+ Stroke</button>
+          <button
+            onClick={() => {
+              // Pick a target stroke + segment to split. Prefer the segment
+              // following the selected anchor (or before, if it's the last
+              // vertex). If only a stroke is selected, split its middle
+              // segment. Bail out otherwise.
+              let strokeIdx = -1;
+              let segIdx = -1;
+              if (selection.kind === 'anchor') {
+                const s = glyph.strokes[selection.strokeIdx];
+                if (!s) return;
+                strokeIdx = selection.strokeIdx;
+                segIdx =
+                  selection.vIdx < s.vertices.length - 1
+                    ? selection.vIdx
+                    : selection.vIdx - 1;
+              } else if (selection.kind === 'stroke') {
+                const s = glyph.strokes[selection.strokeIdx];
+                if (!s || s.vertices.length < 2) return;
+                strokeIdx = selection.strokeIdx;
+                segIdx = Math.floor((s.vertices.length - 1) / 2);
+              } else {
+                return;
+              }
+              if (strokeIdx < 0 || segIdx < 0) return;
+              onChange((g) => insertAnchor(g, strokeIdx, segIdx, 0.5));
+              // Newly inserted anchor lands at segIdx + 1; select it.
+              setSelection({ kind: 'anchor', strokeIdx, vIdx: segIdx + 1 });
+            }}
+            disabled={selection.kind === 'none'}
+            title="Insert a new anchor at the midpoint of the segment after the selected anchor (or in the middle of the selected stroke). Tip: alt-click a stroke to insert at the click point."
+          >
+            + Anchor
+          </button>
           <button onClick={onDeleteSelected} disabled={selection.kind === 'none'}>
             − Delete selected
           </button>
