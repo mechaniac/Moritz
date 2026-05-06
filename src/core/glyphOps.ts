@@ -81,6 +81,27 @@ export function moveHandle(
   return replaceStroke(g, strokeIdx, replaceVertex(s, vIdx, next));
 }
 
+/** Translate every vertex of a single stroke by `(dx, dy)`. Handles are
+ *  relative to their anchor and so don't change. */
+export function translateStroke(
+  g: Glyph,
+  strokeIdx: number,
+  dx: number,
+  dy: number,
+): Glyph {
+  const s = g.strokes[strokeIdx];
+  if (!s) return g;
+  if (dx === 0 && dy === 0) return g;
+  const next = {
+    ...s,
+    vertices: s.vertices.map((v) => ({
+      ...v,
+      p: { x: v.p.x + dx, y: v.p.y + dy },
+    })),
+  };
+  return replaceStroke(g, strokeIdx, next);
+}
+
 export function deleteAnchor(g: Glyph, strokeIdx: number, vIdx: number): Glyph {
   const s = g.strokes[strokeIdx];
   if (!s) return g;

@@ -37,6 +37,7 @@ import {
   moveAnchor,
   moveHandle,
   setBreakTangent,
+  translateStroke,
 } from '../../core/glyphOps.js';
 import type {
   CapShape,
@@ -103,7 +104,8 @@ type Selection =
 
 type Drag =
   | { kind: 'anchor'; strokeIdx: number; vIdx: number }
-  | { kind: 'handle'; strokeIdx: number; vIdx: number; side: 'in' | 'out' };
+  | { kind: 'handle'; strokeIdx: number; vIdx: number; side: 'in' | 'out' }
+  | { kind: 'stroke'; strokeIdx: number; lastX: number; lastY: number; moved: boolean };
 
 export function GlyphSetter(): JSX.Element {
   const font = useAppStore((s) => s.font);
@@ -392,8 +394,16 @@ function GlyphEditor(props: {
     if (!p) return;
     if (drag.kind === 'anchor') {
       onChange((g) => moveAnchor(g, drag.strokeIdx, drag.vIdx, p));
-    } else {
+    } else if (drag.kind === 'handle') {
       onChange((g) => moveHandle(g, drag.strokeIdx, drag.vIdx, drag.side, p));
+    } else {
+      const dx = p.x - drag.lastX;
+      const dy = p.y - drag.lastY;
+      if (dx === 0 && dy === 0) return;
+      drag.lastX = p.x;
+      drag.lastY = p.y;
+      drag.moved = true;
+      onChange((g) => translateStroke(g, drag.strokeIdx, dx, dy));
     }
   };
   const onPointerUp = (e: React.PointerEvent) => {
@@ -451,8 +461,12 @@ function GlyphEditor(props: {
     }
   };
 
-  // Alt-click on a stroke path inserts an anchor at the closest segment midpoint.
-  const onStrokeClick = (e: React.MouseEvent, strokeIdx: number) => {
+  // Pointer-down on a stroke path:
+  //   - Alt-click: insert anchor at the closest segment's midpoint (no drag).
+  //   - Plain: select the stroke and start a drag-to-translate. If the
+  //     pointer is released without moving, this is just a click (selection
+  //     was already applied).
+  const onStrokePointerDown = (e: React.PointerEvent, strokeIdx: number) => {
     e.stopPropagation();
     if (e.altKey) {
       const p = toGlyph(e.clientX, e.clientY);
@@ -461,9 +475,19 @@ function GlyphEditor(props: {
       if (!stroke) return;
       const segIdx = nearestSegmentIndex(stroke, p);
       onChange((g) => insertAnchor(g, strokeIdx, segIdx, 0.5));
-    } else {
-      setSelection({ kind: 'stroke', strokeIdx });
+      return;
     }
+    const p = toGlyph(e.clientX, e.clientY);
+    if (!p) return;
+    setSelection({ kind: 'stroke', strokeIdx });
+    dragRef.current = {
+      kind: 'stroke',
+      strokeIdx,
+      lastX: p.x,
+      lastY: p.y,
+      moved: false,
+    };
+    (e.target as Element).setPointerCapture(e.pointerId);
   };
 
   const selectedAnchor =
@@ -522,8 +546,9 @@ function GlyphEditor(props: {
           </label>
         )}
         <span style={{ color: '#666', fontSize: 12, marginLeft: 'auto' }}>
-          Drag anchors / handles. Alt-click stroke = insert anchor. Alt-click
-          anchor = toggle corner/smooth.
+          Drag anchors / handles. Drag stroke body = move whole stroke.
+          Alt-click stroke = insert anchor. Alt-click anchor = toggle
+          corner/smooth.
         </span>
       </div>
       {/* Canvas — fills remaining space */}
@@ -852,7 +877,7 @@ function GlyphEditor(props: {
                 selection={selection}
                 showAnchors={view.showAnchors}
                 scale={SCALE}
-                onStrokeClick={onStrokeClick}
+                onStrokePointerDown={onStrokePointerDown}
                 onAnchorPointerDown={startAnchorDrag}
                 onHandlePointerDown={startHandleDrag}
               />
@@ -1633,7 +1658,7 @@ function StrokeOverlay(props: {
   selection: Selection;
   showAnchors: boolean;
   scale: number;
-  onStrokeClick: (e: React.MouseEvent, strokeIdx: number) => void;
+  onStrokePointerDown: (e: React.PointerEvent, strokeIdx: number) => void;
   onAnchorPointerDown: (
     e: React.PointerEvent,
     strokeIdx: number,
@@ -1676,8 +1701,8 @@ function StrokeOverlay(props: {
         fill="none"
         stroke={isStrokeSelected ? '#0a84ff' : '#888'}
         strokeWidth={HAIR}
-        onClick={(e) => props.onStrokeClick(e, strokeIdx)}
-        style={{ cursor: 'pointer' }}
+        onPointerDown={(e) => props.onStrokePointerDown(e, strokeIdx)}
+        style={{ cursor: isStrokeSelected ? 'grabbing' : 'grab' }}
       />
       {showAnchors && stroke.vertices.map((v, vIdx) => {
         const sel =
