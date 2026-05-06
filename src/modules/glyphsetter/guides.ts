@@ -132,15 +132,46 @@ export function presetDiagonals(cross = true): GuideLayer {
  * render sanely.
  */
 export const CALLIGRAPHY_RANGES = {
-  capHeight: { min: 0.45, max: 0.75, default: 0.62 },
-  xHeight:   { min: 0.42, max: 0.65, default: 0.52 },
-  ascender:  { min: 0.00, max: 0.18, default: 0.06 },
-  descender: { min: 0.10, max: 0.32, default: 0.22 },
-  weight:    { min: -0.10, max: 0.10, default: 0.00 },
+  capHeight: { min: 0.30, max: 0.90, default: 0.62 },
+  xHeight:   { min: 0.30, max: 0.95, default: 0.52 },
+  ascender:  { min: 0.00, max: 0.35, default: 0.06 },
+  descender: { min: 0.00, max: 0.40, default: 0.22 },
+  weight:    { min: -0.30, max: 0.30, default: 0.00 },
 } as const;
 
 function clampRange(v: number, r: { min: number; max: number }): number {
   return Math.max(r.min, Math.min(r.max, v));
+}
+
+/**
+ * Compute calligraphy-guide parameters that line up with a real font's
+ * own metrics. The font's em-square is mapped to the full glyph box, so
+ * cap-height, x-height, ascender, descender become fractions of the box
+ * height. `weight` is set so the formula in computeLayerGeometry yields
+ * `baseline = ascent` exactly (i.e. the guide baseline coincides with
+ * the font's drawn baseline).
+ */
+export function calligraphyFromFontMetrics(m: {
+  capHeight: number;   // em
+  xHeight: number;     // em
+  ascent: number;      // em
+  descent: number;     // em
+}): {
+  capHeight: number;
+  xHeight: number;
+  ascender: number;
+  descender: number;
+  weight: number;
+} {
+  const cap  = clampRange(m.capHeight, CALLIGRAPHY_RANGES.capHeight);
+  const desc = clampRange(m.descent, CALLIGRAPHY_RANGES.descender);
+  const ascExtra = Math.max(0, m.ascent - m.capHeight);
+  const asc  = clampRange(ascExtra, CALLIGRAPHY_RANGES.ascender);
+  const xr   = clampRange(m.xHeight / Math.max(1e-6, m.capHeight), CALLIGRAPHY_RANGES.xHeight);
+  // weight = (total - 1) / 2 makes natural baseline coincide with m.ascent.
+  const total = asc + cap + desc;
+  const w    = clampRange((total - 1) / 2, CALLIGRAPHY_RANGES.weight);
+  return { capHeight: cap, xHeight: xr, ascender: asc, descender: desc, weight: w };
 }
 
 export function presetCalligraphy(): GuideLayer {

@@ -11,6 +11,7 @@ import type { JSX } from 'react';
 import {
   addLayer,
   CALLIGRAPHY_RANGES,
+  calligraphyFromFontMetrics,
   defaultGuides,
   defaultKindFor,
   moveLayer,
@@ -27,10 +28,12 @@ import {
   type GuideLayer,
   type GuideSettings,
 } from './guides.js';
+import { measureFontMetrics } from './fontMetrics.js';
 
 type Props = {
   value: GuideSettings;
   onChange: (next: GuideSettings) => void;
+  refFontFamily?: string;
 };
 
 const PRESETS: { label: string; make: () => GuideLayer }[] = [
@@ -49,7 +52,19 @@ const PRESETS: { label: string; make: () => GuideLayer }[] = [
 ];
 
 export function GuidesPanel(props: Props): JSX.Element {
-  const { value, onChange } = props;
+  const { value, onChange, refFontFamily } = props;
+  const alignToRefFont = (): void => {
+    if (!refFontFamily) return;
+    const m = measureFontMetrics(refFontFamily);
+    const calliKind: GuideKind = { kind: 'calligraphy', ...calligraphyFromFontMetrics(m) };
+    const existing = value.layers.find((l) => l.kind.kind === 'calligraphy');
+    if (existing) {
+      onChange(updateLayer(value, existing.id, { kind: calliKind, visible: true }));
+    } else {
+      const layer = presetCalligraphy();
+      onChange(addLayer(value, { ...layer, kind: calliKind }));
+    }
+  };
   return (
     <div className="mz-guides" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
@@ -68,6 +83,19 @@ export function GuidesPanel(props: Props): JSX.Element {
           Reset all
         </button>
       </label>
+      <button
+        type="button"
+        onClick={alignToRefFont}
+        disabled={!refFontFamily}
+        title={
+          refFontFamily
+            ? 'Measure the chosen reference font and adjust the calligraphy guide so its baseline / cap-height / x-height / ascender / descender match the font exactly. Creates a calligraphy layer if none exists.'
+            : 'Pick a Reference font in the View section first.'
+        }
+        style={{ fontSize: 11, padding: '2px 6px' }}
+      >
+        Align to reference font
+      </button>
       <select
         defaultValue=""
         style={{ fontSize: 12 }}

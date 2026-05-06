@@ -26,6 +26,7 @@ import { layout as layoutText } from '../../core/layout.js';
 import type { GlyphViewOptions } from '../../state/store.js';
 import { computeLayerGeometry } from './guides.js';
 import { GuidesPanel } from './GuidesPanel.js';
+import { measureFontMetrics } from './fontMetrics.js';
 import {
   addStroke,
   deleteAnchor,
@@ -566,11 +567,11 @@ function GlyphEditor(props: {
             let xPx = capPx * 0.5;
             if (calli && calli.kind.kind === 'calligraphy') {
               const k = calli.kind;
-              const cap  = Math.max(0.45, Math.min(0.75, k.capHeight));
-              const xr   = Math.max(0.42, Math.min(0.65, k.xHeight));
-              const asc  = Math.max(0.00, Math.min(0.18, k.ascender));
-              const desc = Math.max(0.10, Math.min(0.32, k.descender));
-              const w    = Math.max(-0.10, Math.min(0.10, k.weight));
+              const cap  = Math.max(0.30, Math.min(0.90, k.capHeight));
+              const xr   = Math.max(0.30, Math.min(0.95, k.xHeight));
+              const asc  = Math.max(0.00, Math.min(0.35, k.ascender));
+              const desc = Math.max(0.00, Math.min(0.40, k.descender));
+              const w    = Math.max(-0.30, Math.min(0.30, k.weight));
               const total = asc + cap + desc;
               const minB = asc + cap;
               const maxB = 1 - desc;
@@ -584,8 +585,12 @@ function GlyphEditor(props: {
             // cap-height for everything else (uppercase, digits, ascender
             // lowercase like b/d/f/h/k/l/t, punctuation).
             const isXHeight = /^[acemnorsuvwxz]$/.test(char);
-            // CSS font cap-height ≈ 0.70em, x-height ≈ 0.50em (curated set).
-            const fontSize = isXHeight ? xPx / 0.5 : capPx / 0.7;
+            // Size from measured font metrics so the drawn cap-/x-height
+            // exactly matches the guide.
+            const fm = measureFontMetrics(view.refFontFamily);
+            const fontSize = isXHeight
+              ? xPx / Math.max(0.05, fm.xHeight)
+              : capPx / Math.max(0.05, fm.capHeight);
             return (
               <text
                 className="mz-ref-glyph"
@@ -1085,6 +1090,7 @@ function Inspector(props: {
         <GuidesPanel
           value={view.guides}
           onChange={(guides) => setView({ guides })}
+          refFontFamily={view.refFontFamily}
         />
       </Section>
     </aside>
