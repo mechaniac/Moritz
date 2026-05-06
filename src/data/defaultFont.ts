@@ -304,42 +304,345 @@ const Z: Glyph = glyph('Z', [
   ]),
 ]);
 
-// ---------- Lowercase (comic-style small caps) -----------------------------
-// Traditional comic lettering uses all caps; lowercase keys map to scaled-down
-// versions of the uppercase forms that sit on the x-height line.
+// ---------- Lowercase ------------------------------------------------------
+// Real lowercase forms (not small caps): single-story a/g, x-height bowls,
+// proper ascenders (b d f h k l) and descenders (g j p q y). Coordinates
+// follow the same top-left, y-down convention.
 
-const XHEIGHT = BASELINE - 55; // top of lowercase letters (y=55)
+const XHEIGHT = BASELINE - 55; // y=55, top of lowercase x-band
+const ASC = CAP;               // y=25, top of ascenders (= cap line)
+const DESC = BASELINE + 25;    // y=135, depth of descenders
 
-/** Scale an uppercase glyph's strokes down to the x-height band, and shrink
- *  the box width to match so lowercase advances are tighter than uppercase
- *  (otherwise every lowercase inherits the parent's full box and lines look
- *  uniformly spaced). */
-const smallCap = (lower: string, src: Glyph): Glyph => {
-  const sy = (BASELINE - XHEIGHT) / (BASELINE - CAP); // height ratio
-  const sx = sy; // keep proportions
-  const newW = src.box.w * sx;
-  const scaledStrokes: Stroke[] = src.strokes.map((s) => ({
-    id: `s${++strokeCounter}`,
-    vertices: s.vertices.map((v) => ({
-      p: v2(
-        v.p.x * sx,
-        BASELINE - (BASELINE - v.p.y) * sy,
-      ),
-      inHandle: v2(v.inHandle.x * sx, v.inHandle.y * sy),
-      outHandle: v2(v.outHandle.x * sx, v.outHandle.y * sy),
-    })),
-  }));
-  return { char: lower, box: { w: Math.round(newW), h: src.box.h }, strokes: scaledStrokes };
-};
+const lower = (char: string, w: number, strokes: Stroke[]): Glyph => ({
+  char,
+  box: { w, h: BOX_H },
+  strokes,
+});
+
+const a: Glyph = lower('a', 70, [
+  // bowl (open at top-right)
+  stroke([
+    corner(60, XHEIGHT + 5),
+    corner(20, XHEIGHT),
+    corner(10, XHEIGHT + 18),
+    corner(10, BASELINE - 18),
+    corner(20, BASELINE),
+    corner(60, BASELINE - 5),
+  ]),
+  // right stem
+  stroke([corner(60, XHEIGHT + 2), corner(60, BASELINE)]),
+]);
+
+const b: Glyph = lower('b', 75, [
+  // ascender stem
+  stroke([corner(15, ASC), corner(15, BASELINE)]),
+  // bowl
+  stroke([
+    corner(15, XHEIGHT + 5),
+    corner(50, XHEIGHT),
+    corner(65, XHEIGHT + 18),
+    corner(65, BASELINE - 18),
+    corner(50, BASELINE),
+    corner(15, BASELINE - 5),
+  ]),
+]);
+
+const c: Glyph = lower('c', 70, [
+  stroke([
+    corner(60, XHEIGHT + 12),
+    corner(45, XHEIGHT),
+    corner(20, XHEIGHT + 5),
+    corner(10, XHEIGHT + 22),
+    corner(10, BASELINE - 18),
+    corner(20, BASELINE),
+    corner(45, BASELINE),
+    corner(60, BASELINE - 10),
+  ]),
+]);
+
+const d: Glyph = lower('d', 75, [
+  // ascender stem (right side)
+  stroke([corner(60, ASC), corner(60, BASELINE)]),
+  // bowl
+  stroke([
+    corner(60, XHEIGHT + 5),
+    corner(25, XHEIGHT),
+    corner(10, XHEIGHT + 18),
+    corner(10, BASELINE - 18),
+    corner(25, BASELINE),
+    corner(60, BASELINE - 5),
+  ]),
+]);
+
+const e: Glyph = lower('e', 70, [
+  stroke([
+    corner(10, BASELINE - 30),
+    corner(60, BASELINE - 30),
+    corner(60, XHEIGHT + 12),
+    corner(45, XHEIGHT),
+    corner(20, XHEIGHT),
+    corner(10, XHEIGHT + 18),
+    corner(10, BASELINE - 18),
+    corner(20, BASELINE),
+    corner(60, BASELINE - 10),
+  ]),
+]);
+
+const f: Glyph = lower('f', 55, [
+  // hook + descending stem
+  stroke([
+    corner(50, ASC + 12),
+    corner(40, ASC + 4),
+    corner(28, ASC + 6),
+    corner(25, ASC + 20),
+    corner(25, BASELINE),
+  ]),
+  // crossbar
+  stroke([corner(8, XHEIGHT + 5), corner(48, XHEIGHT + 5)]),
+]);
+
+const g: Glyph = lower('g', 70, [
+  // bowl
+  stroke([
+    corner(60, XHEIGHT + 5),
+    corner(20, XHEIGHT),
+    corner(10, XHEIGHT + 18),
+    corner(10, BASELINE - 18),
+    corner(20, BASELINE),
+    corner(60, BASELINE - 5),
+  ]),
+  // descender / tail
+  stroke([
+    corner(60, XHEIGHT + 5),
+    corner(60, BASELINE),
+    corner(55, DESC),
+    corner(15, DESC),
+    corner(8, BASELINE + 12),
+  ]),
+]);
+
+const h: Glyph = lower('h', 75, [
+  // ascender stem
+  stroke([corner(15, ASC), corner(15, BASELINE)]),
+  // shoulder
+  stroke([
+    corner(15, XHEIGHT + 12),
+    corner(28, XHEIGHT),
+    corner(50, XHEIGHT),
+    corner(60, XHEIGHT + 12),
+    corner(60, BASELINE),
+  ]),
+]);
+
+const i: Glyph = lower('i', 30, [
+  // dot (tiny stroke; outliner gives it pen-width body)
+  stroke([corner(13, ASC + 8), corner(17, ASC + 8)]),
+  // stem
+  stroke([corner(15, XHEIGHT + 5), corner(15, BASELINE)]),
+]);
+
+const j: Glyph = lower('j', 50, [
+  // dot
+  stroke([corner(33, ASC + 8), corner(37, ASC + 8)]),
+  // stem + descender hook
+  stroke([
+    corner(35, XHEIGHT + 5),
+    corner(35, BASELINE),
+    corner(28, DESC),
+    corner(12, DESC - 2),
+    corner(8, BASELINE + 12),
+  ]),
+]);
+
+const k: Glyph = lower('k', 65, [
+  // ascender stem
+  stroke([corner(15, ASC), corner(15, BASELINE)]),
+  // upper diag in to leg out
+  stroke([
+    corner(60, XHEIGHT + 5),
+    corner(15, BASELINE - 25),
+    corner(60, BASELINE),
+  ]),
+]);
+
+const l: Glyph = lower('l', 30, [
+  stroke([corner(15, ASC), corner(15, BASELINE)]),
+]);
+
+const m: Glyph = lower('m', 105, [
+  // left stem
+  stroke([corner(10, XHEIGHT + 12), corner(10, BASELINE)]),
+  // first arch
+  stroke([
+    corner(10, XHEIGHT + 12),
+    corner(22, XHEIGHT),
+    corner(42, XHEIGHT),
+    corner(52, XHEIGHT + 12),
+    corner(52, BASELINE),
+  ]),
+  // second arch
+  stroke([
+    corner(52, XHEIGHT + 12),
+    corner(64, XHEIGHT),
+    corner(85, XHEIGHT),
+    corner(95, XHEIGHT + 12),
+    corner(95, BASELINE),
+  ]),
+]);
+
+const n: Glyph = lower('n', 75, [
+  // stem
+  stroke([corner(15, XHEIGHT + 12), corner(15, BASELINE)]),
+  // shoulder
+  stroke([
+    corner(15, XHEIGHT + 12),
+    corner(28, XHEIGHT),
+    corner(50, XHEIGHT),
+    corner(60, XHEIGHT + 12),
+    corner(60, BASELINE),
+  ]),
+]);
+
+const o: Glyph = lower('o', 70, [
+  // open at top-right so the path isn't closed
+  stroke([
+    corner(50, XHEIGHT),
+    corner(20, XHEIGHT),
+    corner(10, XHEIGHT + 18),
+    corner(10, BASELINE - 18),
+    corner(20, BASELINE),
+    corner(50, BASELINE),
+    corner(60, BASELINE - 18),
+    corner(60, XHEIGHT + 18),
+    corner(51, XHEIGHT + 1),
+  ]),
+]);
+
+const p: Glyph = lower('p', 75, [
+  // stem dropping into descender
+  stroke([corner(15, XHEIGHT + 5), corner(15, DESC)]),
+  // bowl
+  stroke([
+    corner(15, XHEIGHT + 5),
+    corner(50, XHEIGHT),
+    corner(65, XHEIGHT + 18),
+    corner(65, BASELINE - 18),
+    corner(50, BASELINE),
+    corner(15, BASELINE - 5),
+  ]),
+]);
+
+const q: Glyph = lower('q', 75, [
+  // stem dropping into descender (right side)
+  stroke([corner(60, XHEIGHT + 5), corner(60, DESC)]),
+  // bowl
+  stroke([
+    corner(60, XHEIGHT + 5),
+    corner(25, XHEIGHT),
+    corner(10, XHEIGHT + 18),
+    corner(10, BASELINE - 18),
+    corner(25, BASELINE),
+    corner(60, BASELINE - 5),
+  ]),
+  // tail flick
+  stroke([corner(60, DESC), corner(72, BASELINE + 18)]),
+]);
+
+const r: Glyph = lower('r', 60, [
+  // stem
+  stroke([corner(15, XHEIGHT + 12), corner(15, BASELINE)]),
+  // arm
+  stroke([
+    corner(15, XHEIGHT + 12),
+    corner(28, XHEIGHT),
+    corner(45, XHEIGHT),
+    corner(55, XHEIGHT + 12),
+  ]),
+]);
+
+const s: Glyph = lower('s', 70, [
+  stroke([
+    corner(60, XHEIGHT + 12),
+    corner(50, XHEIGHT),
+    corner(20, XHEIGHT),
+    corner(10, XHEIGHT + 14),
+    corner(20, BASELINE - 30),
+    corner(50, BASELINE - 25),
+    corner(60, BASELINE - 12),
+    corner(50, BASELINE),
+    corner(20, BASELINE),
+    corner(10, BASELINE - 12),
+  ]),
+]);
+
+const t: Glyph = lower('t', 50, [
+  // stem with bottom hook
+  stroke([
+    corner(20, XHEIGHT - 12),
+    corner(20, BASELINE - 8),
+    corner(28, BASELINE),
+    corner(40, BASELINE - 5),
+  ]),
+  // crossbar
+  stroke([corner(5, XHEIGHT + 3), corner(45, XHEIGHT + 3)]),
+]);
+
+const u: Glyph = lower('u', 70, [
+  // U curve
+  stroke([
+    corner(10, XHEIGHT + 2),
+    corner(10, BASELINE - 18),
+    corner(20, BASELINE),
+    corner(50, BASELINE),
+    corner(60, BASELINE - 12),
+  ]),
+  // right stem
+  stroke([corner(60, XHEIGHT + 2), corner(60, BASELINE)]),
+]);
+
+const v: Glyph = lower('v', 70, [
+  stroke([corner(10, XHEIGHT + 2), corner(35, BASELINE), corner(60, XHEIGHT + 2)]),
+]);
+
+const w: Glyph = lower('w', 90, [
+  stroke([
+    corner(10, XHEIGHT + 2),
+    corner(28, BASELINE),
+    corner(45, XHEIGHT + 18),
+    corner(62, BASELINE),
+    corner(80, XHEIGHT + 2),
+  ]),
+]);
+
+const x: Glyph = lower('x', 70, [
+  stroke([corner(10, XHEIGHT + 2), corner(60, BASELINE)]),
+  stroke([corner(60, XHEIGHT + 2), corner(10, BASELINE)]),
+]);
+
+const y: Glyph = lower('y', 70, [
+  // left arm down to baseline meet
+  stroke([corner(10, XHEIGHT + 2), corner(38, BASELINE - 5)]),
+  // right arm continues into descender tail
+  stroke([
+    corner(60, XHEIGHT + 2),
+    corner(35, BASELINE),
+    corner(20, DESC - 5),
+    corner(8, DESC),
+  ]),
+]);
+
+const z: Glyph = lower('z', 70, [
+  stroke([
+    corner(10, XHEIGHT + 5),
+    corner(60, XHEIGHT + 5),
+    corner(10, BASELINE),
+    corner(60, BASELINE),
+  ]),
+]);
 
 const lowercase: Glyph[] = [
-  smallCap('a', A), smallCap('b', B), smallCap('c', C), smallCap('d', D),
-  smallCap('e', E), smallCap('f', F), smallCap('g', G), smallCap('h', H),
-  smallCap('i', I), smallCap('j', J), smallCap('k', K), smallCap('l', L),
-  smallCap('m', M), smallCap('n', N), smallCap('o', O), smallCap('p', P),
-  smallCap('q', Q), smallCap('r', R), smallCap('s', S), smallCap('t', T),
-  smallCap('u', U), smallCap('v', V), smallCap('w', W), smallCap('x', X),
-  smallCap('y', Y), smallCap('z', Z),
+  a, b, c, d, e, f, g, h, i, j, k, l, m,
+  n, o, p, q, r, s, t, u, v, w, x, y, z,
 ];
 
 // ---------- Digits ----------------------------------------------------------
