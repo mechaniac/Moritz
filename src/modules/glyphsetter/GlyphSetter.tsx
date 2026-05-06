@@ -336,6 +336,14 @@ function GlyphEditor(props: {
         <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
           <input
             type="checkbox"
+            checked={view.showOtherGlyphs}
+            onChange={(e) => setView({ showOtherGlyphs: e.target.checked })}
+          />
+          Other glyphs
+        </label>
+        <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <input
+            type="checkbox"
             checked={view.showAnchors}
             onChange={(e) => setView({ showAnchors: e.target.checked })}
           />
@@ -541,6 +549,27 @@ function GlyphEditor(props: {
                   {g.dots.map((d, i) => (
                     <circle key={`d${i}`} cx={d.cx} cy={d.cy} r={d.r} stroke="none" />
                   ))}
+                </g>
+              );
+            })}
+          </g>
+        )}
+        {/* other glyphs of the set, faint red — to see how shapes overlap */}
+        {view.showOtherGlyphs && (
+          <g
+            transform={`translate(${PADDING} ${PADDING}) scale(${SCALE})`}
+            fill="rgba(220,30,30,1)"
+            opacity={0.05}
+            pointerEvents="none"
+          >
+            {Object.entries(font.glyphs).map(([c, g]) => {
+              if (c === char) return null;
+              return (
+                <g key={`other-${c}`}>
+                  {g.strokes.map((s, i) => {
+                    const { polygon, triangles } = triangulateForView(s, font.style, view);
+                    return <path key={`o${i}`} d={trianglesD(polygon, triangles)} />;
+                  })}
                 </g>
               );
             })}

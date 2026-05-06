@@ -15,6 +15,7 @@ export type TriMode = 'earcut' | 'ribbon-fixed' | 'ribbon-density';
 export type GlyphViewOptions = {
   showAnchors: boolean;
   showFillPreview: boolean;
+  showOtherGlyphs: boolean; // overlay all other glyphs' fills behind the edited one
   showBorders: boolean; // colorized debug overlay of left/right/caps
   showTriangles: boolean; // ear-clip triangulation of the outline polygon
   triMode: TriMode;
@@ -56,6 +57,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   glyphView: {
     showAnchors: true,
     showFillPreview: true,
+    showOtherGlyphs: false,
     showBorders: false,
     showTriangles: false,
     triMode: 'earcut',
