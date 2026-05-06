@@ -5,7 +5,7 @@
  * Advance for a non-space glyph is:
  *     advance = (lsb ?? 0) + glyph.box.w + (rsb ?? 0)
  *               + (style.tracking ?? 0)
- *               + (prevGlyph.kerning?.[ch] ?? 0)
+ *               + (font.kerning?.[prevChar+ch] ?? 0) * scaleX
  *
  * v1: single line per `\n`, no word wrap.
  */
@@ -43,6 +43,8 @@ export function layout(
   const lineHeightFactor =
     opts.lineHeightFactor ?? font.style.lineHeight ?? 1.2;
   const fallbackKey = opts.missingChar ?? '?';
+  const kerning = font.kerning;
+  const scaleX = font.style.scaleX;
 
   const lines = text.split('\n');
   const placed: PositionedGlyph[] = [];
@@ -77,21 +79,19 @@ export function layout(
     const line = lines[li]!;
     let cursorX = 0;
     let prevChar = '';
-    let prevGlyph: Glyph | null = null;
     const y = li * lineStep;
     for (const ch of line) {
       if (ch === ' ') {
         cursorX += spaceW + tracking;
         prevChar = ch;
-        prevGlyph = null;
         continue;
       }
       const g = getGlyph(ch);
       if (!g) continue;
-      // Per-glyph kerning: previous glyph's kerning table keyed by current char.
-      if (prevGlyph && prevChar !== ' ' && prevGlyph.kerning) {
-        const k = prevGlyph.kerning[ch];
-        if (k !== undefined) cursorX += k;
+      // Typeface-wide kerning: previous char + current char as the pair key.
+      if (prevChar && prevChar !== ' ' && kerning) {
+        const k = kerning[prevChar + ch];
+        if (k !== undefined) cursorX += k * scaleX;
       }
       const lsb = g.sidebearings?.left ?? 0;
       const rsb = g.sidebearings?.right ?? 0;
@@ -100,7 +100,6 @@ export function layout(
       placed.push({ glyph: g, origin: { x: cursorX, y: y + yOff } });
       cursorX += g.box.w + rsb + tracking;
       prevChar = ch;
-      prevGlyph = g;
     }
     maxWidth = Math.max(maxWidth, cursorX);
   }

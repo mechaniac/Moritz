@@ -77,8 +77,11 @@ export function GlyphSetter(): JSX.Element {
   const view = useAppStore((s) => s.glyphView);
   const setGlyphView = useAppStore((s) => s.setGlyphView);
   const setStyle = useAppStore((s) => s.setStyle);
+  const setKerning = useAppStore((s) => s.setKerning);
 
   const glyph = font.glyphs[selectedChar];
+
+  const [leftTab, setLeftTab] = useState<'glyphs' | 'kerning'>('glyphs');
 
   return (
     <div
@@ -98,15 +101,29 @@ export function GlyphSetter(): JSX.Element {
           left: 0,
           width: GRID_W,
           overflow: 'hidden',
+          display: 'flex',
+          flexDirection: 'column',
+          background: '#2a2a2a',
         }}
       >
-        <GlyphGrid
-          chars={Object.keys(font.glyphs)}
-          selected={selectedChar}
-          onSelect={selectGlyph}
-          font={font}
-          view={view}
-        />
+        <LeftTabBar value={leftTab} onChange={setLeftTab} />
+        <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+          {leftTab === 'glyphs' ? (
+            <GlyphGrid
+              chars={Object.keys(font.glyphs)}
+              selected={selectedChar}
+              onSelect={selectGlyph}
+              font={font}
+              view={view}
+            />
+          ) : (
+            <KerningList
+              font={font}
+              pairs={font.kerning ?? {}}
+              onChange={setKerning}
+            />
+          )}
+        </div>
       </div>
       <div
         className="mz-glyphsetter__editor"
@@ -153,7 +170,6 @@ export function GlyphSetter(): JSX.Element {
           setStyle={setStyle}
           glyph={glyph}
           updateGlyph={updateSelectedGlyph}
-          font={font}
         />
       </div>
     </div>
@@ -177,11 +193,10 @@ function GlyphGrid(props: {
     <aside
       className="mz-glyphsetter__grid"
       style={{
-        width: '100%',
-        height: '100%',
+        position: 'absolute',
+        inset: 0,
         padding: 8,
         overflowY: 'auto',
-        background: '#2a2a2a',
         boxSizing: 'border-box',
       }}
     >
@@ -754,9 +769,8 @@ function Inspector(props: {
   setStyle: (patch: Partial<StyleSettings>) => void;
   glyph: Glyph | undefined;
   updateGlyph: (fn: (g: Glyph) => Glyph) => void;
-  font: Font;
 }): JSX.Element {
-  const { view, setView, style, setStyle, glyph, updateGlyph, font } = props;
+  const { view, setView, style, setStyle, glyph, updateGlyph } = props;
   return (
     <aside
       className="mz-glyphsetter__inspector"
@@ -886,9 +900,6 @@ function Inspector(props: {
           />
         </Section>
       )}
-      {glyph && (
-        <KerningSection glyph={glyph} font={font} updateGlyph={updateGlyph} />
-      )}
       <Section
         title="Preview style"
         tone="style"
@@ -983,134 +994,192 @@ function Inspector(props: {
   );
 }
 
-// ---------- Kerning section ------------------------------------------------
+// ---------- Left-column tab bar -------------------------------------------
 
-function KerningSection(props: {
-  glyph: Glyph;
-  font: Font;
-  updateGlyph: (fn: (g: Glyph) => Glyph) => void;
+function LeftTabBar(props: {
+  value: 'glyphs' | 'kerning';
+  onChange: (v: 'glyphs' | 'kerning') => void;
 }): JSX.Element {
-  const { glyph, font, updateGlyph } = props;
-  const [draftNext, setDraftNext] = useState('');
-
-  const pairs = glyph.kerning ?? {};
-  const entries = Object.entries(pairs).sort(([a], [b]) => a.localeCompare(b));
-
-  const setValue = (next: string, v: number): void => {
-    updateGlyph((g) => ({
-      ...g,
-      kerning: { ...(g.kerning ?? {}), [next]: v },
-    }));
-  };
-  const remove = (next: string): void => {
-    updateGlyph((g) => {
-      if (!g.kerning) return g;
-      const k = { ...g.kerning };
-      delete k[next];
-      return { ...g, kerning: Object.keys(k).length === 0 ? undefined : k };
-    });
-  };
-  const add = (): void => {
-    const ch = [...draftNext][0];
-    if (!ch) return;
-    if (pairs[ch] !== undefined) return;
-    if (!font.glyphs[ch]) return;
-    setValue(ch, 0);
-    setDraftNext('');
-  };
-
-  const canAdd = (() => {
-    const ch = [...draftNext][0];
-    return !!ch && !!font.glyphs[ch] && pairs[ch] === undefined;
-  })();
-
-  return (
-    <Section
-      title="Kerning"
-      tone="local"
-      subtitle={`${entries.length} pair${entries.length === 1 ? '' : 's'}`}
-    >
-      <div
-        className="mz-kerning__add"
-        title="Type the next character that should kern after this glyph, then click + Pair."
-        style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 12 }}
+  const tab = (id: 'glyphs' | 'kerning', label: string): JSX.Element => {
+    const active = props.value === id;
+    return (
+      <button
+        type="button"
+        className={`mz-glyphsetter__tab${active ? ' mz-glyphsetter__tab--active' : ''}`}
+        data-tab={id}
+        onClick={() => props.onChange(id)}
+        style={{
+          flex: 1,
+          padding: '6px 8px',
+          fontSize: 12,
+          fontWeight: active ? 600 : 400,
+          background: active ? '#fff' : 'transparent',
+          color: active ? '#222' : '#ccc',
+          border: 'none',
+          borderBottom: active ? '2px solid #0a84ff' : '2px solid transparent',
+          cursor: 'pointer',
+        }}
       >
-        <span style={{ color: '#666', flexShrink: 0 }}>
-          <code style={{ fontFamily: 'monospace' }}>{glyph.char}</code> +
-        </span>
-        <input
-          className="mz-kerning__pair"
-          type="text"
-          value={draftNext}
-          onChange={(e) => setDraftNext(e.target.value.slice(0, 1))}
-          placeholder="?"
-          maxLength={1}
-          title="Next character (must exist in the font)."
-          style={{ width: 32, padding: '2px 4px', fontFamily: 'monospace' }}
-        />
-        <button
-          type="button"
-          className="mz-kerning__add-btn"
-          onClick={add}
-          disabled={!canAdd}
-          title="Add this pair with delta 0."
-        >
-          + Pair
-        </button>
-      </div>
-      {entries.length === 0 && (
-        <p style={{ fontSize: 11, color: '#888', margin: '4px 0' }}>
-          No pairs yet. Type a character above to add one.
-        </p>
-      )}
-      {entries.map(([next, value]) => (
-        <KerningRow
-          key={next}
-          first={glyph.char}
-          second={next}
-          value={value}
-          font={font}
-          onChange={(v) => setValue(next, v)}
-          onRemove={() => remove(next)}
-        />
-      ))}
-    </Section>
+        {label}
+      </button>
+    );
+  };
+  return (
+    <div
+      className="mz-glyphsetter__tabs"
+      style={{
+        display: 'flex',
+        background: '#1f1f1f',
+        borderBottom: '1px solid #111',
+      }}
+    >
+      {tab('glyphs', 'Glyphs')}
+      {tab('kerning', 'Kerning')}
+    </div>
   );
 }
 
-function KerningRow(props: {
-  first: string;
-  second: string;
+// ---------- Kerning list (typeface-wide, in left column) ------------------
+
+function KerningList(props: {
+  font: Font;
+  pairs: Readonly<Record<string, number>>;
+  onChange: (next: Record<string, number>) => void;
+}): JSX.Element {
+  const { font, pairs, onChange } = props;
+  const [draft, setDraft] = useState('');
+
+  const entries = Object.entries(pairs).sort(([a], [b]) => a.localeCompare(b));
+
+  const setValue = (pair: string, v: number): void => {
+    onChange({ ...pairs, [pair]: v });
+  };
+  const remove = (pair: string): void => {
+    const next = { ...pairs };
+    delete next[pair];
+    onChange(next);
+  };
+  const add = (): void => {
+    const chars = [...draft];
+    if (chars.length !== 2) return;
+    const a = chars[0]!;
+    const b = chars[1]!;
+    if (!font.glyphs[a] || !font.glyphs[b]) return;
+    const key = a + b;
+    if (pairs[key] !== undefined) return;
+    setValue(key, 0);
+    setDraft('');
+  };
+
+  const canAdd = (() => {
+    const chars = [...draft];
+    if (chars.length !== 2) return false;
+    const a = chars[0]!;
+    const b = chars[1]!;
+    return !!font.glyphs[a] && !!font.glyphs[b] && pairs[a + b] === undefined;
+  })();
+
+  return (
+    <div
+      className="mz-kerning-list"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        overflowY: 'auto',
+        padding: 8,
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}
+    >
+      <div
+        className="mz-kerning-list__add"
+        title="Type a two-character pair and click +Pair to add a new entry."
+        style={{
+          display: 'flex',
+          gap: 4,
+          alignItems: 'center',
+          fontSize: 12,
+          color: '#ddd',
+        }}
+      >
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.slice(0, 2))}
+          placeholder="AV"
+          maxLength={2}
+          title="Two-character pair (e.g. AV). Both characters must exist in the font."
+          style={{
+            width: 50,
+            padding: '2px 4px',
+            fontFamily: 'monospace',
+            fontSize: 13,
+          }}
+        />
+        <button
+          type="button"
+          onClick={add}
+          disabled={!canAdd}
+          title="Add this pair with delta 0."
+          style={{ padding: '2px 8px' }}
+        >
+          + Pair
+        </button>
+        <span style={{ color: '#888', marginLeft: 'auto' }}>
+          {entries.length} pair{entries.length === 1 ? '' : 's'}
+        </span>
+      </div>
+      {entries.length === 0 && (
+        <p style={{ fontSize: 11, color: '#999', margin: '4px 0' }}>
+          No kerning pairs. Type two characters above and click + Pair.
+        </p>
+      )}
+      {entries.map(([pair, value]) => (
+        <KerningEntry
+          key={pair}
+          pair={pair}
+          value={value}
+          font={font}
+          onChange={(v) => setValue(pair, v)}
+          onRemove={() => remove(pair)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function KerningEntry(props: {
+  pair: string;
   value: number;
   font: Font;
   onChange: (v: number) => void;
   onRemove: () => void;
 }): JSX.Element {
-  const { first, second, value, font, onChange, onRemove } = props;
+  const { pair, value, font, onChange, onRemove } = props;
+  const [a, b] = [...pair];
 
-  // Render the live preview by piping the pair through the same layout +
-  // triangulation pipeline used everywhere else. Override font.glyphs so the
-  // first glyph carries exactly one kerning entry (the current value), even
-  // if it isn't committed to the store yet.
+  // Live preview: layout the two glyphs through the actual pipeline with this
+  // pair's current value (overriding font.kerning so the slider reflects
+  // immediately even before commit).
   const previewSvg = useMemo(() => {
-    const firstGlyph = font.glyphs[first];
-    const secondGlyph = font.glyphs[second];
-    if (!firstGlyph || !secondGlyph) return null;
-    const patchedFirst: Glyph = { ...firstGlyph, kerning: { [second]: value } };
+    if (!a || !b) return null;
+    if (!font.glyphs[a] || !font.glyphs[b]) return null;
     const previewFont: Font = {
       ...font,
-      glyphs: { ...font.glyphs, [first]: patchedFirst },
+      kerning: { ...(font.kerning ?? {}), [pair]: value },
     };
-    const result = layoutText(first + second, previewFont);
+    const result = layoutText(a + b, previewFont);
     if (result.glyphs.length === 0) return null;
 
-    const groups = result.glyphs.map(({ glyph, origin }) => {
-      const paths = glyph.strokes.map((s) => {
+    const groups = result.glyphs.map(({ glyph, origin }) => ({
+      origin,
+      paths: glyph.strokes.map((s) => {
         const { polygon, triangles } = triangulateForStyle(s, font.style);
         return trianglesD(polygon, triangles);
-      });
-      return { paths, origin };
-    });
+      }),
+    }));
 
     const w = result.width || 1;
     const h = result.height || 1;
@@ -1121,9 +1190,9 @@ function KerningRow(props: {
         style={{
           display: 'block',
           width: '100%',
-          height: 36,
+          height: 56,
           background: '#fafafa',
-          border: '1px solid #eee',
+          border: '1px solid #ddd',
           borderRadius: 3,
         }}
       >
@@ -1138,27 +1207,40 @@ function KerningRow(props: {
         </g>
       </svg>
     );
-  }, [first, second, value, font]);
+  }, [a, b, pair, value, font]);
 
   return (
     <div
-      className="mz-kerning__row"
-      style={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+      className="mz-kerning-entry"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+        padding: 6,
+        background: '#3a3a3a',
+        border: '1px solid #1a1a1a',
+        borderRadius: 4,
+      }}
     >
       <div
-        style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          fontSize: 12,
+          color: '#eee',
+        }}
       >
         <code
-          style={{ width: 32, fontFamily: 'monospace', fontSize: 13 }}
-          title={`Pair: "${first}${second}"`}
+          style={{ width: 36, fontFamily: 'monospace', fontSize: 14 }}
+          title={`Pair: "${pair}"`}
         >
-          {first}
-          {second}
+          {pair}
         </code>
         <input
           type="range"
-          min={-60}
-          max={60}
+          min={-80}
+          max={80}
           step={1}
           value={value}
           onChange={(e) => onChange(parseFloat(e.target.value))}
@@ -1172,7 +1254,7 @@ function KerningRow(props: {
           onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
           title="Kerning offset (font units)."
           style={{
-            width: 48,
+            width: 52,
             padding: '2px 4px',
             fontVariantNumeric: 'tabular-nums',
           }}

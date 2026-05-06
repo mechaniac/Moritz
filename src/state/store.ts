@@ -35,6 +35,7 @@ type AppState = {
   setGlyph: (char: string, glyph: Glyph) => void;
   updateSelectedGlyph: (fn: (g: Glyph) => Glyph) => void;
   setGlyphView: (patch: Partial<GlyphViewOptions>) => void;
+  setKerning: (pairs: Record<string, number>) => void;
 };
 
 const firstGlyph = Object.keys(defaultFont.glyphs)[0] ?? 'A';
@@ -79,4 +80,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setGlyphView: (patch) =>
     set((s) => ({ glyphView: { ...s.glyphView, ...patch } })),
+  setKerning: (kerning) =>
+    set((s) => ({
+      font: {
+        ...s.font,
+        kerning: Object.keys(kerning).length === 0 ? undefined : kerning,
+      },
+    })),
 }));

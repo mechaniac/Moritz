@@ -65,12 +65,6 @@ export type Glyph = {
    * the glyph down. Defaults to 0.
    */
   readonly baselineOffset?: number;
-  /**
-   * Per-glyph kerning to the *next* glyph. Keyed by the next glyph's char
-   * (single grapheme). Value is added to the advance after this glyph.
-   * Negative tightens, positive opens up. In font units (post-style scale).
-   */
-  readonly kerning?: Readonly<Record<string, number>>;
 };
 
 /**
@@ -133,6 +127,13 @@ export type Font = {
   readonly style: StyleSettings;
   /** Keyed by single-character string. */
   readonly glyphs: Readonly<Record<string, Glyph>>;
+  /**
+   * Typeface-wide kerning table. Keyed by the 2-character pair (e.g. `"AV"`).
+   * Value is added to the advance between the first and second character of
+   * the pair (font units, pre-style-scale; layout multiplies by scaleX).
+   * Negative tightens, positive opens up.
+   */
+  readonly kerning?: Readonly<Record<string, number>>;
 };
 
 // ---------- Trivial constructors / constants (pure) ---------------------------
