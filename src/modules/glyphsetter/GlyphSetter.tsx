@@ -27,7 +27,7 @@ import { layout as layoutText } from '../../core/layout.js';
 import type { GlyphViewOptions } from '../../state/store.js';
 import { computeLayerGeometry } from './guides.js';
 import { GuidesPanel } from './GuidesPanel.js';
-import { measureFontMetrics, measureGlyphMetrics } from './fontMetrics.js';
+import { measureFontMetrics, measureGlyphMetrics, measurePairAdvance } from './fontMetrics.js';
 import {
   addStroke,
   deleteAnchor,
@@ -98,6 +98,54 @@ function importGlyphMetrics(g: Glyph, char: string, family: string): Glyph {
   };
 }
 
+/**
+ * Extract kerning pairs from a CSS reference font for every ordered pair of
+ * glyphs the Moritz font already has. For each (a, b) we measure the
+ * pair advance and subtract the sum of single advances; the leftover is
+ * the kerning the reference font applies, converted to Moritz font units
+ * via the same em→units scale `importGlyphMetrics` uses (driven by the
+ * target glyph's `box.h`).
+ *
+ * Returns a flat `Record<a+b, delta-in-units>`. Pairs whose absolute
+ * delta falls below `threshold` (in font units) are omitted to keep
+ * the table sparse — most Latin pairs have zero kerning in most fonts.
+ */
+function extractKerningFromReference(
+  font: Font,
+  family: string,
+  threshold = 0.5,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!family) return out;
+  const fm = measureFontMetrics(family);
+  const emDen = Math.max(1e-6, fm.ascent + fm.descent);
+  const chars = Object.keys(font.glyphs);
+  for (const a of chars) {
+    const ga = font.glyphs[a];
+    if (!ga) continue;
+    const ma = measureGlyphMetrics(family, a);
+    if (!ma) continue;
+    for (const b of chars) {
+      const gb = font.glyphs[b];
+      if (!gb) continue;
+      const mb = measureGlyphMetrics(family, b);
+      if (!mb) continue;
+      const pair = measurePairAdvance(family, a, b);
+      if (pair == null) continue;
+      const deltaEm = pair - (ma.advance + mb.advance);
+      // Use the average of both glyphs' box heights as the em→units scale,
+      // so a kerning delta written here will be applied at the same visual
+      // size as the imported per-glyph advances.
+      const emToUnits = ((ga.box.h + gb.box.h) / 2) / emDen;
+      const delta = deltaEm * emToUnits;
+      if (Math.abs(delta) >= threshold) {
+        out[a + b] = Math.round(delta);
+      }
+    }
+  }
+  return out;
+}
+
 type Selection =
   | { kind: 'none' }
   | { kind: 'stroke'; strokeIdx: number }
@@ -161,6 +209,7 @@ export function GlyphSetter(): JSX.Element {
               font={font}
               pairs={font.kerning ?? {}}
               onChange={setKerning}
+              refFontFamily={view.refFontFamily}
             />
           )}
         </div>
@@ -1302,8 +1351,9 @@ function KerningList(props: {
   font: Font;
   pairs: Readonly<Record<string, number>>;
   onChange: (next: Record<string, number>) => void;
+  refFontFamily: string;
 }): JSX.Element {
-  const { font, pairs, onChange } = props;
+  const { font, pairs, onChange, refFontFamily } = props;
   const [draft, setDraft] = useState('');
 
   const entries = Object.entries(pairs).sort(([a], [b]) => a.localeCompare(b));
@@ -1335,6 +1385,11 @@ function KerningList(props: {
     const b = chars[1]!;
     return !!font.glyphs[a] && !!font.glyphs[b] && pairs[a + b] === undefined;
   })();
+
+  const importFromRef = (): void => {
+    const extracted = extractKerningFromReference(font, refFontFamily);
+    onChange({ ...pairs, ...extracted });
+  };
 
   return (
     <div
@@ -1388,6 +1443,19 @@ function KerningList(props: {
           {entries.length} pair{entries.length === 1 ? '' : 's'}
         </span>
       </div>
+      <button
+        type="button"
+        onClick={importFromRef}
+        disabled={!refFontFamily}
+        title={
+          refFontFamily
+            ? `Measure every pair of glyphs in your font with "${refFontFamily}" and write the kerning differences. Existing pairs are overwritten when the reference font has a non-zero kern for them.`
+            : 'Set a reference font in the View panel first.'
+        }
+        style={{ padding: '4px 8px', fontSize: 12 }}
+      >
+        Import kerning from reference font
+      </button>
       {entries.length === 0 && (
         <p style={{ fontSize: 11, color: '#999', margin: '4px 0' }}>
           No kerning pairs. Type two characters above and click + Pair.

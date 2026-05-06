@@ -122,3 +122,29 @@ export function measureGlyphMetrics(family: string, char: string): GlyphMetricsE
   glyphCache.set(key, m);
   return m;
 }
+
+/**
+ * Measure the advance width of a pair of characters rendered by the
+ * reference font, in em (1em = font-size). Used to extract kerning:
+ * `pairAdvance(a, b) - (advance(a) + advance(b))` is the kerning delta
+ * the reference font applies between `a` and `b`.
+ *
+ * Note: canvas `measureText` honors the platform's text shaper for the
+ * given font, including OpenType `kern` features in current Chromium.
+ */
+const pairCache = new Map<string, number>();
+
+export function measurePairAdvance(family: string, a: string, b: string): number | null {
+  if (!family || !a || !b) return null;
+  const key = `${family}\u0000${a}${b}`;
+  const cached = pairCache.get(key);
+  if (cached !== undefined) return cached;
+  const c = ctx();
+  if (!c) return null;
+  const SIZE = 1000;
+  c.font = `${SIZE}px ${family}`;
+  c.textBaseline = 'alphabetic';
+  const w = (c.measureText(a + b).width ?? 0) / SIZE;
+  pairCache.set(key, w);
+  return w;
+}
