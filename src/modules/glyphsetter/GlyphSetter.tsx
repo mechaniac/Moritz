@@ -550,6 +550,25 @@ function GlyphEditor(props: {
             strokeWidth={1}
             pointerEvents="none"
           />
+          {/* reference font (system/web font) traced behind the ink. Sits
+              on the glyph baseline (y = gBoxY + box.h) and is sized so its
+              cap-height matches the box height. */}
+          {view.refFontFamily && (
+            <text
+              className="mz-ref-glyph"
+              x={cx}
+              y={gBoxY + glyph.box.h * SCALE}
+              fontFamily={view.refFontFamily}
+              fontSize={glyph.box.h * SCALE}
+              textAnchor="middle"
+              fill="#000"
+              opacity={view.refFontOpacity}
+              pointerEvents="none"
+              style={{ userSelect: 'none' }}
+            >
+              {char}
+            </text>
+          )}
           {/* sidebearing guides — vertical lines indicating advance edges */}
           {(() => {
             const lsb = glyph.sidebearings?.left ?? 0;
@@ -836,6 +855,11 @@ function Inspector(props: {
           checked={view.showTriangles}
           onChange={(v) => setView({ showTriangles: v })}
           tooltip="Show the triangulation mesh used by the renderer."
+        />
+        <RefFontPicker
+          family={view.refFontFamily}
+          opacity={view.refFontOpacity}
+          onChange={setView}
         />
       </Section>
       {glyph && (
@@ -1370,6 +1394,67 @@ function Check(props: {
       />
       {props.label}
     </label>
+  );
+}
+
+// Curated set of common system / web fonts spanning the major design idioms
+// (humanist sans, geometric sans, neutral sans, slab, didone, transitional,
+// monospace, blackletter, comic). Each entry uses a fallback chain so the
+// browser can substitute close cousins.
+const REF_FONTS: readonly { label: string; family: string }[] = [
+  { label: 'Arial / Helvetica', family: 'Arial, Helvetica, sans-serif' },
+  { label: 'Verdana', family: 'Verdana, Geneva, sans-serif' },
+  { label: 'Tahoma', family: 'Tahoma, sans-serif' },
+  { label: 'Trebuchet MS', family: '"Trebuchet MS", sans-serif' },
+  { label: 'Calibri / Segoe UI', family: 'Calibri, "Segoe UI", sans-serif' },
+  { label: 'Futura / Avenir', family: 'Futura, "Avenir Next", Avenir, sans-serif' },
+  { label: 'Times / Serif', family: '"Times New Roman", Times, serif' },
+  { label: 'Georgia', family: 'Georgia, serif' },
+  { label: 'Garamond', family: 'Garamond, "Apple Garamond", serif' },
+  { label: 'Didot / Bodoni', family: 'Didot, "Bodoni MT", serif' },
+  { label: 'Courier (mono)', family: '"Courier New", Courier, monospace' },
+  { label: 'Consolas (mono)', family: 'Consolas, "Lucida Console", monospace' },
+  { label: 'Comic Sans', family: '"Comic Sans MS", "Chalkboard SE", cursive' },
+  { label: 'Impact', family: 'Impact, "Arial Black", sans-serif' },
+];
+
+function RefFontPicker(props: {
+  family: string;
+  opacity: number;
+  onChange: (patch: { refFontFamily?: string; refFontOpacity?: number }) => void;
+}): JSX.Element {
+  return (
+    <div
+      style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}
+      title="Trace a real system font behind the glyph for reference. Pick from a curated set; the chosen font's matching character is rendered faintly behind your strokes."
+    >
+      <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ width: 80, color: '#666' }}>Reference</span>
+        <select
+          value={props.family}
+          onChange={(e) => props.onChange({ refFontFamily: e.target.value })}
+          style={{ flex: 1, fontSize: 12 }}
+        >
+          <option value="">— none —</option>
+          {REF_FONTS.map((f) => (
+            <option key={f.family} value={f.family} style={{ fontFamily: f.family }}>
+              {f.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {props.family && (
+        <NumSlider
+          label="Ref opacity"
+          min={0}
+          max={1}
+          step={0.01}
+          value={props.opacity}
+          onChange={(v) => props.onChange({ refFontOpacity: v })}
+          tooltip="How visible the reference font is behind the edited glyph (0 = invisible, 1 = solid black)."
+        />
+      )}
+    </div>
   );
 }
 

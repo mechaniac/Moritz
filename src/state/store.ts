@@ -17,6 +17,10 @@ export type GlyphViewOptions = {
   showOtherGlyphs: boolean; // overlay all other glyphs' fills behind the edited one
   showBorders: boolean; // colorized debug overlay of left/right/caps
   showTriangles: boolean; // overlay of the active triangulation
+  /** System/web font shown faintly behind the edited glyph as a tracing
+   *  reference. Empty string = none. */
+  refFontFamily: string;
+  refFontOpacity: number; // 0..1
   guides: GuideSettings;
 };
 
@@ -56,6 +60,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     showOtherGlyphs: false,
     showBorders: false,
     showTriangles: false,
+    refFontFamily: '',
+    refFontOpacity: 0.18,
     guides: defaultGuides(),
   },
   setStyle: (patch) =>
