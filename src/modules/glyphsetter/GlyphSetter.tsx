@@ -838,9 +838,24 @@ function Inspector(props: {
             step={1}
             value={glyph.box.w}
             onChange={(v) =>
-              updateGlyph((g) => ({ ...g, box: { ...g.box, w: Math.round(v) } }))
+              updateGlyph((g) => {
+                const newW = Math.round(v);
+                const dx = (newW - g.box.w) / 2;
+                if (dx === 0) return { ...g, box: { ...g.box, w: newW } };
+                return {
+                  ...g,
+                  box: { ...g.box, w: newW },
+                  strokes: g.strokes.map((s) => ({
+                    ...s,
+                    vertices: s.vertices.map((vx) => ({
+                      ...vx,
+                      p: { x: vx.p.x + dx, y: vx.p.y },
+                    })),
+                  })),
+                };
+              })
             }
-            tooltip="Width of this glyph's ink box in font units. The dashed square is the reference default box; the solid rectangle is this glyph's box. Strokes don't move when you resize."
+            tooltip="Width of this glyph's ink box in font units. The box grows or shrinks symmetrically around the glyph: stroke vertices are shifted by half the delta so the artwork stays visually centred."
           />
           <NumSlider
             label="Box height"
@@ -849,9 +864,24 @@ function Inspector(props: {
             step={1}
             value={glyph.box.h}
             onChange={(v) =>
-              updateGlyph((g) => ({ ...g, box: { ...g.box, h: Math.round(v) } }))
+              updateGlyph((g) => {
+                const newH = Math.round(v);
+                const dy = (newH - g.box.h) / 2;
+                if (dy === 0) return { ...g, box: { ...g.box, h: newH } };
+                return {
+                  ...g,
+                  box: { ...g.box, h: newH },
+                  strokes: g.strokes.map((s) => ({
+                    ...s,
+                    vertices: s.vertices.map((vx) => ({
+                      ...vx,
+                      p: { x: vx.p.x, y: vx.p.y + dy },
+                    })),
+                  })),
+                };
+              })
             }
-            tooltip="Height of this glyph's ink box in font units."
+            tooltip="Height of this glyph's ink box in font units. Grows symmetrically around the glyph (same as Box width)."
           />
           <NumSlider
             label="Left bearing"
