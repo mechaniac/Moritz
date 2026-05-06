@@ -499,7 +499,9 @@ function GlyphEditor(props: {
     <>
       {/* Canvas — fills remaining space. The editing toolbar lives inside
           this column, sitting directly above the SVG so the action
-          buttons are right next to the artwork they affect. */}
+          buttons are right next to the artwork they affect. The bar
+          spans the full editor width and reserves slots for contextual
+          controls so it doesn't reflow as the selection changes. */}
       <div
         className="mz-glyphsetter__canvas"
         style={{
@@ -511,7 +513,7 @@ function GlyphEditor(props: {
           padding: 12,
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
+          alignItems: 'stretch',
           justifyContent: 'flex-start',
           gap: 8,
         }}
@@ -519,7 +521,7 @@ function GlyphEditor(props: {
         <div
           className="mz-glyphsetter__toolbar"
           style={{
-            display: 'inline-flex',
+            display: 'flex',
             alignItems: 'center',
             gap: 10,
             padding: '4px 10px',
@@ -528,12 +530,14 @@ function GlyphEditor(props: {
             background: '#eaeaea',
             fontSize: 13,
             flexShrink: 0,
-            maxWidth: '100%',
-            flexWrap: 'wrap',
-            justifyContent: 'center',
+            width: '100%',
+            boxSizing: 'border-box',
+            minHeight: 32,
           }}
         >
-          <strong style={{ fontSize: 14 }}>Editing: {char}</strong>
+          <strong style={{ fontSize: 14, width: 90, flexShrink: 0 }}>
+            Editing: {char}
+          </strong>
           <button onClick={onAddStroke}>+ Stroke</button>
           <button onClick={onDeleteSelected} disabled={selection.kind === 'none'}>
             − Delete selected
@@ -550,22 +554,37 @@ function GlyphEditor(props: {
               style={{ width: 100 }}
             />
           </span>
-          {selectedAnchor && selection.kind === 'anchor' && (
-            <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <input
-                type="checkbox"
-                checked={selectedAnchor.breakTangent === true}
-                onChange={(e) =>
-                  onChange((g) =>
-                    setBreakTangent(g, selection.strokeIdx, selection.vIdx, e.target.checked),
-                  )
-                }
-              />
-              Break tangent
-            </label>
-          )}
+          {/* Reserved slot for the per-anchor 'Break tangent' control so
+              the bar layout doesn't shift when an anchor is selected. */}
+          <label
+            style={{
+              fontSize: 12,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              width: 110,
+              flexShrink: 0,
+              visibility:
+                selectedAnchor && selection.kind === 'anchor'
+                  ? 'visible'
+                  : 'hidden',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={selectedAnchor?.breakTangent === true}
+              disabled={!(selectedAnchor && selection.kind === 'anchor')}
+              onChange={(e) => {
+                if (selection.kind !== 'anchor') return;
+                onChange((g) =>
+                  setBreakTangent(g, selection.strokeIdx, selection.vIdx, e.target.checked),
+                );
+              }}
+            />
+            Break tangent
+          </label>
           <span
-            style={{ color: '#666', fontSize: 11 }}
+            style={{ color: '#666', fontSize: 11, marginLeft: 'auto' }}
             title="Drag anchors / handles. Drag stroke body = move whole stroke. Alt-click stroke = insert anchor. Alt-click anchor = toggle corner/smooth."
           >
             (?)
@@ -577,7 +596,7 @@ function GlyphEditor(props: {
           viewBox={`0 0 ${viewW} ${viewH}`}
           width={viewW}
           height={viewH}
-          style={{ display: 'block', touchAction: 'none', flexShrink: 0 }}
+          style={{ display: 'block', touchAction: 'none', flexShrink: 0, alignSelf: 'center' }}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerLeave={onPointerUp}
