@@ -123,7 +123,13 @@ export function TypeSetter(): JSX.Element {
               boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
               transformOrigin: 'top left',
             }}
-            onClick={() => selectBlock(null)}
+            onClick={(e) => {
+              // Only deselect when the bare page is clicked. Block overlays
+              // stop pointerdown propagation, but `click` is a separate event
+              // that still bubbles, so without this guard every block click
+              // selects-then-immediately-deselects.
+              if (e.target === e.currentTarget) selectBlock(null);
+            }}
           >
             {blocks.map((b) => (
               <BlockOverlay
