@@ -58,6 +58,7 @@ export function StyleSetter(): JSX.Element {
           step={0.05}
           value={textScale}
           onChange={setTextScale}
+          tooltip="Visual zoom for the preview only. Doesn't affect exported font units."
         />
         <Slider
           label="Slant"
@@ -66,6 +67,7 @@ export function StyleSetter(): JSX.Element {
           step={0.01}
           value={font.style.slant}
           onChange={(v) => setStyle({ slant: v })}
+          tooltip="Italic shear in radians. Shears x by tan(slant) * y — positive leans glyphs to the right."
         />
         <Slider
           label="Scale X"
@@ -74,6 +76,7 @@ export function StyleSetter(): JSX.Element {
           step={0.01}
           value={font.style.scaleX}
           onChange={(v) => setStyle({ scaleX: v })}
+          tooltip="Horizontal stretch applied to every glyph (and its sidebearings). 1 = unchanged."
         />
         <Slider
           label="Scale Y"
@@ -82,6 +85,7 @@ export function StyleSetter(): JSX.Element {
           step={0.01}
           value={font.style.scaleY}
           onChange={(v) => setStyle({ scaleY: v })}
+          tooltip="Vertical stretch applied to every glyph (and its baseline offset). 1 = unchanged."
         />
         <Slider
           label="Stroke Width"
@@ -99,8 +103,12 @@ export function StyleSetter(): JSX.Element {
               },
             })
           }
+          tooltip="Default stroke width for every glyph (font units). Per-stroke widths can override this in the GlyphSetter."
         />
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <label
+          title="Width direction. Off = stroke width is laid down perpendicular to the path tangent (round look). On = width is laid at a fixed world angle (nib-pen / calligraphy look)."
+          style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+        >
           <input
             type="checkbox"
             checked={font.style.widthOrientation === 'world'}
@@ -118,6 +126,7 @@ export function StyleSetter(): JSX.Element {
             step={0.01}
             value={font.style.worldAngle}
             onChange={(v) => setStyle({ worldAngle: v })}
+            tooltip="Angle of the virtual nib relative to the world (radians). Only used when world-oriented width is on."
           />
         )}
 
@@ -125,11 +134,13 @@ export function StyleSetter(): JSX.Element {
           label="Start cap"
           value={normalizeCap(font.style.capStart)}
           onChange={(v) => setStyle({ capStart: v })}
+          tooltip="Cap shape at the first vertex of every stroke. round = semicircle. flat = perpendicular cut. tapered = pointed tip."
         />
         <CapPicker
           label="End cap"
           value={normalizeCap(font.style.capEnd)}
           onChange={(v) => setStyle({ capEnd: v })}
+          tooltip="Cap shape at the last vertex of every stroke."
         />
         <Slider
           label="Cap bulge"
@@ -138,9 +149,13 @@ export function StyleSetter(): JSX.Element {
           step={0.05}
           value={font.style.capRoundBulge ?? 1}
           onChange={(v) => setStyle({ capRoundBulge: v })}
+          tooltip="Roundness of round caps. 0 flattens to the chord, 1 = true semicircle, >1 pushes the cap further out."
         />
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <label
+          title="Triangulation algorithm. earcut = minimal mesh from the outline polygon. ribbon-fixed = quad strip with N samples per Bezier segment. ribbon-density = quad strip with subdivision driven by glyph-unit spacing."
+          style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
+        >
           <span>Triangulation</span>
           <select
             value={font.style.triMode ?? 'earcut'}
@@ -160,6 +175,7 @@ export function StyleSetter(): JSX.Element {
             step={1}
             value={font.style.ribbonSamples ?? 6}
             onChange={(v) => setStyle({ ribbonSamples: Math.round(v) })}
+            tooltip="Interior samples per Bezier segment. Higher = smoother quad strip but more triangles."
           />
         )}
         {font.style.triMode === 'ribbon-density' && (
@@ -170,6 +186,7 @@ export function StyleSetter(): JSX.Element {
             step={0.05}
             value={1 / Math.max(0.0001, font.style.ribbonSpacing ?? 4)}
             onChange={(v) => setStyle({ ribbonSpacing: 1 / Math.max(0.05, v) })}
+            tooltip="Sample density (samples per glyph unit). Higher places samples closer along arc length."
           />
         )}
         {(font.style.triMode === 'ribbon-fixed' ||
@@ -182,6 +199,7 @@ export function StyleSetter(): JSX.Element {
               step={0.05}
               value={font.style.ribbonSpread ?? 1}
               onChange={(v) => setStyle({ ribbonSpread: v })}
+              tooltip="0 = parameter-uniform sample placement (fast, can clump in tight curves). 1 = arc-length-uniform."
             />
             <Slider
               label="Anchor pull"
@@ -190,6 +208,7 @@ export function StyleSetter(): JSX.Element {
               step={0.05}
               value={font.style.ribbonAnchorPull ?? 0}
               onChange={(v) => setStyle({ ribbonAnchorPull: v })}
+              tooltip="Bias samples toward anchor points with active tangents (helps preserve sharp turns)."
             />
           </>
         )}
@@ -204,6 +223,7 @@ export function StyleSetter(): JSX.Element {
           step={1}
           value={font.style.tracking ?? 0}
           onChange={(v) => setStyle({ tracking: v })}
+          tooltip="Extra horizontal space added between every pair of glyphs (font units). Negative tightens, positive opens up."
         />
         <Slider
           label="Space width"
@@ -212,6 +232,7 @@ export function StyleSetter(): JSX.Element {
           step={1}
           value={font.style.spaceWidth ?? 56}
           onChange={(v) => setStyle({ spaceWidth: v })}
+          tooltip="Width of a literal space character (font units). Default ≈ 0.4× line height."
         />
         <Slider
           label="Line height"
@@ -220,6 +241,7 @@ export function StyleSetter(): JSX.Element {
           step={0.05}
           value={font.style.lineHeight ?? 1.2}
           onChange={(v) => setStyle({ lineHeight: v })}
+          tooltip="Multiplier on the tallest glyph for vertical line stepping."
         />
 
         <KerningEditor
@@ -250,9 +272,13 @@ function Slider(props: {
   step: number;
   value: number;
   onChange: (v: number) => void;
+  tooltip?: string;
 }): JSX.Element {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <label
+      title={props.tooltip}
+      style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
+    >
       <span style={{ display: 'flex', justifyContent: 'space-between' }}>
         <span>{props.label}</span>
         <span style={{ fontVariantNumeric: 'tabular-nums', color: '#666' }}>
@@ -281,9 +307,13 @@ function CapPicker(props: {
   label: string;
   value: SimpleCap;
   onChange: (v: SimpleCap) => void;
+  tooltip?: string;
 }): JSX.Element {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <label
+      title={props.tooltip}
+      style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
+    >
       <span>{props.label}</span>
       <select
         value={props.value}
@@ -325,7 +355,11 @@ function KerningEditor(props: {
 
   return (
     <div className="mz-kerning" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <h3 className="mz-stylesetter__section-title" style={{ margin: '12px 0 0', fontSize: 13 }}>
+      <h3
+        className="mz-stylesetter__section-title"
+        title="Per-pair kerning adjustments. Value is added to the advance after the first character of the pair (negative = tighter, positive = looser). Type two characters above and click + Pair to add."
+        style={{ margin: '12px 0 0', fontSize: 13 }}
+      >
         Kerning pairs
       </h3>
       <div className="mz-kerning__add" style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -336,6 +370,7 @@ function KerningEditor(props: {
           onChange={(e) => setDraftPair(e.target.value)}
           placeholder="AV"
           maxLength={2}
+          title="Type the two-character pair to kern (e.g. AV)."
           style={{ width: 50, padding: '2px 4px', fontFamily: 'monospace' }}
         />
         <button
@@ -343,6 +378,7 @@ function KerningEditor(props: {
           type="button"
           onClick={add}
           disabled={[...draftPair].length !== 2}
+          title="Add this pair with a starting value of 0."
         >
           + Pair
         </button>
@@ -371,6 +407,7 @@ function KerningEditor(props: {
             step={1}
             value={value}
             onChange={(e) => setValue(pair, parseFloat(e.target.value))}
+            title="Kerning offset in font units (negative = tighter, positive = looser)."
             style={{ flex: 1, minWidth: 0 }}
           />
           <input
@@ -378,6 +415,7 @@ function KerningEditor(props: {
             value={value}
             step={1}
             onChange={(e) => setValue(pair, parseFloat(e.target.value) || 0)}
+            title="Kerning offset in font units."
             style={{ width: 56, padding: '2px 4px', fontVariantNumeric: 'tabular-nums' }}
           />
           <button

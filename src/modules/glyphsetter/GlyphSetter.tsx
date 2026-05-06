@@ -49,6 +49,12 @@ import { useAppStore } from '../../state/store.js';
 
 const PADDING = 20;
 
+// Reference frame inside the glyph editor — a fixed square the user can
+// always see, so adjustments to a glyph's own box read as deviations from
+// this default. Picked to match defaultFont's BOX_H (140) so most glyphs
+// fit naturally inside it.
+const DEFAULT_BOX = 140;
+
 // Fixed widths for the outer columns. Center canvas takes the rest.
 const GRID_W = 260;
 const INSPECTOR_W = 300;
@@ -269,8 +275,8 @@ function GlyphEditor(props: {
   const dragRef = useRef<Drag | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const viewW = glyph.box.w * SCALE + PADDING * 2;
-  const viewH = glyph.box.h * SCALE + PADDING * 2;
+  const viewW = Math.max(DEFAULT_BOX, glyph.box.w) * SCALE + PADDING * 2;
+  const viewH = Math.max(DEFAULT_BOX, glyph.box.h) * SCALE + PADDING * 2;
 
   const toGlyph = useCallback(
     (clientX: number, clientY: number): Vec2 | null => {
@@ -463,17 +469,34 @@ function GlyphEditor(props: {
             y={0}
             width={viewW}
             height={viewH}
-            fill="transparent"
+            fill="#ffffff"
             onPointerDown={() => setSelection({ kind: 'none' })}
           />
-          {/* glyph box — the 'sheet' the character sits on */}
+          {/* default box — a fixed square reference frame so adjustments
+              to the current glyph box read as deviations from default */}
           <rect
+            className="mz-default-box"
+            x={PADDING}
+            y={PADDING}
+            width={DEFAULT_BOX * SCALE}
+            height={DEFAULT_BOX * SCALE}
+            fill="none"
+            stroke="#bbb"
+            strokeDasharray="6 4"
+            strokeWidth={1}
+            pointerEvents="none"
+          />
+          {/* glyph box — the 'sheet' the character sits on. No fill so the
+              default-box reference frame stays visible at all times. */}
+          <rect
+            className="mz-glyph-box"
             x={PADDING}
             y={PADDING}
             width={glyph.box.w * SCALE}
             height={glyph.box.h * SCALE}
-            fill="#ffffff"
-            stroke="#888"
+            fill="none"
+            stroke="#444"
+            strokeWidth={1}
             pointerEvents="none"
           />
           {/* sidebearing guides — vertical lines indicating advance edges */}
@@ -717,11 +740,13 @@ function Inspector(props: {
           label="Anchors"
           checked={view.showAnchors}
           onChange={(v) => setView({ showAnchors: v })}
+          tooltip="Show anchor points and tangent handles for direct manipulation."
         />
         <Check
           label="Fill preview"
           checked={view.showFillPreview}
           onChange={(v) => setView({ showFillPreview: v })}
+          tooltip="Render the triangulated fill of each stroke so the final glyph shape is visible while editing."
         />
         {view.showFillPreview && (
           <NumSlider
@@ -731,22 +756,26 @@ function Inspector(props: {
             step={0.01}
             value={view.fillOpacity}
             onChange={(v) => setView({ fillOpacity: v })}
+            tooltip="Opacity of the fill preview (0 = invisible, 1 = solid black)."
           />
         )}
         <Check
           label="Other glyphs (faint)"
           checked={view.showOtherGlyphs}
           onChange={(v) => setView({ showOtherGlyphs: v })}
+          tooltip="Overlay every other glyph in the font behind the edited one for visual reference."
         />
         <Check
           label="Debug borders"
           checked={view.showBorders}
           onChange={(v) => setView({ showBorders: v })}
+          tooltip="Color-code the left/right offsets and caps of each stroke for debugging the outliner."
         />
         <Check
           label="Triangles"
           checked={view.showTriangles}
           onChange={(v) => setView({ showTriangles: v })}
+          tooltip="Show the triangulation mesh used by the renderer."
         />
       </Section>
       {glyph && (
@@ -760,6 +789,7 @@ function Inspector(props: {
             onChange={(v) =>
               updateGlyph((g) => ({ ...g, box: { ...g.box, w: Math.round(v) } }))
             }
+            tooltip="Width of this glyph's ink box in font units. The dashed square is the reference default box; the solid rectangle is this glyph's box. Strokes don't move when you resize."
           />
           <NumSlider
             label="Box height"
@@ -770,6 +800,7 @@ function Inspector(props: {
             onChange={(v) =>
               updateGlyph((g) => ({ ...g, box: { ...g.box, h: Math.round(v) } }))
             }
+            tooltip="Height of this glyph's ink box in font units."
           />
           <NumSlider
             label="Left bearing"
@@ -786,6 +817,7 @@ function Inspector(props: {
                 },
               }))
             }
+            tooltip="Extra horizontal padding before the glyph (font units). Negative values let the previous glyph encroach. Visualised as a dashed blue line."
           />
           <NumSlider
             label="Right bearing"
@@ -802,6 +834,7 @@ function Inspector(props: {
                 },
               }))
             }
+            tooltip="Extra horizontal padding after the glyph (font units). Negative tightens the next glyph against this one."
           />
           <NumSlider
             label="Baseline ↕"
@@ -812,6 +845,7 @@ function Inspector(props: {
             onChange={(v) =>
               updateGlyph((g) => ({ ...g, baselineOffset: Math.round(v) }))
             }
+            tooltip="Vertical offset relative to the baseline. Positive moves the glyph down (descender), negative lifts it (superscript-like)."
           />
         </Section>
       )}
@@ -820,7 +854,7 @@ function Inspector(props: {
         tone="style"
         subtitle="Shared with StyleSetter"
       >
-        <Row label="Algorithm">
+        <Row label="Algorithm" tooltip="Triangulation algorithm. earcut: minimal triangle count from the outline polygon. ribbon-fixed: quad strip with N samples per Bezier segment. ribbon-density: quad strip with subdivision driven by spacing in glyph units.">
           <select
             value={style.triMode ?? 'earcut'}
             onChange={(e) => setStyle({ triMode: e.target.value as TriMode })}
@@ -840,6 +874,7 @@ function Inspector(props: {
             value={style.ribbonSamples ?? 6}
             onChange={(v) => setStyle({ ribbonSamples: Math.round(v) })}
             format={(v) => v.toFixed(0)}
+            tooltip="Number of interior samples per Bezier segment. Higher = smoother quad strip but more triangles."
           />
         )}
         {style.triMode === 'ribbon-density' && (
@@ -851,6 +886,7 @@ function Inspector(props: {
             value={1 / Math.max(0.0001, style.ribbonSpacing ?? 4)}
             onChange={(v) => setStyle({ ribbonSpacing: 1 / Math.max(0.05, v) })}
             format={(v) => v.toFixed(2)}
+            tooltip="Sample density in 1/(glyph units). Higher places samples closer together along the path arc length."
           />
         )}
         {(style.triMode === 'ribbon-fixed' || style.triMode === 'ribbon-density') && (
@@ -862,6 +898,7 @@ function Inspector(props: {
               step={0.05}
               value={style.ribbonSpread ?? 1}
               onChange={(v) => setStyle({ ribbonSpread: v })}
+              tooltip="0 = parameter-uniform sample placement (cheap, can clump). 1 = arc-length-uniform (even spacing along curve length)."
             />
             <NumSlider
               label="anchor pull"
@@ -870,16 +907,17 @@ function Inspector(props: {
               step={0.05}
               value={style.ribbonAnchorPull ?? 0}
               onChange={(v) => setStyle({ ribbonAnchorPull: v })}
+              tooltip="Bias samples toward anchor points with active tangents (helps preserve sharp turns)."
             />
           </>
         )}
-        <Row label="Cap start">
+        <Row label="Cap start" tooltip="Cap shape at the first vertex of every stroke. Per-stroke overrides take precedence.">
           <CapSelect
             value={normalizeSimpleCap(style.capStart)}
             onChange={(v) => setStyle({ capStart: v })}
           />
         </Row>
-        <Row label="Cap end">
+        <Row label="Cap end" tooltip="Cap shape at the last vertex of every stroke.">
           <CapSelect
             value={normalizeSimpleCap(style.capEnd)}
             onChange={(v) => setStyle({ capEnd: v })}
@@ -892,6 +930,7 @@ function Inspector(props: {
           step={0.05}
           value={style.capRoundBulge ?? 1}
           onChange={(v) => setStyle({ capRoundBulge: v })}
+          tooltip="Roundness of round caps. 0 = flat. 1 = true semicircle. >1 pushes the cap further past the endpoint for a bulbous look."
         />
       </Section>
       <Section title="Guides" tone="local">
@@ -948,9 +987,13 @@ function Check(props: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  tooltip?: string;
 }): JSX.Element {
   return (
-    <label style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+    <label
+      title={props.tooltip}
+      style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+    >
       <input
         type="checkbox"
         checked={props.checked}
@@ -961,9 +1004,14 @@ function Check(props: {
   );
 }
 
-function Row(props: { label: string; children: React.ReactNode }): JSX.Element {
+function Row(props: {
+  label: string;
+  children: React.ReactNode;
+  tooltip?: string;
+}): JSX.Element {
   return (
     <div
+      title={props.tooltip}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -985,10 +1033,14 @@ function NumSlider(props: {
   value: number;
   onChange: (v: number) => void;
   format?: (v: number) => string;
+  tooltip?: string;
 }): JSX.Element {
   const fmt = props.format ?? ((v: number) => v.toFixed(2));
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+    <div
+      title={props.tooltip}
+      style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+    >
       <span style={{ color: '#666', width: 80, flexShrink: 0 }}>{props.label}</span>
       <input
         type="range"
