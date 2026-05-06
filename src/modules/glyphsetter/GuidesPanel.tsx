@@ -208,18 +208,90 @@ function KindEditor(props: {
       );
     case 'golden':
       return (
-        <Row label="depth">
-          <input
-            type="range"
-            min={1}
-            max={8}
-            step={1}
-            value={kind.depth}
-            onChange={(e) => onChange({ ...kind, depth: Math.max(1, Number(e.target.value) | 0) })}
-            style={{ flex: 1 }}
-          />
-          <span style={{ width: 24, textAlign: 'right' }}>{kind.depth}</span>
-        </Row>
+        <>
+          <Row label="depth">
+            <input
+              type="range"
+              min={1}
+              max={10}
+              step={1}
+              value={kind.depth}
+              onChange={(e) => onChange({ ...kind, depth: Math.max(1, Number(e.target.value) | 0) })}
+              style={{ flex: 1 }}
+            />
+            <span style={{ width: 24, textAlign: 'right' }}>{kind.depth}</span>
+          </Row>
+          <Row label="rotate°">
+            <input
+              type="range"
+              min={-180}
+              max={180}
+              step={1}
+              value={Math.round(((kind.rotation ?? 0) * 180) / Math.PI)}
+              onChange={(e) =>
+                onChange({ ...kind, rotation: (Number(e.target.value) * Math.PI) / 180 })
+              }
+              style={{ flex: 1 }}
+            />
+            <span style={{ width: 32, textAlign: 'right' }}>
+              {Math.round(((kind.rotation ?? 0) * 180) / Math.PI)}°
+            </span>
+          </Row>
+          <Row label="scale">
+            <input
+              type="range"
+              min={0.2}
+              max={2}
+              step={0.01}
+              value={kind.scale ?? 1}
+              onChange={(e) => onChange({ ...kind, scale: Number(e.target.value) })}
+              style={{ flex: 1 }}
+            />
+            <span style={{ width: 32, textAlign: 'right' }}>{(kind.scale ?? 1).toFixed(2)}</span>
+          </Row>
+          <Row label="x off">
+            <input
+              type="range"
+              min={-100}
+              max={100}
+              step={1}
+              value={kind.offsetX ?? 0}
+              onChange={(e) => onChange({ ...kind, offsetX: Number(e.target.value) })}
+              style={{ flex: 1 }}
+            />
+            <span style={{ width: 32, textAlign: 'right' }}>{Math.round(kind.offsetX ?? 0)}</span>
+          </Row>
+          <Row label="y off">
+            <input
+              type="range"
+              min={-100}
+              max={100}
+              step={1}
+              value={kind.offsetY ?? 0}
+              onChange={(e) => onChange({ ...kind, offsetY: Number(e.target.value) })}
+              style={{ flex: 1 }}
+            />
+            <span style={{ width: 32, textAlign: 'right' }}>{Math.round(kind.offsetY ?? 0)}</span>
+          </Row>
+          <Row label="show">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+              <input
+                type="checkbox"
+                checked={kind.spiral ?? true}
+                onChange={(e) => onChange({ ...kind, spiral: e.target.checked })}
+              />
+              spiral
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
+              <input
+                type="checkbox"
+                checked={kind.splits ?? false}
+                onChange={(e) => onChange({ ...kind, splits: e.target.checked })}
+              />
+              splits
+            </label>
+          </Row>
+        </>
       );
     case 'slant':
       return (

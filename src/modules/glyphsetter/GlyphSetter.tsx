@@ -606,6 +606,14 @@ function GlyphEditor(props: {
                         fill="none"
                       />
                     ))}
+                    {g.arcs.map((a, i) => (
+                      <path
+                        key={`a${i}`}
+                        d={`M ${a.x1} ${a.y1} A ${a.rx} ${a.ry} 0 ${a.largeArc} ${a.sweep} ${a.x2} ${a.y2}`}
+                        strokeWidth={sw}
+                        fill="none"
+                      />
+                    ))}
                     {g.circles.map((c, i) => (
                       <circle
                         key={`c${i}`}

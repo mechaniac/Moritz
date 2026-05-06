@@ -20,8 +20,22 @@
 export type GuideKind =
   // Uniform vertical / horizontal subdivisions (n-1 internal lines).
   | { kind: 'subdivisions'; axis: 'x' | 'y'; n: number }
-  // Golden ratio splits (recursive, depth N). axis = which axis to split on.
-  | { kind: 'golden'; axis: 'x' | 'y'; depth: number }
+  // Golden ratio: depth N nested golden rectangles. By default the renderer
+  // draws the spiral (quarter-arc per square); setting `splits` adds the
+  // dividing lines. The whole layer can be rotated, translated, and scaled
+  // around the box centre — useful when fitting the spiral to a particular
+  // glyph silhouette. `axis` is kept for migration compatibility.
+  | {
+      kind: 'golden';
+      depth: number;
+      axis?: 'x' | 'y';
+      spiral?: boolean;       // default true
+      splits?: boolean;       // default false
+      rotation?: number;      // radians; default 0
+      offsetX?: number;       // glyph units; default 0
+      offsetY?: number;       // glyph units; default 0
+      scale?: number;         // 1.0 = fits in box; default 1
+    }
   // Box diagonals / cross-diagonals (4 lines per repetition).
   | { kind: 'diagonals'; cross: boolean }
   // Horizontal calligraphy lines: ascender / cap / x-height / baseline /
@@ -60,7 +74,6 @@ export type GuideSettings = {
 };
 
 const PHI = (1 + Math.sqrt(5)) / 2;
-const PHI_INV = 1 / PHI; // ≈ 0.618...
 
 let _id = 0;
 const newId = (): string => `guide_${(++_id).toString(36)}`;
@@ -79,15 +92,25 @@ export function presetSubdivisions(n: number, axis: 'x' | 'y' = 'x'): GuideLayer
   };
 }
 
-export function presetGolden(axis: 'x' | 'y' = 'x', depth = 3): GuideLayer {
+export function presetGolden(axis: 'x' | 'y' = 'x', depth = 5): GuideLayer {
   return {
     id: newId(),
-    label: `Golden φ (${axis}, depth ${depth})`,
+    label: `Golden spiral (depth ${depth})`,
     visible: true,
     color: '#d4a017',
-    opacity: 0.28,
-    strokeWidth: 1,
-    kind: { kind: 'golden', axis, depth },
+    opacity: 0.55,
+    strokeWidth: 1.25,
+    kind: {
+      kind: 'golden',
+      depth,
+      axis,
+      spiral: true,
+      splits: false,
+      rotation: 0,
+      offsetX: 0,
+      offsetY: 0,
+      scale: 1,
+    },
   };
 }
 
@@ -192,14 +215,24 @@ export function defaultGuides(): GuideSettings {
 export type GuideLine = { x1: number; y1: number; x2: number; y2: number };
 export type GuideCircle = { cx: number; cy: number; r: number };
 export type GuideDot = { cx: number; cy: number; r: number };
+/** SVG endpoint-arc parameters (rx == ry for our quarter-circles, so no
+ *  xAxisRotation is needed). */
+export type GuideArc = {
+  x1: number; y1: number;
+  x2: number; y2: number;
+  rx: number; ry: number;
+  largeArc: 0 | 1;
+  sweep: 0 | 1;
+};
 
 export type GuideGeometry = {
   readonly lines: readonly GuideLine[];
   readonly circles: readonly GuideCircle[];
   readonly dots: readonly GuideDot[];
+  readonly arcs: readonly GuideArc[];
 };
 
-const empty: GuideGeometry = { lines: [], circles: [], dots: [] };
+const empty: GuideGeometry = { lines: [], circles: [], dots: [], arcs: [] };
 
 /**
  * Compute the full geometry for one layer in glyph-unit space, clipped to
@@ -224,38 +257,115 @@ export function computeLayerGeometry(
           lines.push({ x1: 0, y1: y, x2: W, y2: y });
         }
       }
-      return { lines, circles: [], dots: [] };
+      return { lines, circles: [], dots: [], arcs: [] };
     }
     case 'golden': {
-      // Recursive golden split: at each depth, split the current box on
-      // `axis` at PHI_INV from the LEFT/TOP, then recurse into the LARGER
-      // child on the perpendicular axis (classic golden spiral subdivision).
-      const lines: GuideLine[] = [];
+      // Inscribe a φ:1 golden rectangle in the box (longer side fits with a 5% margin),
+      // then peel a square per depth step. Each square hosts a quarter-arc — together
+      // they form the golden spiral. The whole layer can be rotated, offset, and
+      // scaled around the box centre.
       const depth = Math.max(1, k.depth | 0);
-      let x0 = 0, y0 = 0, w = W, h = H;
-      let axis: 'x' | 'y' = k.axis;
-      for (let d = 0; d < depth; d++) {
-        if (axis === 'x') {
-          const x = x0 + w * PHI_INV;
-          lines.push({ x1: x, y1: y0, x2: x, y2: y0 + h });
-          // Larger child is the LEFT one (PHI_INV ≈ 0.618). Recurse there.
-          w = w * PHI_INV;
-          axis = 'y';
-        } else {
-          const y = y0 + h * PHI_INV;
-          lines.push({ x1: x0, y1: y, x2: x0 + w, y2: y });
-          h = h * PHI_INV;
-          axis = 'x';
-        }
+      const showSpiral = k.spiral ?? true;
+      const showSplits = k.splits ?? false;
+      const rot = k.rotation ?? 0;
+      const ox = k.offsetX ?? 0;
+      const oy = k.offsetY ?? 0;
+      const sc = Math.max(0.05, k.scale ?? 1);
+
+      // Fit a golden rectangle inside the box. Choose orientation that gives the
+      // largest possible longer side.
+      const longerLandscape = Math.min(W, H * PHI);
+      const longerPortrait = Math.min(H, W * PHI);
+      const landscape = longerLandscape >= longerPortrait;
+      const longer = (landscape ? longerLandscape : longerPortrait) * sc * 0.95;
+      const shorter = longer / PHI;
+      let cw = landscape ? longer : shorter;
+      let ch = landscape ? shorter : longer;
+      let cx0 = -cw / 2;
+      let cy0 = -ch / 2;
+
+      const rawLines: GuideLine[] = [];
+      const rawArcs: GuideArc[] = [];
+      if (showSplits) {
+        // outer rectangle
+        rawLines.push(
+          { x1: cx0, y1: cy0, x2: cx0 + cw, y2: cy0 },
+          { x1: cx0 + cw, y1: cy0, x2: cx0 + cw, y2: cy0 + ch },
+          { x1: cx0 + cw, y1: cy0 + ch, x2: cx0, y2: cy0 + ch },
+          { x1: cx0, y1: cy0 + ch, x2: cx0, y2: cy0 },
+        );
       }
-      return { lines, circles: [], dots: [] };
+
+      // Peel squares CCW: 0 = peel left, 1 = peel top, 2 = peel right, 3 = peel bottom.
+      let dir = 0;
+      for (let i = 0; i < depth; i++) {
+        const s = Math.min(cw, ch);
+        if (s <= 1e-6) break;
+        const d = ((dir % 4) + 4) % 4;
+        let sx0 = cx0;
+        let sy0 = cy0;
+        if (d === 0) {
+          if (showSplits) rawLines.push({ x1: cx0 + s, y1: cy0, x2: cx0 + s, y2: cy0 + ch });
+          cx0 += s;
+          cw -= s;
+        } else if (d === 1) {
+          if (showSplits) rawLines.push({ x1: cx0, y1: cy0 + s, x2: cx0 + cw, y2: cy0 + s });
+          cy0 += s;
+          ch -= s;
+        } else if (d === 2) {
+          sx0 = cx0 + cw - s;
+          if (showSplits) rawLines.push({ x1: sx0, y1: cy0, x2: sx0, y2: cy0 + ch });
+          cw -= s;
+        } else {
+          sy0 = cy0 + ch - s;
+          if (showSplits) rawLines.push({ x1: cx0, y1: sy0, x2: cx0 + cw, y2: sy0 });
+          ch -= s;
+        }
+        if (showSpiral) {
+          // Quarter-arc inside the peeled square. The arc connects the two corners
+          // adjacent to the side that joins the previous square, sweeping through
+          // the corner farthest from the remaining rectangle so successive arcs
+          // chain into a continuous spiral.
+          let p1x = 0, p1y = 0, p2x = 0, p2y = 0;
+          if (d === 0) { p1x = sx0; p1y = sy0; p2x = sx0 + s; p2y = sy0 + s; }
+          else if (d === 1) { p1x = sx0 + s; p1y = sy0; p2x = sx0; p2y = sy0 + s; }
+          else if (d === 2) { p1x = sx0 + s; p1y = sy0 + s; p2x = sx0; p2y = sy0; }
+          else { p1x = sx0; p1y = sy0 + s; p2x = sx0 + s; p2y = sy0; }
+          rawArcs.push({ x1: p1x, y1: p1y, x2: p2x, y2: p2y, rx: s, ry: s, largeArc: 0, sweep: 1 });
+        }
+        dir++;
+      }
+
+      // Apply rotation around (0,0) (currently box centre in local space), then
+      // translate to actual box centre + user offset. rx == ry so SVG arcs need
+      // no xAxisRotation — rotating both endpoints rotates the circle implicitly.
+      const cosA = Math.cos(rot);
+      const sinA = Math.sin(rot);
+      const txC = W / 2 + ox;
+      const tyC = H / 2 + oy;
+      const tp = (x: number, y: number): { x: number; y: number } => ({
+        x: cosA * x - sinA * y + txC,
+        y: sinA * x + cosA * y + tyC,
+      });
+
+      const lines = rawLines.map((l) => {
+        const a = tp(l.x1, l.y1);
+        const b = tp(l.x2, l.y2);
+        return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+      });
+      const arcs = rawArcs.map((a) => {
+        const p1 = tp(a.x1, a.y1);
+        const p2 = tp(a.x2, a.y2);
+        return { x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, rx: a.rx, ry: a.ry, largeArc: a.largeArc, sweep: a.sweep };
+      });
+      return { lines, circles: [], dots: [], arcs };
     }
     case 'diagonals': {
       const lines: GuideLine[] = [
         { x1: 0, y1: 0, x2: W, y2: H },
       ];
       if (k.cross) lines.push({ x1: 0, y1: H, x2: W, y2: 0 });
-      return { lines, circles: [], dots: [] };
+      return { lines, circles: [], dots: [], arcs: [] };
     }
     case 'calligraphy': {
       // Clamp inputs to aesthetic ranges, then derive the five y positions.
@@ -287,7 +397,7 @@ export function computeLayerGeometry(
       for (const y of [ascY, capY, xY, baseY, descY]) {
         lines.push({ x1: 0, y1: y, x2: W, y2: y });
       }
-      return { lines, circles: [], dots: [] };
+      return { lines, circles: [], dots: [], arcs: [] };
     }
     case 'slant': {
       // Slanted lines spaced `spacing` apart on the BASELINE (y=H), then
@@ -308,7 +418,7 @@ export function computeLayerGeometry(
       const clipped = lines
         .map((l) => clipLineToBox(l, W, H))
         .filter((l): l is GuideLine => l !== null);
-      return { lines: clipped, circles: [], dots: [] };
+      return { lines: clipped, circles: [], dots: [], arcs: [] };
     }
     case 'rings': {
       const cx = W / 2;
@@ -321,7 +431,7 @@ export function computeLayerGeometry(
         const t = count === 1 ? 1 : i / (count - 1);
         circles.push({ cx, cy, r: rMin + (rMax - rMin) * t });
       }
-      return { lines: [], circles, dots: [] };
+      return { lines: [], circles, dots: [], arcs: [] };
     }
     case 'dots': {
       const dots: GuideDot[] = [];
@@ -332,7 +442,7 @@ export function computeLayerGeometry(
           dots.push({ cx: x, cy: y, r });
         }
       }
-      return { lines: [], circles: [], dots };
+      return { lines: [], circles: [], dots, arcs: [] };
     }
     default: {
       // Exhaustiveness guard.
