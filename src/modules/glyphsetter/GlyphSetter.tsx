@@ -93,6 +93,7 @@ export function GlyphSetter(): JSX.Element {
         style={{
           minWidth: 0,
           minHeight: 0,
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
           borderRight: '1px solid #999',
@@ -400,6 +401,7 @@ function GlyphEditor(props: {
       <div
         style={{
           flex: 1,
+          minWidth: 0,
           minHeight: 0,
           overflow: 'auto',
           background: 'transparent',
