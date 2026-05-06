@@ -32,6 +32,43 @@ import type {
 } from './types.js';
 
 /**
+ * Resolved world-orientation context for the renderer.
+ *   - `normal`: the unit vector the nib lays its width along.
+ *   - `blend` : in (0, 1]. 1 = pure world (constant nib direction);
+ *               <1 = mixed with the path's tangent-perpendicular normal.
+ * Returns `null` when the effect is fully off (pure tangent normals).
+ */
+export type WorldWidth = { readonly normal: Vec2; readonly blend: number };
+
+export function resolveWorldWidth(style: StyleSettings): WorldWidth | null {
+  const blend =
+    style.worldBlend ?? (style.widthOrientation === 'world' ? 1 : 0);
+  if (!(blend > 0)) return null;
+  const a = style.worldAngle;
+  return {
+    normal: { x: -Math.sin(a), y: Math.cos(a) },
+    blend: Math.min(1, blend),
+  };
+}
+
+/**
+ * Pick the unit normal at a path sample. With no world component we use the
+ * tangent-perpendicular (rotate tangent 90° CCW). With a world component we
+ * linearly interpolate the two unit normals and renormalize — this is the
+ * "nib that still tracks the curve" look at intermediate blends.
+ */
+export function blendedNormal(tangent: Vec2, world: WorldWidth | null): Vec2 {
+  const tn: Vec2 = { x: -tangent.y, y: tangent.x };
+  if (!world) return tn;
+  if (world.blend >= 1) return world.normal;
+  const x = tn.x * (1 - world.blend) + world.normal.x * world.blend;
+  const y = tn.y * (1 - world.blend) + world.normal.y * world.blend;
+  const len = Math.hypot(x, y);
+  if (len < 1e-9) return world.normal;
+  return { x: x / len, y: y / len };
+}
+
+/**
  * One offset sample per anchor: each cubic segment contributes its two
  * endpoints only. Adjacent segments share the corner anchor and stitching
  * (miter / bevel) inserts whatever extra vertices the join needs.
@@ -77,10 +114,9 @@ function offsetPair(
   p: Vec2,
   tangent: Vec2,
   halfWidth: number,
-  worldNormal: Vec2 | null,
+  world: WorldWidth | null,
 ): { left: Vec2; right: Vec2 } {
-  // Default: rotate tangent 90° CCW for the left normal.
-  const n = worldNormal ?? ({ x: -tangent.y, y: tangent.x } satisfies Vec2);
+  const n = blendedNormal(tangent, world);
   return {
     left: { x: p.x + n.x * halfWidth, y: p.y + n.y * halfWidth },
     right: { x: p.x - n.x * halfWidth, y: p.y - n.y * halfWidth },
@@ -104,7 +140,7 @@ function offsetSegment(
   profile: WidthProfile,
   tArcStart: number,
   tArcEnd: number,
-  worldNormal: Vec2 | null,
+  world: WorldWidth | null,
 ): SegmentOffsets {
   // Adaptive flattening: collect t-values in [0,1] of `seg` such that each
   // consecutive pair bounds a sub-cubic that is "flat enough" both
@@ -121,7 +157,7 @@ function offsetSegment(
     const tangent = tangentAt(seg, t);
     const tArc = tArcStart + (tArcEnd - tArcStart) * t;
     const half = widthAt(profile, tArc) / 2;
-    const { left, right } = offsetPair(p, tangent, half, worldNormal);
+    const { left, right } = offsetPair(p, tangent, half, world);
     lefts.push(left);
     rights.push(right);
   }
@@ -427,10 +463,7 @@ function buildSides(
   if (segments.length === 0) return null;
 
   const profile = stroke.width ?? style.defaultWidth;
-  const worldNormal: Vec2 | null =
-    style.widthOrientation === 'world'
-      ? { x: -Math.sin(style.worldAngle), y: Math.cos(style.worldAngle) }
-      : null;
+  const world = resolveWorldWidth(style);
 
   // Approximate per-segment arc-length distribution so width(t) over the
   // whole stroke maps onto each segment's tArcStart / tArcEnd.
@@ -445,7 +478,7 @@ function buildSides(
     const tA = acc / total;
     const tB = (acc + lens[i]!) / total;
     offsets.push(
-      offsetSegment(segments[i]!, profile, tA, tB, worldNormal),
+      offsetSegment(segments[i]!, profile, tA, tB, world),
     );
     acc += lens[i]!;
   }
@@ -453,8 +486,8 @@ function buildSides(
   // Stitch lefts/rights with miter joins, trimming any samples that overshoot
   // the miter intersection (this is what removes the inside-corner artifact
   // where the inner offset polyline previously extended past the meeting
-  // point). World-orientation has a fixed normal so corners are pure
-  // translations of the path → no mitering needed there.
+  // point). Pure world-orientation (blend === 1) has a fixed normal so
+  // corners are pure translations of the path → no mitering needed there.
   const lefts: Vec2[] = [];
   const rights: Vec2[] = [];
   // Each entry holds the current segment's left & right polylines being
@@ -462,13 +495,15 @@ function buildSides(
   let curLefts: Vec2[] = [...offsets[0]!.lefts];
   let curRights: Vec2[] = [...offsets[0]!.rights];
 
+  const fixedTranslation = world !== null && world.blend >= 1;
+
   for (let i = 0; i < offsets.length - 1; i++) {
     const seg = offsets[i]!;
     const next = offsets[i + 1]!;
     const nextLefts: Vec2[] = [...next.lefts];
     const nextRights: Vec2[] = [...next.rights];
 
-    if (worldNormal) {
+    if (fixedTranslation) {
       // Pure translation: both sides line up by construction. Just push.
       lefts.push(...curLefts);
       rights.push(...curRights);

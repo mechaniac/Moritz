@@ -81,8 +81,20 @@ export type StyleSettings = {
   /** Box stretch Y. */
   readonly scaleY: number;
   readonly defaultWidth: WidthProfile;
+  /**
+   * @deprecated Use `worldBlend` instead. Kept for back-compat with v1
+   * fonts. When `worldBlend` is undefined, `widthOrientation === 'world'`
+   * resolves to a blend of 1, otherwise 0.
+   */
   readonly widthOrientation: WidthOrientation;
-  /** Used only when `widthOrientation === 'world'`. Radians. */
+  /**
+   * 0..1 — blend between tangent-perpendicular width (0, default) and a
+   * fixed world-axis nib (1). Intermediate values produce a "leaning nib"
+   * that still tracks the spline somewhat. Replaces the old boolean
+   * `widthOrientation`. When undefined, the legacy enum is consulted.
+   */
+  readonly worldBlend?: number;
+  /** Used whenever `worldBlend > 0`. Radians. */
   readonly worldAngle: number;
   readonly capStart: CapShape;
   readonly capEnd: CapShape;

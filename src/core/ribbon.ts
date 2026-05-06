@@ -28,7 +28,7 @@ import {
   strokeToSegments,
   tangentAt,
 } from './bezier.js';
-import { widthAt } from './stroke.js';
+import { blendedNormal, resolveWorldWidth, widthAt, type WorldWidth } from './stroke.js';
 import type { Stroke, StyleSettings, Vec2 } from './types.js';
 import type { Triangle } from './triangulate.js';
 
@@ -71,6 +71,7 @@ function unitNormal(t: Vec2): Vec2 {
   const len = Math.hypot(t.x, t.y) || 1;
   return { x: -t.y / len, y: t.x / len };
 }
+void unitNormal;
 
 function intersectLines(
   p1: Vec2,
@@ -99,10 +100,10 @@ function jointOffsetPair(
   nextTangent: Vec2,
   prevHalf: number,
   nextHalf: number,
-  worldNormal: Vec2 | null,
+  world: WorldWidth | null,
 ): { left: Vec2; right: Vec2 } {
-  const nPrev = worldNormal ?? unitNormal(prevTangent);
-  const nNext = worldNormal ?? unitNormal(nextTangent);
+  const nPrev = blendedNormal(prevTangent, world);
+  const nNext = blendedNormal(nextTangent, world);
   const leftPrev = {
     x: pAnchor.x + nPrev.x * prevHalf,
     y: pAnchor.y + nPrev.y * prevHalf,
@@ -252,10 +253,7 @@ export function triangulateStrokeRibbon(
   const segments = strokeToSegments(stroke);
   if (segments.length === 0) return { polygon: [], triangles: [] };
   const profile = stroke.width ?? style.defaultWidth;
-  const worldNormal: Vec2 | null =
-    style.widthOrientation === 'world'
-      ? { x: -Math.sin(style.worldAngle), y: Math.cos(style.worldAngle) }
-      : null;
+  const world = resolveWorldWidth(style);
 
   const lens = segments.map(segmentLength);
   const total = lens.reduce((s, x) => s + x, 0) || 1;
@@ -268,7 +266,7 @@ export function triangulateStrokeRibbon(
     const tan = tangentAt(seg, tLocal);
     const tArc = (cum[segIdx]! + lens[segIdx]! * tLocal) / total;
     const half = widthAt(profile, tArc) * 0.5;
-    const n = worldNormal ?? unitNormal(tan);
+    const n = blendedNormal(tan, world);
     return {
       p,
       tangent: tan,
@@ -294,7 +292,7 @@ export function triangulateStrokeRibbon(
       tNext,
       half,
       half,
-      worldNormal,
+      world,
     );
     return {
       p,

@@ -162,4 +162,70 @@ describe('stroke', () => {
       expect(p.x).toBeLessThanOrEqual(100.01);
     }
   });
+
+  it('outlineStroke: worldBlend=0 matches legacy tangent mode', () => {
+    const flatTangent: StyleSettings = { ...style, capStart: 'flat', capEnd: 'flat' };
+    const flatBlend0: StyleSettings = { ...flatTangent, worldBlend: 0 };
+    const s: Stroke = {
+      id: 'wb0',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const a = outlineStroke(s, flatTangent);
+    const b = outlineStroke(s, flatBlend0);
+    expect(b).toEqual(a);
+  });
+
+  it('outlineStroke: worldBlend=1 places offsets along the world normal', () => {
+    // Horizontal segment, world angle = 0 → world normal is (0, 1). The
+    // offset polygon should therefore have its sides at y = ±5.
+    const flatStyle: StyleSettings = {
+      ...style,
+      capStart: 'flat',
+      capEnd: 'flat',
+      worldBlend: 1,
+      worldAngle: 0,
+    };
+    const s: Stroke = {
+      id: 'wb1',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const poly = outlineStroke(s, flatStyle);
+    expect(poly.length).toBe(4);
+    const ys = poly.map((p) => p.y).sort((a, b) => a - b);
+    expect(ys[0]).toBeCloseTo(-5, 6);
+    expect(ys[3]).toBeCloseTo(5, 6);
+  });
+
+  it('outlineStroke: worldBlend=0.5 sits between tangent and world widths', () => {
+    // Horizontal segment, world angle = π/2 → world normal is (-1, 0).
+    // Tangent normal is (0, 1) (left). With blend 0.5 the unit normal is
+    // (-1/√2, 1/√2). Half-width 5 → offset endpoints at ±(-5/√2, 5/√2).
+    const flatStyle: StyleSettings = {
+      ...style,
+      capStart: 'flat',
+      capEnd: 'flat',
+      worldBlend: 0.5,
+      worldAngle: Math.PI / 2,
+    };
+    const s: Stroke = {
+      id: 'wbh',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const poly = outlineStroke(s, flatStyle);
+    expect(poly.length).toBe(4);
+    const exp = 5 / Math.SQRT2;
+    // Each polygon vertex sits at (anchor.x ± exp, anchor.y ∓ exp).
+    for (const p of poly) {
+      expect(Math.abs(Math.abs(p.y) - exp)).toBeLessThan(1e-6);
+    }
+  });
 });

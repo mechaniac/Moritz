@@ -117,20 +117,29 @@ export function StyleSetter(): JSX.Element {
           tooltip="Default stroke width for every glyph (font units). Per-stroke widths can override this in the GlyphSetter."
           defaultValue={origWidth}
         />
-        <label
-          title="Width direction. Off = stroke width is laid down perpendicular to the path tangent (round look). On = width is laid at a fixed world angle (nib-pen / calligraphy look)."
-          style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-        >
-          <input
-            type="checkbox"
-            checked={font.style.widthOrientation === 'world'}
-            onChange={(e) =>
-              setStyle({ widthOrientation: e.target.checked ? 'world' : 'tangent' })
-            }
-          />
-          World-oriented width (nib pen)
-        </label>
-        {font.style.widthOrientation === 'world' && (
+        <Slider
+          label="World blend"
+          min={0}
+          max={1}
+          step={0.01}
+          value={
+            font.style.worldBlend ??
+            (font.style.widthOrientation === 'world' ? 1 : 0)
+          }
+          onChange={(v) =>
+            setStyle({
+              worldBlend: v,
+              widthOrientation: v >= 1 ? 'world' : 'tangent',
+            })
+          }
+          defaultValue={
+            original?.worldBlend ??
+            (original?.widthOrientation === 'world' ? 1 : 0)
+          }
+          tooltip="0 = stroke width laid perpendicular to the path tangent (round look). 1 = fixed world-axis nib (calligraphy). Intermediate values blend the two normals — a 'leaning nib' that still tracks the spline."
+        />
+        {(font.style.worldBlend ??
+          (font.style.widthOrientation === 'world' ? 1 : 0)) > 0 && (
           <Slider
             label="World angle (rad)"
             min={-Math.PI / 2}
@@ -138,7 +147,8 @@ export function StyleSetter(): JSX.Element {
             step={0.01}
             value={font.style.worldAngle}
             onChange={(v) => setStyle({ worldAngle: v })}
-            tooltip="Angle of the virtual nib relative to the world (radians). Only used when world-oriented width is on."
+            defaultValue={original?.worldAngle ?? 0}
+            tooltip="Angle of the virtual nib relative to the world (radians). Used whenever World blend > 0."
           />
         )}
 
