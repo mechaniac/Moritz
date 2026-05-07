@@ -28,6 +28,7 @@ import type {
   Stroke,
   StyleSettings,
   Vec2,
+  Vertex,
   WidthProfile,
 } from './types.js';
 import type { WidthMod } from './widthEffects.js';
@@ -95,54 +96,86 @@ export function effectiveStyleForGlyph(
 /**
  * Pick the unit normal at a path sample. The simplest possible rule:
  *
- *   n = slerp(tn, worldNormal, blend)        along the shortest arc
+ *   n = slerp(baseNormal, worldNormal, blend)        along the shortest arc
  *
- * where `tn = perp(tangent)`. There is **no** ± representative pick of
- * the world normal and **no** threading against the previous sample.
- * Every sample is a pure local function of `tangent`, `worldNormal`,
- * and `blend`; consecutive samples on a smooth path therefore produce
- * smooth normals.
+ * `baseNormal` is the unit normal the caller has already chosen — typically
+ * `perp(tangent)` at that sample, optionally rotated by a per-anchor
+ * `normalOverride` frame. There is **no** ± representative pick of the
+ * world normal and **no** threading against the previous sample. Every
+ * sample is a pure local function of `baseNormal`, `worldNormal`, and
+ * `blend`; consecutive samples on a smooth path therefore produce smooth
+ * normals.
  *
  * The single rotational direction (always shortest arc to the literal
  * `worldNormal`) is what the user asked for: "bend all normals in the
- * same direction, in perpetuity." This is well-defined as long as `tn`
- * never becomes anti-parallel to `worldNormal` along the stroke — which
- * requires the tangent to swing through more than 180°, i.e. a closed
- * loop. Strokes in this codebase are always open, so the degeneracy
- * cannot occur in practice.
+ * same direction, in perpetuity." This is well-defined as long as
+ * `baseNormal` never becomes anti-parallel to `worldNormal` along the
+ * stroke — which requires the tangent to swing through more than 180°,
+ * i.e. a closed loop. Strokes in this codebase are always open, so the
+ * degeneracy cannot occur in practice.
  */
-export function blendedNormal(tangent: Vec2, world: WorldWidth | null): Vec2 {
-  const tn: Vec2 = { x: -tangent.y, y: tangent.x };
-  if (!world || world.blend <= 0) return tn;
+export function blendedNormal(baseNormal: Vec2, world: WorldWidth | null): Vec2 {
+  if (!world || world.blend <= 0) return baseNormal;
   const wn = world.normal;
   if (world.blend >= 1) return wn;
-  const aT = Math.atan2(tn.y, tn.x);
+  const aB = Math.atan2(baseNormal.y, baseNormal.x);
   const aW = Math.atan2(wn.y, wn.x);
   // Shortest signed arc in (−π, π].
-  let diff = aW - aT;
+  let diff = aW - aB;
   while (diff > Math.PI) diff -= 2 * Math.PI;
   while (diff <= -Math.PI) diff += 2 * Math.PI;
-  const a = aT + diff * world.blend;
+  const a = aB + diff * world.blend;
   return { x: Math.cos(a), y: Math.sin(a) };
 }
 
 /**
  * Multiplier on the local half-width that implements `worldContract`.
  * Returns 1 when the effect is off. Otherwise:
- *   factor = 1 − contract · (1 − |tn · contractNormal|)
- * Width is full when the tangent-perpendicular `tn` is aligned with the
- * contract normal and shrinks to (1 − contract) when `tn` is perpendicular
- * to it. The measure uses `tn` (NOT the possibly world-blended `n`) so
- * `worldContract` behaves identically regardless of `worldBlend` — they
- * are independent effects. The contract normal can also be aimed
- * independently from the blend normal via `worldContractAngle`.
+ *   factor = 1 − contract · (1 − |baseNormal · contractNormal|)
+ * Width is full when `baseNormal` is aligned with `contractNormal` and
+ * shrinks to (1 − contract) when `baseNormal` is perpendicular to it.
+ * Measured against the (post-override, pre-blend) `baseNormal` so the
+ * effect respects per-anchor normal overrides while remaining independent
+ * of `worldBlend`.
  */
-export function contractFactor(tangent: Vec2, world: WorldWidth | null): number {
+export function contractFactor(baseNormal: Vec2, world: WorldWidth | null): number {
   if (!world || world.contract <= 0) return 1;
-  const tnx = -tangent.y;
-  const tny = tangent.x;
-  const align = Math.abs(tnx * world.contractNormal.x + tny * world.contractNormal.y);
+  const align = Math.abs(
+    baseNormal.x * world.contractNormal.x + baseNormal.y * world.contractNormal.y,
+  );
   return 1 - world.contract * (1 - align);
+}
+
+/**
+ * Per-anchor override frame contribution. Returns the rotation (radians,
+ * shortest signed arc) and width factor to apply on top of the default
+ * (tangent-perpendicular) base normal at that anchor.
+ *
+ * When the vertex has no override (or the override is degenerate), returns
+ * the identity frame `{deltaAngle: 0, factor: 1}` so call sites can apply
+ * the same arithmetic uniformly.
+ *
+ * `defaultBareHalf` is the half-width the width profile produces at this
+ * anchor (without any per-instance `widthMod` jitter — jitter remains a
+ * post-multiplier so it doesn't fight the override).
+ */
+export function vertexFrameAt(
+  v: Vertex,
+  segTangent: Vec2,
+  defaultBareHalf: number,
+): { deltaAngle: number; factor: number } {
+  const ov = v.normalOverride;
+  if (!ov) return { deltaAngle: 0, factor: 1 };
+  const ovLen = Math.hypot(ov.x, ov.y);
+  if (ovLen <= 1e-9) return { deltaAngle: 0, factor: 1 };
+  // Default normal at this segment endpoint = perp(tangent) = (-ty, tx).
+  const defNAngle = Math.atan2(segTangent.x, -segTangent.y);
+  const ovAngle = Math.atan2(ov.y, ov.x);
+  let d = ovAngle - defNAngle;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d <= -Math.PI) d += 2 * Math.PI;
+  const factor = defaultBareHalf > 1e-9 ? ovLen / defaultBareHalf : 1;
+  return { deltaAngle: d, factor };
 }
 
 /**
@@ -186,16 +219,18 @@ export function widthAt(profile: WidthProfile, t: number): number {
   return s[s.length - 1]!.width;
 }
 
-/** Compute (left, right) offset points + the normal used. Pure local
- *  function of `(p, tangent, halfWidth, world)` — no prior-sample state. */
+/** Compute (left, right) offset points + the (post-blend) normal used.
+ *  Pure local function of `(p, baseNormal, halfWidth, world)`. The caller
+ *  is responsible for assembling `baseNormal` (typically `perp(tangent)`,
+ *  optionally rotated by a per-anchor `normalOverride` frame). */
 function offsetPair(
   p: Vec2,
-  tangent: Vec2,
+  baseNormal: Vec2,
   halfWidth: number,
   world: WorldWidth | null,
 ): { left: Vec2; right: Vec2; n: Vec2 } {
-  const n = blendedNormal(tangent, world);
-  const h = halfWidth * contractFactor(tangent, world);
+  const n = blendedNormal(baseNormal, world);
+  const h = halfWidth * contractFactor(baseNormal, world);
   return {
     left: { x: p.x + n.x * h, y: p.y + n.y * h },
     right: { x: p.x - n.x * h, y: p.y - n.y * h },
@@ -217,6 +252,8 @@ type SegmentOffsets = {
 
 function offsetSegment(
   seg: CubicSegment,
+  vStart: Vertex,
+  vEnd: Vertex,
   profile: WidthProfile,
   tArcStart: number,
   tArcEnd: number,
@@ -231,26 +268,49 @@ function offsetSegment(
   const ts: number[] = [0];
   flattenCubic(seg, profile, tArcStart, tArcEnd, 0, 1, 0, ts);
 
+  // Per-anchor override frames at this segment's two endpoints. When
+  // neither vertex has an override these are the identity frame and the
+  // math collapses to perp(tangent) + bare profile half-width.
+  const tan0 = tangentAt(seg, 0);
+  const tan1 = tangentAt(seg, 1);
+  const bareHalfStart = widthAt(profile, tArcStart) / 2;
+  const bareHalfEnd = widthAt(profile, tArcEnd) / 2;
+  const frameStart = vertexFrameAt(vStart, tan0, bareHalfStart);
+  const frameEnd = vertexFrameAt(vEnd, tan1, bareHalfEnd);
+
   const lefts: Vec2[] = [];
   const rights: Vec2[] = [];
   for (const t of ts) {
     const p = pointAt(seg, t);
     const tangent = tangentAt(seg, t);
     const tArc = tArcStart + (tArcEnd - tArcStart) * t;
-    const half = (widthAt(profile, tArc) * (widthMod ? widthMod(tArc) : 1)) / 2;
-    const { left, right } = offsetPair(p, tangent, half, world);
+    // Default base normal at this sample = perp(tangent).
+    const dnx = -tangent.y;
+    const dny = tangent.x;
+    // Linear blend of per-vertex deltaAngle / factor across the segment.
+    const da = (1 - t) * frameStart.deltaAngle + t * frameEnd.deltaAngle;
+    const wf = (1 - t) * frameStart.factor + t * frameEnd.factor;
+    let baseN: Vec2;
+    if (da === 0) {
+      baseN = { x: dnx, y: dny };
+    } else {
+      const c = Math.cos(da);
+      const s = Math.sin(da);
+      baseN = { x: dnx * c - dny * s, y: dnx * s + dny * c };
+    }
+    const bareHalf = widthAt(profile, tArc) / 2;
+    const half = bareHalf * wf * (widthMod ? widthMod(tArc) : 1);
+    const { left, right } = offsetPair(p, baseN, half, world);
     lefts.push(left);
     rights.push(right);
   }
-  const tangentStart = tangentAt(seg, 0);
-  const tangentEnd = tangentAt(seg, 1);
   return {
     lefts,
     rights,
-    tangentStart,
-    tangentEnd,
-    halfStart: (widthAt(profile, tArcStart) * (widthMod ? widthMod(tArcStart) : 1)) / 2,
-    halfEnd: (widthAt(profile, tArcEnd) * (widthMod ? widthMod(tArcEnd) : 1)) / 2,
+    tangentStart: tan0,
+    tangentEnd: tan1,
+    halfStart: bareHalfStart * frameStart.factor * (widthMod ? widthMod(tArcStart) : 1),
+    halfEnd: bareHalfEnd * frameEnd.factor * (widthMod ? widthMod(tArcEnd) : 1),
     pStart: pointAt(seg, 0),
     pEnd: pointAt(seg, 1),
   };
@@ -541,6 +601,8 @@ function buildSides(
   pEnd: Vec2;
   tangentStart: Vec2;
   tangentEnd: Vec2;
+  baseNormalStart: Vec2;
+  baseNormalEnd: Vec2;
 } | null {
   if (stroke.vertices.length < 2) return null;
   // Open-stroke invariant: a stroke is a real pen path, with a distinct
@@ -572,7 +634,16 @@ function buildSides(
   for (let i = 0; i < segments.length; i++) {
     const tA = acc / total;
     const tB = (acc + lens[i]!) / total;
-    const segOff = offsetSegment(segments[i]!, profile, tA, tB, world, widthMod);
+    const segOff = offsetSegment(
+      segments[i]!,
+      stroke.vertices[i]!,
+      stroke.vertices[i + 1]!,
+      profile,
+      tA,
+      tB,
+      world,
+      widthMod,
+    );
     offsets.push(segOff);
     acc += lens[i]!;
   }
@@ -649,6 +720,35 @@ function buildSides(
   const first = offsets[0]!;
   const last = offsets[offsets.length - 1]!;
 
+  // Recompute the post-override base normals at the two stroke endpoints
+  // so the caps line up with the (possibly user-overridden) offset chord.
+  const profileBareHalf0 = widthAt(profile, 0) / 2;
+  const profileBareHalf1 = widthAt(profile, 1) / 2;
+  const fStart = vertexFrameAt(stroke.vertices[0]!, first.tangentStart, profileBareHalf0);
+  const fEnd = vertexFrameAt(
+    stroke.vertices[stroke.vertices.length - 1]!,
+    last.tangentEnd,
+    profileBareHalf1,
+  );
+  const dnxs = -first.tangentStart.y;
+  const dnys = first.tangentStart.x;
+  const baseNormalStart: Vec2 = fStart.deltaAngle === 0
+    ? { x: dnxs, y: dnys }
+    : (() => {
+        const c = Math.cos(fStart.deltaAngle);
+        const s = Math.sin(fStart.deltaAngle);
+        return { x: dnxs * c - dnys * s, y: dnxs * s + dnys * c };
+      })();
+  const dnxe = -last.tangentEnd.y;
+  const dnye = last.tangentEnd.x;
+  const baseNormalEnd: Vec2 = fEnd.deltaAngle === 0
+    ? { x: dnxe, y: dnye }
+    : (() => {
+        const c = Math.cos(fEnd.deltaAngle);
+        const s = Math.sin(fEnd.deltaAngle);
+        return { x: dnxe * c - dnye * s, y: dnxe * s + dnye * c };
+      })();
+
   return {
     lefts,
     rights,
@@ -656,6 +756,8 @@ function buildSides(
     pEnd: last.pEnd,
     tangentStart: first.tangentStart,
     tangentEnd: last.tangentEnd,
+    baseNormalStart,
+    baseNormalEnd,
   };
 }
 
@@ -722,7 +824,7 @@ export function outlineStroke(
 ): OutlinePolygon {
   const sides = buildSides(stroke, style, widthMod ?? null);
   if (!sides) return [];
-  const { lefts, rights, pStart, pEnd, tangentStart, tangentEnd } = sides;
+  const { lefts, rights, pStart, pEnd, tangentStart, tangentEnd, baseNormalStart, baseNormalEnd } = sides;
   const capStart = stroke.capStart ?? style.capStart;
   const capEnd = stroke.capEnd ?? style.capEnd;
   const bulge = style.capRoundBulge ?? 1;
@@ -733,8 +835,8 @@ export function outlineStroke(
   // chord runs along n and the outward axis is its perpendicular, oriented
   // along (or opposite to) the tangent so the cap bulges out of the stroke.
   const world = resolveWorldWidth(style);
-  const nEnd = blendedNormal(tangentEnd, world);
-  const nStart = blendedNormal(tangentStart, world);
+  const nEnd = blendedNormal(baseNormalEnd, world);
+  const nStart = blendedNormal(baseNormalStart, world);
   // perp(n) rotated so its dot with tangent is positive = "forward".
   const perpEnd = pickOutward(nEnd, tangentEnd);
   const perpStart = pickOutward(nStart, { x: -tangentStart.x, y: -tangentStart.y });

@@ -22,11 +22,12 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { effectiveStyleForGlyph, outlineStroke, redistributePolygonEvenly, resolveWorldWidth } from '../../core/stroke.js';
+import { effectiveStyleForGlyph, outlineStroke, redistributePolygonEvenly, resolveWorldWidth, widthAt } from '../../core/stroke.js';
 import {
   closestPointT,
   segmentLength,
   strokeToSegments,
+  tangentAt,
   type CubicSegment,
 } from '../../core/bezier.js';
 import { triangulatePolygon } from '../../core/triangulate.js';
@@ -46,6 +47,7 @@ import { GuidesPanel } from './GuidesPanel.js';
 import { measureFontMetrics, measureGlyphMetrics, measurePairAdvance } from './fontMetrics.js';
 import {
   addStroke,
+  clearNormalOverride,
   deleteAnchor,
   deleteStroke,
   insertAnchor,
@@ -54,6 +56,7 @@ import {
   moveAnchor,
   moveHandle,
   setBreakTangent,
+  setNormalOverride,
   translateStroke,
 } from '../../core/glyphOps.js';
 import type {
@@ -62,6 +65,7 @@ import type {
   Stroke,
   StyleSettings,
   Vec2,
+  WidthProfile,
 } from '../../core/types.js';
 import { useAppStore } from '../../state/store.js';
 import { StyleControls } from '../stylesetter/StyleControls.js';
@@ -170,6 +174,7 @@ type Selection =
 type Drag =
   | { kind: 'anchor'; strokeIdx: number; vIdx: number }
   | { kind: 'handle'; strokeIdx: number; vIdx: number; side: 'in' | 'out' }
+  | { kind: 'normal'; strokeIdx: number; vIdx: number }
   | { kind: 'stroke'; strokeIdx: number; lastX: number; lastY: number; moved: boolean };
 
 export function GlyphSetter(): JSX.Element {
@@ -481,6 +486,8 @@ function GlyphEditor(props: {
       onChange((g) => moveAnchor(g, drag.strokeIdx, drag.vIdx, p));
     } else if (drag.kind === 'handle') {
       onChange((g) => moveHandle(g, drag.strokeIdx, drag.vIdx, drag.side, p));
+    } else if (drag.kind === 'normal') {
+      onChange((g) => setNormalOverride(g, drag.strokeIdx, drag.vIdx, p));
     } else {
       const dx = p.x - drag.lastX;
       const dy = p.y - drag.lastY;
@@ -532,6 +539,22 @@ function GlyphEditor(props: {
     e.stopPropagation();
     setSelection({ kind: 'anchor', strokeIdx, vIdx });
     dragRef.current = { kind: 'handle', strokeIdx, vIdx, side };
+    (e.target as Element).setPointerCapture(e.pointerId);
+  };
+  const startNormalDrag = (
+    e: React.PointerEvent,
+    strokeIdx: number,
+    vIdx: number,
+  ) => {
+    e.stopPropagation();
+    // Shift+click clears the override (back to auto / connected to anchor).
+    if (e.shiftKey) {
+      onChange((g) => clearNormalOverride(g, strokeIdx, vIdx));
+      setSelection({ kind: 'anchor', strokeIdx, vIdx });
+      return;
+    }
+    setSelection({ kind: 'anchor', strokeIdx, vIdx });
+    dragRef.current = { kind: 'normal', strokeIdx, vIdx };
     (e.target as Element).setPointerCapture(e.pointerId);
   };
 
@@ -1020,9 +1043,11 @@ function GlyphEditor(props: {
                 selection={selection}
                 showAnchors={view.showAnchors}
                 scale={SCALE}
+                profile={s.width ?? font.style.defaultWidth}
                 onStrokePointerDown={onStrokePointerDown}
                 onAnchorPointerDown={startAnchorDrag}
                 onHandlePointerDown={startHandleDrag}
+                onNormalPointerDown={startNormalDrag}
               />
             ))}
           </g>
@@ -2236,6 +2261,7 @@ function StrokeOverlay(props: {
   selection: Selection;
   showAnchors: boolean;
   scale: number;
+  profile: WidthProfile;
   onStrokePointerDown: (e: React.PointerEvent, strokeIdx: number) => void;
   onAnchorPointerDown: (
     e: React.PointerEvent,
@@ -2248,8 +2274,13 @@ function StrokeOverlay(props: {
     vIdx: number,
     side: 'in' | 'out',
   ) => void;
+  onNormalPointerDown: (
+    e: React.PointerEvent,
+    strokeIdx: number,
+    vIdx: number,
+  ) => void;
 }): JSX.Element {
-  const { stroke, strokeIdx, selection, showAnchors, scale } = props;
+  const { stroke, strokeIdx, selection, showAnchors, scale, profile } = props;
   const segs = strokeToSegments(stroke);
   const isStrokeSelected =
     (selection.kind === 'stroke' && selection.strokeIdx === strokeIdx) ||
@@ -2271,6 +2302,37 @@ function StrokeOverlay(props: {
   const ANCHOR = 8 / scale;
   const HANDLE = 6 / scale;
   const HAIR = 2 / scale;
+
+  // Per-vertex default normal handle position (perp(tangent) × bare default
+  // half-width at that anchor's arc-length parameter). When a vertex has a
+  // normalOverride, the handle sits at p + override; otherwise at the
+  // default. Pure function of (segs, profile) — no React state.
+  const normalHandles = useMemo<readonly Vec2[]>(() => {
+    if (segs.length === 0) return stroke.vertices.map((v) => ({ x: v.p.x, y: v.p.y }));
+    const lens = segs.map(
+      (s) => Math.hypot(s.p1.x - s.p0.x, s.p1.y - s.p0.y) || 1,
+    );
+    const total = lens.reduce((a, b) => a + b, 0) || 1;
+    const cum: number[] = [0];
+    for (let i = 0; i < lens.length; i++) cum.push(cum[i]! + lens[i]!);
+    return stroke.vertices.map((v, k) => {
+      if (v.normalOverride) {
+        return { x: v.p.x + v.normalOverride.x, y: v.p.y + v.normalOverride.y };
+      }
+      const tIn = k > 0 ? tangentAt(segs[k - 1]!, 1) : { x: 0, y: 0 };
+      const tOut = k < segs.length ? tangentAt(segs[k]!, 0) : { x: 0, y: 0 };
+      let avg: Vec2;
+      if (k === 0) avg = tOut;
+      else if (k === segs.length) avg = tIn;
+      else avg = { x: tIn.x + tOut.x, y: tIn.y + tOut.y };
+      const len = Math.hypot(avg.x, avg.y) || 1;
+      const nx = -avg.y / len;
+      const ny = avg.x / len;
+      const tArc = cum[k]! / total;
+      const half = widthAt(profile, tArc) / 2;
+      return { x: v.p.x + nx * half, y: v.p.y + ny * half };
+    });
+  }, [segs, stroke.vertices, profile]);
 
   return (
     <g>
@@ -2339,6 +2401,41 @@ function StrokeOverlay(props: {
                 />
               </>
             )}
+            {sel && (() => {
+              const nh = normalHandles[vIdx]!;
+              const hasOverride = v.normalOverride !== undefined;
+              return (
+                <>
+                  <line
+                    x1={v.p.x}
+                    y1={v.p.y}
+                    x2={nh.x}
+                    y2={nh.y}
+                    stroke="#e6b800"
+                    strokeWidth={HAIR / 2}
+                    strokeDasharray={hasOverride ? undefined : `${HAIR * 1.5} ${HAIR * 1.5}`}
+                  />
+                  <circle
+                    cx={nh.x}
+                    cy={nh.y}
+                    r={HANDLE}
+                    fill={hasOverride ? '#e6b800' : '#fff'}
+                    stroke="#e6b800"
+                    strokeWidth={HAIR / 2}
+                    style={{ cursor: 'grab' }}
+                    onPointerDown={(e) =>
+                      props.onNormalPointerDown(e, strokeIdx, vIdx)
+                    }
+                  >
+                    <title>
+                      {hasOverride
+                        ? 'Normal override (drag to reshape, shift+click to clear)'
+                        : 'Default normal (drag to override; shift+click no-op)'}
+                    </title>
+                  </circle>
+                </>
+              );
+            })()}
             <rect
               x={v.p.x - ANCHOR / 2}
               y={v.p.y - ANCHOR / 2}

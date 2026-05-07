@@ -12,16 +12,16 @@
         "samples": [
           {
             "t": 0,
-            "width": 10
+            "width": 15
           },
           {
             "t": 1,
-            "width": 10
+            "width": 15
           }
         ]
       },
       "widthOrientation": "tangent",
-      "worldAngle": 0,
+      "worldAngle": 0.979203673205103,
       "capStart": "round",
       "capEnd": "round",
       "triMode": "ribbon-density",
@@ -31,7 +31,13 @@
       "lineHeight": 1.05,
       "ribbonSpread": 0,
       "ribbonAnchorPull": 0,
-      "capRoundBulge": 0.3
+      "capRoundBulge": 0.3,
+      "ribbonSpineLengthAware": true,
+      "worldBlend": 0.55,
+      "worldContract": 0.51,
+      "worldContractAngle": 1.0192036732051,
+      "ribbonSpineSubdiv": 12,
+      "ribbonBrokenAnchorSubdiv": 2
     },
     "glyphs": {
       "0": {
@@ -880,22 +886,23 @@
                   "y": 9.128206693209133
                 },
                 "outHandle": {
-                  "x": 6.015383859382636,
-                  "y": -6.5288836376788035
-                }
+                  "x": 20.102557842548073,
+                  "y": 35.79487022986778
+                },
+                "breakTangent": true
               },
               {
                 "p": {
-                  "x": 72.73076923076923,
+                  "x": 71.29486553485577,
                   "y": 100.12308443509616
                 },
                 "inHandle": {
-                  "x": -9.62525712010409,
-                  "y": -26.01994329315286
+                  "x": -9.846153846153854,
+                  "y": -28.410264235276443
                 },
                 "outHandle": {
-                  "x": 9.333327073317307,
-                  "y": 25.230769230769226
+                  "x": 9.27048199854949,
+                  "y": 26.74921063416514
                 }
               }
             ]
@@ -905,16 +912,16 @@
             "vertices": [
               {
                 "p": {
-                  "x": 16.320519080528847,
-                  "y": 72.32820481520433
+                  "x": 8.320519080528847,
+                  "y": 94.58462289663461
                 },
                 "inHandle": {
-                  "x": -16.658926277168035,
-                  "y": -0.5078908048570816
+                  "x": -15.496214708352477,
+                  "y": 6.135560894524513
                 },
                 "outHandle": {
-                  "x": 16.82051908052885,
-                  "y": 0.5128173828125
+                  "x": 20.205115685096153,
+                  "y": -8
                 }
               },
               {
@@ -923,12 +930,12 @@
                   "y": 72.84102219801683
                 },
                 "inHandle": {
-                  "x": -16.205115685096153,
-                  "y": 0.1025672325721132
+                  "x": -15.89742337740384,
+                  "y": 6.564100999098557
                 },
                 "outHandle": {
-                  "x": 16.66633284178039,
-                  "y": -0.10548641983958752
+                  "x": 15.405118126934152,
+                  "y": -6.360826461473625
                 }
               }
             ]
@@ -5832,6 +5839,8 @@
     "showOtherGlyphs": false,
     "showBorders": false,
     "showTriangles": true,
+    "showSpline0": false,
+    "showSpline1": false,
     "refFontFamily": "Verdana, Geneva, sans-serif",
     "refFontOpacity": 0.18,
     "editorScale": 6.5,

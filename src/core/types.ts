@@ -24,6 +24,21 @@ export type Vertex = {
    * direction is reflected, its length is preserved).
    */
   readonly breakTangent?: boolean;
+  /**
+   * Optional per-anchor normal override. Stored as a vector in glyph space,
+   * NOT relative to the tangent. The unit direction of the vector overrides
+   * the auto (tangent-perpendicular) normal at this anchor; the LENGTH of
+   * the vector overrides the half-width at this anchor (so the renderer
+   * uses `|normalOverride|` as the half-width pinned at this vertex).
+   *
+   * When undefined, the renderer derives both direction and half-width
+   * from the path's tangent and the active `WidthProfile`. When defined,
+   * the override is converted to a `(deltaAngle, widthFactor)` frame and
+   * smoothly interpolated along each segment to its other endpoint's
+   * frame. World blend / contract still apply on top of the resulting
+   * base normal — the override only sets the per-anchor *baseline*.
+   */
+  readonly normalOverride?: Vec2;
 };
 
 /** Sample on the width(t) profile, t in [0,1] along stroke arc length. */

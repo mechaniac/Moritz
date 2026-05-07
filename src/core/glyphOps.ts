@@ -290,3 +290,41 @@ export function setBreakTangent(
   }
   return replaceStroke(g, strokeIdx, replaceVertex(s, vIdx, next));
 }
+
+/**
+ * Set the per-anchor normal override to the absolute glyph-space point
+ * `absoluteHandlePos`. The stored override is the offset from `p`.
+ * When `absoluteHandlePos` coincides with `p` (zero-length override),
+ * the override is removed (auto behavior restored).
+ */
+export function setNormalOverride(
+  g: Glyph,
+  strokeIdx: number,
+  vIdx: number,
+  absoluteHandlePos: Vec2,
+): Glyph {
+  const s = g.strokes[strokeIdx];
+  if (!s) return g;
+  const v = s.vertices[vIdx];
+  if (!v) return g;
+  const rel = sub(absoluteHandlePos, v.p);
+  if (Math.hypot(rel.x, rel.y) < 1e-9) return clearNormalOverride(g, strokeIdx, vIdx);
+  return replaceStroke(g, strokeIdx, replaceVertex(s, vIdx, { ...v, normalOverride: rel }));
+}
+
+/**
+ * Remove any per-anchor normal override (returns to auto: tangent-perp
+ * with width pulled from the active `WidthProfile`).
+ */
+export function clearNormalOverride(
+  g: Glyph,
+  strokeIdx: number,
+  vIdx: number,
+): Glyph {
+  const s = g.strokes[strokeIdx];
+  if (!s) return g;
+  const v = s.vertices[vIdx];
+  if (!v || v.normalOverride === undefined) return g;
+  const { normalOverride: _drop, ...rest } = v;
+  return replaceStroke(g, strokeIdx, replaceVertex(s, vIdx, rest as Vertex));
+}

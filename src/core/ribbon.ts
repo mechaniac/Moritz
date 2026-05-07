@@ -42,7 +42,7 @@ import {
   tangentAt,
   type CubicSegment,
 } from './bezier.js';
-import { blendedNormal, contractFactor, resolveWorldWidth, widthAt, type WorldWidth } from './stroke.js';
+import { blendedNormal, contractFactor, resolveWorldWidth, vertexFrameAt, widthAt, type WorldWidth } from './stroke.js';
 import type { Stroke, StyleSettings, Vec2 } from './types.js';
 import type { WidthMod } from './widthEffects.js';
 import type { Triangle } from './triangulate.js';
@@ -190,6 +190,7 @@ function segmentSampleFractions(
  */
 function buildSpine1(
   segments: readonly CubicSegment[],
+  vertices: readonly import('./types.js').Vertex[],
   spineSubdiv: number,
   profile: import('./types.js').WidthProfile,
   widthMod: WidthMod | null,
@@ -204,6 +205,22 @@ function buildSpine1(
   const cum: number[] = [0];
   for (let i = 0; i < lens.length; i++) cum.push(cum[i]! + lens[i]!);
   const luts = segments.map(buildArcLut);
+
+  // Per-segment per-anchor override frames (deltaAngle, factor at each
+  // endpoint). Identity (0, 1) when no override is set; the math then
+  // collapses to perp(tangent) + bare profile half-width.
+  const segFrames = segments.map((seg, i) => {
+    const tan0 = tangentAt(seg, 0);
+    const tan1 = tangentAt(seg, 1);
+    const tArc0 = cum[i]! / total;
+    const tArc1 = cum[i + 1]! / total;
+    const bareH0 = widthAt(profile, tArc0) / 2;
+    const bareH1 = widthAt(profile, tArc1) / 2;
+    return {
+      start: vertexFrameAt(vertices[i]!, tan0, bareH0),
+      end: vertexFrameAt(vertices[i + 1]!, tan1, bareH1),
+    };
+  });
 
   // Per-segment integer subdivision count. Without length-awareness, every
   // segment gets the global `spineSubdiv`. With it, the global value sets a
@@ -225,9 +242,24 @@ function buildSpine1(
     const p = pointAt(seg, t);
     const tan = unitOrZero(tangentOverride ?? tangentAt(seg, t));
     const tArc = (cum[segIdx]! + lens[segIdx]! * t) / total;
-    const half = widthAt(profile, tArc) * (widthMod ? widthMod(tArc) : 1) * 0.5;
-    const normal = blendedNormal(tan, world);
-    const halfContracted = half * contractFactor(tan, world);
+    const bareHalf = widthAt(profile, tArc) / 2;
+    // Apply per-vertex override frame interpolated across the segment.
+    const f = segFrames[segIdx]!;
+    const da = (1 - t) * f.start.deltaAngle + t * f.end.deltaAngle;
+    const wf = (1 - t) * f.start.factor + t * f.end.factor;
+    const dnx = -tan.y;
+    const dny = tan.x;
+    let baseN: Vec2;
+    if (da === 0) {
+      baseN = { x: dnx, y: dny };
+    } else {
+      const c = Math.cos(da);
+      const s = Math.sin(da);
+      baseN = { x: dnx * c - dny * s, y: dnx * s + dny * c };
+    }
+    const half = bareHalf * wf * (widthMod ? widthMod(tArc) : 1);
+    const normal = blendedNormal(baseN, world);
+    const halfContracted = half * contractFactor(baseN, world);
     return { p, tangent: tan, normal, half: halfContracted, tArc };
   };
 
@@ -331,6 +363,7 @@ export function triangulateStrokeRibbon(
   // ----- Hierarchy -----
   const spine = buildSpine1(
     segments,
+    stroke.vertices,
     spineSubdiv,
     profile,
     widthMod ?? null,
@@ -538,7 +571,21 @@ export function ribbonDebugSpline0(
     if (isFirst) avg = tangentOut;
     else if (isLast) avg = tangentIn;
     else avg = unitOrZero({ x: tangentIn.x + tangentOut.x, y: tangentIn.y + tangentOut.y });
-    const normal = blendedNormal(avg, world);
+    // Default base normal at the anchor + per-vertex override frame.
+    const dnx = -avg.y;
+    const dny = avg.x;
+    // Use a representative bare half so factor doesn't influence direction
+    // (debug visualizer only needs the direction here).
+    const frame = vertexFrameAt(v, avg, 1);
+    let baseN: Vec2;
+    if (frame.deltaAngle === 0) {
+      baseN = { x: dnx, y: dny };
+    } else {
+      const c = Math.cos(frame.deltaAngle);
+      const s = Math.sin(frame.deltaAngle);
+      baseN = { x: dnx * c - dny * s, y: dnx * s + dny * c };
+    }
+    const normal = blendedNormal(baseN, world);
     out.push({ p: v.p, tangentIn, tangentOut, normal });
   }
   return out;
@@ -576,6 +623,7 @@ export function ribbonDebugSpline1(
   const breakFlags = stroke.vertices.map((v) => v.breakTangent === true);
   const spine = buildSpine1(
     segments,
+    stroke.vertices,
     Math.max(0, Math.floor(spineSubdiv)),
     profile,
     widthMod ?? null,

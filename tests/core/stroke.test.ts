@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { outlineStroke, redistributePolygonEvenly, widthAt } from '../../src/core/stroke.js';
-import { constantWidth, v2, ZERO, type StyleSettings, type Stroke } from '../../src/core/types.js';
+import { outlineStroke, redistributePolygonEvenly, vertexFrameAt, widthAt } from '../../src/core/stroke.js';
+import { constantWidth, v2, ZERO, type StyleSettings, type Stroke, type Vertex } from '../../src/core/types.js';
 
 const style: StyleSettings = {
   slant: 0,
@@ -272,5 +272,42 @@ describe('stroke', () => {
       expect(got).toBeGreaterThanOrEqual(0);
       expect(Math.abs(got - expected)).toBeLessThan(1e-6);
     }
+  });
+
+  it('vertexFrameAt: identity when no override', () => {
+    const v: Vertex = { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO };
+    const f = vertexFrameAt(v, v2(1, 0), 5);
+    expect(f.deltaAngle).toBe(0);
+    expect(f.factor).toBe(1);
+  });
+
+  it('vertexFrameAt: override rotates and scales relative to perp(tangent)', () => {
+    // tangent = (1,0) → default normal = perp = (0,1) → angle = π/2.
+    // override = (1,0) → angle = 0 → delta = 0 − π/2 = −π/2.
+    // override length = 1, default bare half = 5 → factor = 0.2.
+    const v: Vertex = { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO, normalOverride: v2(1, 0) };
+    const f = vertexFrameAt(v, v2(1, 0), 5);
+    expect(f.deltaAngle).toBeCloseTo(-Math.PI / 2, 9);
+    expect(f.factor).toBeCloseTo(0.2, 9);
+  });
+
+  it('outlineStroke: per-anchor normalOverride pins half-width at that anchor', () => {
+    // Horizontal segment, default half-width = 5. Override at the start
+    // anchor pins half-width to 1 (length 1), direction = perp(tangent)
+    // so geometry stays straight but tapers from 1 → 5 across the segment.
+    const flatStyle: StyleSettings = { ...style, capStart: 'flat', capEnd: 'flat' };
+    const s: Stroke = {
+      id: 'taper',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: ZERO, normalOverride: v2(0, 1) },
+        { p: v2(100, 0), inHandle: ZERO, outHandle: ZERO },
+      ],
+    };
+    const poly = outlineStroke(s, flatStyle);
+    // Find max |y| at the start (x ≈ 0) vs end (x ≈ 100).
+    const startY = poly.filter((p) => Math.abs(p.x) < 0.01).map((p) => Math.abs(p.y));
+    const endY = poly.filter((p) => Math.abs(p.x - 100) < 0.01).map((p) => Math.abs(p.y));
+    expect(Math.max(...startY)).toBeCloseTo(1, 5);
+    expect(Math.max(...endY)).toBeCloseTo(5, 5);
   });
 });
