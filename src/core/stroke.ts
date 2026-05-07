@@ -34,18 +34,24 @@ import type { WidthMod } from './widthEffects.js';
 
 /**
  * Resolved world-orientation context for the renderer.
- *   - `normal`: the unit vector the nib lays its width along.
- *   - `blend`    : in [0, 1]. 1 = pure world (constant nib direction);
- *                  0 = no rotation toward world; intermediate slerps.
- *   - `contract` : in [0, 1]. 0 = no width modulation; 1 = half-width
- *                  collapses to 0 when the offset normal is perpendicular
- *                  to `normal`. Models a chisel nib whose thickness varies
- *                  with alignment to the world axis.
+ *   - `normal`        : the unit vector the nib lays its width along
+ *                       (driven by `style.worldAngle`).
+ *   - `contractNormal`: the unit vector used by `contractFactor`
+ *                       (driven by `style.worldContractAngle`, defaulting
+ *                       to `style.worldAngle`). Independent so the user
+ *                       can lay the nib along one axis and contract along
+ *                       another.
+ *   - `blend`         : in [0, 1]. 1 = pure world (constant nib direction);
+ *                       0 = no rotation toward world; intermediate slerps.
+ *   - `contract`      : in [0, 1]. 0 = no width modulation; 1 = half-width
+ *                       collapses to 0 when the offset normal is
+ *                       perpendicular to `contractNormal`.
  * Returns `null` only when BOTH effects are off (pure tangent normals,
  * full width).
  */
 export type WorldWidth = {
   readonly normal: Vec2;
+  readonly contractNormal: Vec2;
   readonly blend: number;
   readonly contract: number;
 };
@@ -56,8 +62,10 @@ export function resolveWorldWidth(style: StyleSettings): WorldWidth | null {
   const contract = style.worldContract ?? 0;
   if (!(blend > 0) && !(contract > 0)) return null;
   const a = style.worldAngle;
+  const ac = style.worldContractAngle ?? style.worldAngle;
   return {
     normal: { x: -Math.sin(a), y: Math.cos(a) },
+    contractNormal: { x: -Math.sin(ac), y: Math.cos(ac) },
     blend: Math.min(1, Math.max(0, blend)),
     contract: Math.min(1, Math.max(0, contract)),
   };
@@ -100,18 +108,19 @@ export function blendedNormal(tangent: Vec2, world: WorldWidth | null): Vec2 {
 /**
  * Multiplier on the local half-width that implements `worldContract`.
  * Returns 1 when the effect is off. Otherwise:
- *   factor = 1 − contract · (1 − |tn · worldNormal|)
+ *   factor = 1 − contract · (1 − |tn · contractNormal|)
  * Width is full when the tangent-perpendicular `tn` is aligned with the
- * world normal and shrinks to (1 − contract) when `tn` is perpendicular
+ * contract normal and shrinks to (1 − contract) when `tn` is perpendicular
  * to it. The measure uses `tn` (NOT the possibly world-blended `n`) so
  * `worldContract` behaves identically regardless of `worldBlend` — they
- * are independent effects.
+ * are independent effects. The contract normal can also be aimed
+ * independently from the blend normal via `worldContractAngle`.
  */
 export function contractFactor(tangent: Vec2, world: WorldWidth | null): number {
   if (!world || world.contract <= 0) return 1;
   const tnx = -tangent.y;
   const tny = tangent.x;
-  const align = Math.abs(tnx * world.normal.x + tny * world.normal.y);
+  const align = Math.abs(tnx * world.contractNormal.x + tny * world.contractNormal.y);
   return 1 - world.contract * (1 - align);
 }
 

@@ -103,8 +103,15 @@ export type StyleSettings = {
    * nib whose thickness collapses in one world direction.
    */
   readonly worldContract?: number;
-  /** Used whenever `worldBlend > 0` or `worldContract > 0`. Radians. */
+  /** Used for world-blend (`worldBlend > 0`). Radians. */
   readonly worldAngle: number;
+  /**
+   * Used for world-contract (`worldContract > 0`). Radians. When omitted,
+   * falls back to `worldAngle` (single-knob legacy behavior). Splitting
+   * this from `worldAngle` lets the user lay the chisel along one axis
+   * (blend) while contracting along a different one (contract).
+   */
+  readonly worldContractAngle?: number;
   readonly capStart: CapShape;
   readonly capEnd: CapShape;
   /**

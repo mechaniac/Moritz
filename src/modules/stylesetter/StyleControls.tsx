@@ -86,6 +86,8 @@ function makeSectionPatch(
       if ((c.worldContract ?? 0) !== (o.worldContract ?? 0))
         p.worldContract = o.worldContract;
       if ((c.worldAngle ?? 0) !== (o.worldAngle ?? 0)) p.worldAngle = o.worldAngle;
+      if ((c.worldContractAngle ?? c.worldAngle ?? 0) !== (o.worldContractAngle ?? o.worldAngle ?? 0))
+        p.worldContractAngle = o.worldContractAngle;
       if (normalizeCap(c.capStart) !== normalizeCap(o.capStart))
         p.capStart = o.capStart;
       if (normalizeCap(c.capEnd) !== normalizeCap(o.capEnd))
@@ -363,17 +365,28 @@ export function StyleControls(props: StyleControlsProps): JSX.Element {
             tooltip="0 = no contraction. 1 = stroke width collapses to zero where the offset normal is perpendicular to the world axis. Models a chisel nib whose thickness varies with alignment to the world angle. Independent of World blend."
           />
           {((style.worldBlend ?? (style.widthOrientation === 'world' ? 1 : 0)) >
-            0 ||
-            (style.worldContract ?? 0) > 0) && (
+            0) && (
             <Slider
-              label="World angle (rad)"
+              label="World blend angle (rad)"
               min={-Math.PI / 2}
               max={Math.PI / 2}
               step={0.01}
               value={style.worldAngle}
               onChange={(v) => setStyle({ worldAngle: v })}
               defaultValue={original?.worldAngle ?? 0}
-              tooltip="Angle of the virtual nib relative to the world (radians). Used whenever World blend > 0 or World contract > 0."
+              tooltip="Angle of the virtual nib used by World blend (radians)."
+            />
+          )}
+          {((style.worldContract ?? 0) > 0) && (
+            <Slider
+              label="World contract angle (rad)"
+              min={-Math.PI / 2}
+              max={Math.PI / 2}
+              step={0.01}
+              value={style.worldContractAngle ?? style.worldAngle}
+              onChange={(v) => setStyle({ worldContractAngle: v })}
+              defaultValue={original?.worldContractAngle ?? original?.worldAngle ?? 0}
+              tooltip="Angle (radians) along which World contract narrows the stroke. Independent of World blend angle — lets you lay the chisel along one axis and contract along another. Defaults to the World blend angle when unset."
             />
           )}
           <InlineSelect

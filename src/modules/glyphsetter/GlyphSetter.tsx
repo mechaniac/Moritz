@@ -1284,6 +1284,7 @@ function Inspector(props: {
                 capEnd: style.capEnd,
                 widthOrientation: style.widthOrientation,
                 worldAngle: style.worldAngle,
+                worldContractAngle: style.worldContractAngle,
                 worldBlend: style.worldBlend,
                 worldContract: style.worldContract,
                 defaultWidth: style.defaultWidth,
