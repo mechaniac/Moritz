@@ -100,7 +100,7 @@ You want to read or extend the code.
 - **Data is plain JSON.** A `Font` is `{ id, name, style, glyphs, kerning? }`
   with no class instances and no functions. `JSON.stringify` round-trips it.
 - **Tests live in `tests/`** mirroring `src/core/`. Every pure helper has at
-  least one Vitest test (76 at the time of writing). Run `npm test` after
+  least one Vitest test (79 at the time of writing). Run `npm test` after
   any change in `core/`.
 - **Conventions** in [.github/copilot-instructions.md](.github/copilot-instructions.md)
   and the mirror [CLAUDE.md](CLAUDE.md). Keep them in sync.
@@ -163,6 +163,25 @@ selected anchor is marked `bevel`). The width orientation is a continuous
 blend between the path tangent normal and a fixed world-angle nib, and the
 width at any point can be modulated by a `widthMod(t)` function (used by the
 width-wiggle and taper effects).
+
+For the canvas preview and SVG export there is also a **ribbon
+triangulator** (`src/core/ribbon.ts`) — a hierarchical fixed-topology quad
+strip whose triangle index list depends only on subdivision counts; only
+vertex positions vary with edits. Two variants share the topology:
+
+- `ribbon-fixed` gives every spline segment exactly `spineSubdiv` interior
+  spine vertices.
+- `ribbon-density` distributes them by arc length using the glyph's box
+  height as the reference: `step = box.h / (spineSubdiv + 1)`, so a long
+  segment gets more interior vertices than a short one in the same glyph,
+  while every segment still gets an integer count with uniform spacing
+  within itself. Anchors flagged `breakTangent` can additionally request
+  extra halving subdivisions toward the corner via `brokenAnchorSubdiv`.
+
+The world-blend (tangent↔world normal mix) is locally consistent so closed
+loops like `O` don't develop bow-ties, and the `worldContract` factor is
+measured against the tangent-derived normal so it stays independent of the
+blend amount.
 
 Stochastic effects are deterministic: every `mulberry32` PRNG seed is derived
 from the effect's scope (per-instance / per-glyph / per-text), the glyph's
