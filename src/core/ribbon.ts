@@ -42,7 +42,7 @@ import {
   tangentAt,
   type CubicSegment,
 } from './bezier.js';
-import { blendedNormal, consistentNormal, contractFactor, resolveWorldWidth, widthAt, type WorldWidth } from './stroke.js';
+import { blendedNormal, contractFactor, resolveWorldWidth, widthAt, type WorldWidth } from './stroke.js';
 import type { Stroke, StyleSettings, Vec2 } from './types.js';
 import type { WidthMod } from './widthEffects.js';
 import type { Triangle } from './triangulate.js';
@@ -220,22 +220,20 @@ function buildSpine1(
     return lens.map((l) => Math.max(0, Math.round(l / step) - 1));
   })();
 
-  const sampleAt = (segIdx: number, t: number, prev: Vec2 | null, tangentOverride?: Vec2): SpineVertex => {
+  const sampleAt = (segIdx: number, t: number, tangentOverride?: Vec2): SpineVertex => {
     const seg = segments[segIdx]!;
     const p = pointAt(seg, t);
     const tan = unitOrZero(tangentOverride ?? tangentAt(seg, t));
     const tArc = (cum[segIdx]! + lens[segIdx]! * t) / total;
     const half = widthAt(profile, tArc) * (widthMod ? widthMod(tArc) : 1) * 0.5;
-    const normal = consistentNormal(tan, world, prev);
+    const normal = blendedNormal(tan, world);
     const halfContracted = half * contractFactor(tan, world);
     return { p, tangent: tan, normal, half: halfContracted, tArc };
   };
 
   const out: SpineVertex[] = [];
-  let prev: Vec2 | null = null;
   // Start anchor (segment 0, t=0).
-  out.push(sampleAt(0, 0, prev));
-  prev = out[out.length - 1]!.normal;
+  out.push(sampleAt(0, 0));
   for (let s = 0; s < segments.length; s++) {
     // Interior subdivisions of segment s, arc-length-uniform via LUT,
     // densified near any broken-tangent endpoints.
@@ -244,8 +242,7 @@ function buildSpine1(
     const fs = segmentSampleFractions(perSegSubdiv[s]!, brokenAnchorSubdiv, breakStart, breakEnd);
     for (const f of fs) {
       const t = tForArcFraction(luts[s]!, f);
-      out.push(sampleAt(s, t, prev));
-      prev = out[out.length - 1]!.normal;
+      out.push(sampleAt(s, t));
     }
     // Anchor at the END of segment s. For interior anchors (s < N-1),
     // average the outgoing tangent of seg[s] with the incoming tangent of
@@ -254,12 +251,11 @@ function buildSpine1(
       const tPrev = tangentAt(segments[s]!, 1);
       const tNext = tangentAt(segments[s + 1]!, 0);
       const avg = unitOrZero({ x: tPrev.x + tNext.x, y: tPrev.y + tNext.y });
-      out.push(sampleAt(s, 1, prev, avg));
+      out.push(sampleAt(s, 1, avg));
     } else {
       // Final end anchor — straightforward.
-      out.push(sampleAt(s, 1, prev));
+      out.push(sampleAt(s, 1));
     }
-    prev = out[out.length - 1]!.normal;
   }
   return out;
 }
@@ -532,7 +528,6 @@ export function ribbonDebugSpline0(
   if (segments.length === 0) return [];
   const world = resolveWorldWidth(style);
   const out: Spline0DebugAnchor[] = [];
-  let prev: Vec2 | null = null;
   for (let i = 0; i < stroke.vertices.length; i++) {
     const v = stroke.vertices[i]!;
     const isFirst = i === 0;
@@ -543,9 +538,8 @@ export function ribbonDebugSpline0(
     if (isFirst) avg = tangentOut;
     else if (isLast) avg = tangentIn;
     else avg = unitOrZero({ x: tangentIn.x + tangentOut.x, y: tangentIn.y + tangentOut.y });
-    const normal = consistentNormal(avg, world, prev);
+    const normal = blendedNormal(avg, world);
     out.push({ p: v.p, tangentIn, tangentOut, normal });
-    prev = normal;
   }
   return out;
 }
@@ -554,20 +548,16 @@ export function ribbonDebugSpline0(
 export type Spline1DebugSample = {
   readonly p: Vec2;
   readonly tangent: Vec2;
-  /** Sign-continuous (threaded) world-blended normal — the one actually used. */
+  /** World-blended normal (pure local function of tangent + world). */
   readonly normal: Vec2;
-  /** Raw `blendedNormal(tangent, world)` BEFORE sign-threading. */
-  readonly rawNormal: Vec2;
-  /** True iff sign-threading flipped the normal relative to `rawNormal`. */
-  readonly flipped: boolean;
   readonly half: number;
 };
 
 /**
  * Returns the full row of spline1 samples (the subdivided spine) used by
  * the ribbon triangulator: every anchor + `spineSubdiv` interior vertices
- * per segment, each with its tangent, sign-continuous world-blended
- * normal, and (contracted) half-width. Pure function; no DOM.
+ * per segment, each with its tangent, world-blended normal, and
+ * (contracted) half-width. Pure function; no DOM.
  */
 export function ribbonDebugSpline1(
   stroke: Stroke,
@@ -595,16 +585,10 @@ export function ribbonDebugSpline1(
     spineLengthAware,
     referenceLength,
   );
-  return spine.map((v) => {
-    const raw = blendedNormal(v.tangent, world);
-    const flipped = raw.x * v.normal.x + raw.y * v.normal.y < 0;
-    return {
-      p: v.p,
-      tangent: v.tangent,
-      normal: v.normal,
-      rawNormal: raw,
-      flipped,
-      half: v.half,
-    };
-  });
+  return spine.map((v) => ({
+    p: v.p,
+    tangent: v.tangent,
+    normal: v.normal,
+    half: v.half,
+  }));
 }

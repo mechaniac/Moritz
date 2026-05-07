@@ -1299,21 +1299,17 @@ function Inspector(props: {
                   spineLengthAware,
                   referenceLength: glyph.box.h,
                 });
-                // Per-sample summary: spine point, both raw and threaded
-                // normal, the resulting left/right border points, and a
-                // flipped flag so bow-ties jump out at a glance.
+                // Per-sample summary: spine point, world-blended normal,
+                // and the resulting left/right border points.
                 const samples = spline1.map((v, k) => ({
                   k,
                   p: v.p,
                   tangent: v.tangent,
-                  rawNormal: v.rawNormal,
                   normal: v.normal,
-                  flipped: v.flipped,
                   half: v.half,
                   left: { x: v.p.x + v.normal.x * v.half, y: v.p.y + v.normal.y * v.half },
                   right: { x: v.p.x - v.normal.x * v.half, y: v.p.y - v.normal.y * v.half },
                 }));
-                const flippedIdx = samples.filter((x) => x.flipped).map((x) => x.k);
                 return {
                   index: i,
                   id: s.id,
@@ -1324,7 +1320,6 @@ function Inspector(props: {
                   spline0,
                   spline1,
                   samples,
-                  flippedSampleIndices: flippedIdx,
                   ribbon: {
                     polygonCount: ribbon.polygon.length,
                     triangleCount: ribbon.triangles.length,
@@ -1343,8 +1338,7 @@ function Inspector(props: {
               console.log(
                 `[ribbon-debug] stroke #${sd.index} (${sd.id}): ` +
                   `polygonCount=${sd.ribbon.polygonCount}, ` +
-                  `triangleCount=${sd.ribbon.triangleCount}, ` +
-                  `flippedSampleIndices=[${sd.flippedSampleIndices.join(',')}]`,
+                  `triangleCount=${sd.ribbon.triangleCount}`,
               );
               const tbl = sd.samples.map((s) => ({
                 k: s.k,
@@ -1352,11 +1346,8 @@ function Inspector(props: {
                 py: +s.p.y.toFixed(2),
                 tx: +s.tangent.x.toFixed(3),
                 ty: +s.tangent.y.toFixed(3),
-                rawNx: +s.rawNormal.x.toFixed(3),
-                rawNy: +s.rawNormal.y.toFixed(3),
                 nx: +s.normal.x.toFixed(3),
                 ny: +s.normal.y.toFixed(3),
-                flipped: s.flipped,
                 half: +s.half.toFixed(2),
               }));
               // eslint-disable-next-line no-console

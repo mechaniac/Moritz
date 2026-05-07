@@ -98,19 +98,6 @@ export function blendedNormal(tangent: Vec2, world: WorldWidth | null): Vec2 {
 }
 
 /**
- * Backwards-compatible alias. `blendedNormal` is now a pure local
- * function with no boundary discontinuity, so neither prior-sample
- * threading nor ± representative picking is needed. `prev` is ignored.
- */
-export function consistentNormal(
-  tangent: Vec2,
-  world: WorldWidth | null,
-  _prev: Vec2 | null,
-): Vec2 {
-  return blendedNormal(tangent, world);
-}
-
-/**
  * Multiplier on the local half-width that implements `worldContract`.
  * Returns 1 when the effect is off. Otherwise:
  *   factor = 1 − contract · (1 − |tn · worldNormal|)
@@ -169,16 +156,15 @@ export function widthAt(profile: WidthProfile, t: number): number {
   return s[s.length - 1]!.width;
 }
 
-/** Compute (left, right) offset points + the normal used. `prev` lets the
- *  caller maintain sign continuity across a sequence (see `consistentNormal`). */
+/** Compute (left, right) offset points + the normal used. Pure local
+ *  function of `(p, tangent, halfWidth, world)` — no prior-sample state. */
 function offsetPair(
   p: Vec2,
   tangent: Vec2,
   halfWidth: number,
   world: WorldWidth | null,
-  prev: Vec2 | null,
 ): { left: Vec2; right: Vec2; n: Vec2 } {
-  const n = consistentNormal(tangent, world, prev);
+  const n = blendedNormal(tangent, world);
   const h = halfWidth * contractFactor(tangent, world);
   return {
     left: { x: p.x + n.x * h, y: p.y + n.y * h },
@@ -197,9 +183,6 @@ type SegmentOffsets = {
   readonly halfEnd: number;
   readonly pStart: Vec2;
   readonly pEnd: Vec2;
-  /** Normal used at the first / last sample (for cross-segment continuity). */
-  readonly nStart: Vec2;
-  readonly nEnd: Vec2;
 };
 
 function offsetSegment(
@@ -209,7 +192,6 @@ function offsetSegment(
   tArcEnd: number,
   world: WorldWidth | null,
   widthMod: WidthMod | null,
-  prevNormal: Vec2 | null,
 ): SegmentOffsets {
   // Adaptive flattening: collect t-values in [0,1] of `seg` such that each
   // consecutive pair bounds a sub-cubic that is "flat enough" both
@@ -221,20 +203,14 @@ function offsetSegment(
 
   const lefts: Vec2[] = [];
   const rights: Vec2[] = [];
-  let prev: Vec2 | null = prevNormal;
-  let nFirst: Vec2 | null = null;
-  let nLast: Vec2 | null = null;
   for (const t of ts) {
     const p = pointAt(seg, t);
     const tangent = tangentAt(seg, t);
     const tArc = tArcStart + (tArcEnd - tArcStart) * t;
     const half = (widthAt(profile, tArc) * (widthMod ? widthMod(tArc) : 1)) / 2;
-    const { left, right, n } = offsetPair(p, tangent, half, world, prev);
+    const { left, right } = offsetPair(p, tangent, half, world);
     lefts.push(left);
     rights.push(right);
-    if (nFirst === null) nFirst = n;
-    nLast = n;
-    prev = n;
   }
   const tangentStart = tangentAt(seg, 0);
   const tangentEnd = tangentAt(seg, 1);
@@ -247,8 +223,6 @@ function offsetSegment(
     halfEnd: (widthAt(profile, tArcEnd) * (widthMod ? widthMod(tArcEnd) : 1)) / 2,
     pStart: pointAt(seg, 0),
     pEnd: pointAt(seg, 1),
-    nStart: nFirst ?? { x: 0, y: 1 },
-    nEnd: nLast ?? { x: 0, y: 1 },
   };
 }
 
@@ -565,13 +539,11 @@ function buildSides(
   const total = lens.reduce((a, b) => a + b, 0) || 1;
   const offsets: SegmentOffsets[] = [];
   let acc = 0;
-  let prevNormal: Vec2 | null = null;
   for (let i = 0; i < segments.length; i++) {
     const tA = acc / total;
     const tB = (acc + lens[i]!) / total;
-    const segOff = offsetSegment(segments[i]!, profile, tA, tB, world, widthMod, prevNormal);
+    const segOff = offsetSegment(segments[i]!, profile, tA, tB, world, widthMod);
     offsets.push(segOff);
-    prevNormal = segOff.nEnd;
     acc += lens[i]!;
   }
 
