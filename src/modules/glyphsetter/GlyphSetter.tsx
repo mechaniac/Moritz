@@ -22,7 +22,7 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { outlineStroke, redistributePolygonEvenly } from '../../core/stroke.js';
+import { outlineStroke, redistributePolygonEvenly, resolveWorldWidth } from '../../core/stroke.js';
 import {
   closestPointT,
   segmentLength,
@@ -1418,6 +1418,145 @@ function Inspector(props: {
           style={{ marginTop: 4 }}
         >
           Log length-aware diagnostics
+        </button>
+        <button
+          type="button"
+          disabled={!glyph}
+          onClick={() => {
+            if (!glyph) return;
+            // Per-sample world-blend diagnostic. The "snap" is structurally
+            // a sign-flip in the chosen world-normal representative: at each
+            // sample we pick `wn = sign(tn·worldNormal) * worldNormal`, then
+            // slerp `tn → wn` by `blend`. When two adjacent samples sit on
+            // opposite sides of the boundary (`tn·worldNormal == 0`) they
+            // pick opposite `wn`s and slerp toward different targets,
+            // producing a visual fold whose amplitude scales with `blend`.
+            // Rows where `wnSign` differs from the previous sample mark
+            // exactly where that fold lives.
+            const spineSubdiv = style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4;
+            const brokenAnchorSubdiv = style.ribbonBrokenAnchorSubdiv ?? 0;
+            const spineLengthAware = style.ribbonSpineLengthAware === true;
+            const world = resolveWorldWidth(style);
+            // eslint-disable-next-line no-console
+            console.log(
+              `[world-blend-diag] glyph='${glyph.char}' ` +
+                `widthOrientation=${style.widthOrientation} ` +
+                `worldAngle=${style.worldAngle} (${((style.worldAngle ?? 0) * 180 / Math.PI).toFixed(1)} deg) ` +
+                `worldBlend=${style.worldBlend} ` +
+                `worldContract=${style.worldContract} ` +
+                `worldNormal=(${world?.normal.x.toFixed(3) ?? 'n/a'}, ${world?.normal.y.toFixed(3) ?? 'n/a'})`,
+            );
+            if (!world) {
+              // eslint-disable-next-line no-console
+              console.log('[world-blend-diag] No world component (blend≤0 or orientation=tangent). Nothing to flip.');
+              return;
+            }
+            for (let i = 0; i < glyph.strokes.length; i++) {
+              const s = glyph.strokes[i]!;
+              const data = ribbonDebugSpline1(s, style, spineSubdiv, null, brokenAnchorSubdiv, spineLengthAware, glyph.box.h);
+              if (data.length === 0) continue;
+              let prevSign = 0;
+              const transitions: number[] = [];
+              const tbl = data.map((v, k) => {
+                const tn = { x: -v.tangent.y, y: v.tangent.x };
+                const dot = tn.x * world.normal.x + tn.y * world.normal.y;
+                const wnSign = dot >= 0 ? +1 : -1;
+                const wn = { x: world.normal.x * wnSign, y: world.normal.y * wnSign };
+                const aT = Math.atan2(tn.y, tn.x);
+                const aW = Math.atan2(wn.y, wn.x);
+                let diff = aW - aT;
+                while (diff > Math.PI) diff -= 2 * Math.PI;
+                while (diff <= -Math.PI) diff += 2 * Math.PI;
+                const aBlend = Math.atan2(v.normal.y, v.normal.x);
+                let signChanged = false;
+                if (k > 0 && wnSign !== prevSign) {
+                  signChanged = true;
+                  transitions.push(k);
+                }
+                prevSign = wnSign;
+                return {
+                  k,
+                  tx: +v.tangent.x.toFixed(3),
+                  ty: +v.tangent.y.toFixed(3),
+                  tnDotW: +dot.toFixed(4),
+                  wnSign,
+                  signChanged,
+                  blendDeg: +(diff * 180 / Math.PI).toFixed(2),
+                  nDeg: +(aBlend * 180 / Math.PI).toFixed(2),
+                  nx: +v.normal.x.toFixed(3),
+                  ny: +v.normal.y.toFixed(3),
+                };
+              });
+              // eslint-disable-next-line no-console
+              console.log(
+                `[world-blend-diag]  stroke #${i} (${s.id}): samples=${data.length} ` +
+                  `wnSignTransitionsAt=[${transitions.join(',')}] ` +
+                  `(those are the fold loci when worldBlend > 0)`,
+              );
+              // eslint-disable-next-line no-console
+              console.table(tbl);
+            }
+          }}
+          title="Log per-sample world-blend resolution: tn·worldNormal, the ± representative chosen, and which sample indices flip the chosen sign relative to their neighbor. Sign-transition rows are exactly where the visual snap appears as you raise worldBlend."
+          style={{ marginTop: 4 }}
+        >
+          Log world-blend normals
+        </button>
+        <button
+          type="button"
+          disabled={!glyph}
+          onClick={() => {
+            if (!glyph) return;
+            // Sweep `worldBlend` across {0, .25, .5, .75, 1} and report the
+            // largest angular jump between consecutive spine1 normals at
+            // each setting. A column whose `maxJumpDeg` grows steeply with
+            // blend pinpoints the stroke whose normals snap; rising values
+            // typically mean the stroke crosses the world-axis boundary.
+            const spineSubdiv = style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4;
+            const brokenAnchorSubdiv = style.ribbonBrokenAnchorSubdiv ?? 0;
+            const spineLengthAware = style.ribbonSpineLengthAware === true;
+            const blends = [0, 0.25, 0.5, 0.75, 1];
+            // eslint-disable-next-line no-console
+            console.log(
+              `[world-blend-sweep] glyph='${glyph.char}' ` +
+                `worldAngle=${style.worldAngle} (${((style.worldAngle ?? 0) * 180 / Math.PI).toFixed(1)} deg) ` +
+                `(actual style.worldBlend=${style.worldBlend}; sweep ignores it)`,
+            );
+            for (let i = 0; i < glyph.strokes.length; i++) {
+              const s = glyph.strokes[i]!;
+              const rows = blends.map((b) => {
+                const probeStyle = { ...style, worldBlend: b, widthOrientation: 'world' as const };
+                const data = ribbonDebugSpline1(s, probeStyle, spineSubdiv, null, brokenAnchorSubdiv, spineLengthAware, glyph.box.h);
+                if (data.length < 2) return { blend: b, samples: data.length, maxJumpDeg: 0, atK: -1, meanJumpDeg: 0 };
+                let maxJump = 0;
+                let maxAtK = -1;
+                let sumJump = 0;
+                for (let k = 1; k < data.length; k++) {
+                  const a = data[k - 1]!.normal;
+                  const c = data[k]!.normal;
+                  const dot = Math.max(-1, Math.min(1, a.x * c.x + a.y * c.y));
+                  const ang = Math.acos(dot) * 180 / Math.PI;
+                  sumJump += ang;
+                  if (ang > maxJump) { maxJump = ang; maxAtK = k; }
+                }
+                return {
+                  blend: b,
+                  samples: data.length,
+                  maxJumpDeg: +maxJump.toFixed(2),
+                  atK: maxAtK,
+                  meanJumpDeg: +(sumJump / (data.length - 1)).toFixed(2),
+                };
+              });
+              // eslint-disable-next-line no-console
+              console.log(`[world-blend-sweep]  stroke #${i} (${s.id}):`);
+              // eslint-disable-next-line no-console
+              console.table(rows);
+            }
+          }}
+          title="Recompute spine1 normals for worldBlend ∈ {0,.25,.5,.75,1} (forcing widthOrientation=world) and report the max angular jump between consecutive samples per blend value, per stroke. A row whose maxJumpDeg grows fast as blend rises pinpoints the stroke and the sample index where the snap happens."
+          style={{ marginTop: 4 }}
+        >
+          Sweep world-blend
         </button>
         <RefFontPicker
           family={view.refFontFamily}
