@@ -72,6 +72,27 @@ export function resolveWorldWidth(style: StyleSettings): WorldWidth | null {
 }
 
 /**
+ * Returns a `StyleSettings` with the glyph's per-glyph angle offsets
+ * folded into `worldAngle` and `worldContractAngle`. When the glyph has
+ * no offsets (the common case), the original `style` is returned by
+ * reference so memoization stays cheap.
+ */
+export function effectiveStyleForGlyph(
+  style: StyleSettings,
+  glyph: { readonly worldAngleOffset?: number; readonly worldContractAngleOffset?: number },
+): StyleSettings {
+  const dA = glyph.worldAngleOffset ?? 0;
+  const dC = glyph.worldContractAngleOffset ?? 0;
+  if (dA === 0 && dC === 0) return style;
+  const baseContract = style.worldContractAngle ?? style.worldAngle;
+  return {
+    ...style,
+    worldAngle: style.worldAngle + dA,
+    worldContractAngle: baseContract + dC,
+  };
+}
+
+/**
  * Pick the unit normal at a path sample. The simplest possible rule:
  *
  *   n = slerp(tn, worldNormal, blend)        along the shortest arc

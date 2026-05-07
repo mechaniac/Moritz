@@ -65,6 +65,18 @@ export type Glyph = {
    * the glyph down. Defaults to 0.
    */
   readonly baselineOffset?: number;
+  /**
+   * Per-glyph offset (radians) added to `StyleSettings.worldAngle` when
+   * rendering this glyph. Lets a single glyph lean its nib without
+   * touching the typeface-wide setting. Defaults to 0.
+   */
+  readonly worldAngleOffset?: number;
+  /**
+   * Per-glyph offset (radians) added to the effective
+   * `StyleSettings.worldContractAngle` (which itself falls back to
+   * `worldAngle`) when rendering this glyph. Defaults to 0.
+   */
+  readonly worldContractAngleOffset?: number;
 };
 
 /**

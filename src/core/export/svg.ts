@@ -6,7 +6,7 @@
  */
 
 import type { LayoutResult } from '../layout.js';
-import { outlineStroke, redistributePolygonEvenly } from '../stroke.js';
+import { effectiveStyleForGlyph, outlineStroke, redistributePolygonEvenly } from '../stroke.js';
 import { triangulatePolygon } from '../triangulate.js';
 import { triangulateStrokeRibbon } from '../ribbon.js';
 import { jitterActive, jitterPolygon, resolveJitterSeed } from '../effects.js';
@@ -110,6 +110,7 @@ export function renderLayoutToSvg(
     font.style.effects?.widthWiggle || font.style.effects?.widthTaper;
   let strokeSalt = 0;
   for (const pg of layoutResult.glyphs) {
+    const gStyle = effectiveStyleForGlyph(font.style, pg.glyph);
     for (let si = 0; si < pg.glyph.strokes.length; si++) {
       const stroke = pg.glyph.strokes[si]!;
       const widthMod = widthFx
@@ -119,7 +120,7 @@ export function renderLayoutToSvg(
             strokeArcLen(stroke),
           )
         : null;
-      const { polygon, triangles } = triangulateForStyle(stroke, font.style, widthMod, pg.glyph.box.h);
+      const { polygon, triangles } = triangulateForStyle(stroke, gStyle, widthMod, pg.glyph.box.h);
       if (polygon.length === 0 || triangles.length === 0) continue;
       const jittered = jitterActive(shapeJitter)
         ? jitterPolygon(

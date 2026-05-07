@@ -22,7 +22,7 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { outlineStroke, redistributePolygonEvenly, resolveWorldWidth } from '../../core/stroke.js';
+import { effectiveStyleForGlyph, outlineStroke, redistributePolygonEvenly, resolveWorldWidth } from '../../core/stroke.js';
 import {
   closestPointT,
   segmentLength,
@@ -379,6 +379,7 @@ function ThumbSvg(props: {
   view: GlyphViewOptions;
 }): JSX.Element {
   const { glyph, font } = props;
+  const gStyle = useMemo(() => effectiveStyleForGlyph(font.style, glyph), [font.style, glyph]);
   const display = useMemo(
     () => previewGlyph(glyph, font.style, { instanceIndex: 0, char: glyph.char }),
     [glyph, font.style],
@@ -386,13 +387,13 @@ function ThumbSvg(props: {
   const paths = useMemo(
     () =>
       display.strokes.map((s, i) => {
-        const { polygon, triangles } = triangulateForStyle(s, font.style, {
+        const { polygon, triangles } = triangulateForStyle(s, gStyle, {
           instanceIndex: i,
           char: glyph.char,
         }, glyph.box.h);
         return trianglesD(polygon, triangles);
       }),
-    [display, font.style, glyph.char],
+    [display, gStyle, glyph.char, glyph.box.h],
   );
   return (
     <svg
@@ -434,6 +435,7 @@ function GlyphEditor(props: {
     () => previewGlyph(glyph, font.style, { instanceIndex: 0, char }),
     [glyph, font.style, char],
   );
+  const gStyle = useMemo(() => effectiveStyleForGlyph(font.style, glyph), [font.style, glyph]);
 
   const viewW = Math.max(DEFAULT_BOX, glyph.box.w) * SCALE + PADDING * 2;
   const viewH = Math.max(DEFAULT_BOX, glyph.box.h) * SCALE + PADDING * 2;
@@ -893,11 +895,12 @@ function GlyphEditor(props: {
             >
               {Object.entries(font.glyphs).map(([c, g]) => {
                 if (c === char) return null;
+                const ogStyle = effectiveStyleForGlyph(font.style, g);
                 const dg = previewGlyph(g, font.style, { instanceIndex: 0, char: c });
                 return (
                   <g key={`other-${c}`} opacity={0.05}>
                     {dg.strokes.map((s, i) => {
-                      const { polygon, triangles } = triangulateForStyle(s, font.style, {
+                      const { polygon, triangles } = triangulateForStyle(s, ogStyle, {
                         instanceIndex: i,
                         char: c,
                       }, g.box.h);
@@ -916,7 +919,7 @@ function GlyphEditor(props: {
               pointerEvents="none"
             >
               {displayGlyph.strokes.map((s, i) => {
-                const { polygon, triangles } = triangulateForStyle(s, font.style, {
+                const { polygon, triangles } = triangulateForStyle(s, gStyle, {
                   instanceIndex: i,
                   char,
                 }, glyph.box.h);
@@ -934,7 +937,7 @@ function GlyphEditor(props: {
               strokeLinecap="round"
             >
               {displayGlyph.strokes.map((s, i) => {
-                const poly = outlineStroke(s, font.style);
+                const poly = outlineStroke(s, gStyle);
                 const sw = 1.4 / SCALE;
                 const dotR = 2.6 / SCALE;
                 const fontPx = 9 / SCALE;
@@ -981,7 +984,7 @@ function GlyphEditor(props: {
               strokeLinecap="round"
             >
               {displayGlyph.strokes.map((s, i) => {
-                const { polygon, triangles } = triangulateForStyle(s, font.style, {
+                const { polygon, triangles } = triangulateForStyle(s, gStyle, {
                   instanceIndex: i,
                   char,
                 }, glyph.box.h);
@@ -1028,7 +1031,7 @@ function GlyphEditor(props: {
           {view.showSpline0 && (
             <g transform={xform} pointerEvents="none">
               {displayGlyph.strokes.map((s, i) => {
-                const data = ribbonDebugSpline0(s, font.style);
+                const data = ribbonDebugSpline0(s, gStyle);
                 if (data.length === 0) return null;
                 const r = 4 / SCALE;
                 const sw = 1.6 / SCALE;
@@ -1112,7 +1115,7 @@ function GlyphEditor(props: {
                 const spineSubdiv = font.style.ribbonSpineSubdiv ?? font.style.ribbonSamples ?? 4;
                 const brokenAnchorSubdiv = font.style.ribbonBrokenAnchorSubdiv ?? 0;
                 const spineLengthAware = font.style.ribbonSpineLengthAware === true;
-                const data = ribbonDebugSpline1(s, font.style, spineSubdiv, null, brokenAnchorSubdiv, spineLengthAware, displayGlyph.box.h);
+                const data = ribbonDebugSpline1(s, gStyle, spineSubdiv, null, brokenAnchorSubdiv, spineLengthAware, displayGlyph.box.h);
                 if (data.length === 0) return null;
                 const r = 2.5 / SCALE;
                 const sw = 1.2 / SCALE;
@@ -1690,6 +1693,28 @@ function Inspector(props: {
             }
             tooltip="Vertical offset relative to the baseline. Positive moves the glyph down (descender), negative lifts it (superscript-like)."
           />
+          <NumSlider
+            label="World blend Δangle (rad)"
+            min={-Math.PI / 2}
+            max={Math.PI / 2}
+            step={0.01}
+            value={glyph.worldAngleOffset ?? 0}
+            onChange={(v) =>
+              updateGlyph((g) => ({ ...g, worldAngleOffset: v }))
+            }
+            tooltip="Per-glyph offset added to the typeface's World blend angle when rendering this glyph. Lets a single glyph lean its nib without touching the StyleSetter value. Saved with the font."
+          />
+          <NumSlider
+            label="World contract Δangle (rad)"
+            min={-Math.PI / 2}
+            max={Math.PI / 2}
+            step={0.01}
+            value={glyph.worldContractAngleOffset ?? 0}
+            onChange={(v) =>
+              updateGlyph((g) => ({ ...g, worldContractAngleOffset: v }))
+            }
+            tooltip="Per-glyph offset added to the typeface's World contract angle when rendering this glyph. Saved with the font."
+          />
         </Section>
       )}
       <Section title="Styles" tone="style" subtitle="Forward to StyleSetter">
@@ -1911,7 +1936,7 @@ function KerningEntry(props: {
     const groups = result.glyphs.map(({ glyph, origin }) => ({
       origin,
       paths: glyph.strokes.map((s, i) => {
-        const { polygon, triangles } = triangulateForStyle(s, font.style, {
+        const { polygon, triangles } = triangulateForStyle(s, effectiveStyleForGlyph(font.style, glyph), {
           instanceIndex: i,
           char: glyph.char,
         }, glyph.box.h);
