@@ -69,6 +69,9 @@ export function transformVertex(m: Affine, v: Vertex): Vertex {
     inHandle: applyVector(m, v.inHandle),
     outHandle: applyVector(m, v.outHandle),
     ...(v.breakTangent === true ? { breakTangent: true } : {}),
+    ...(v.normalOverride
+      ? { normalOverride: applyVector(m, v.normalOverride) }
+      : {}),
   };
 }
 
