@@ -64,33 +64,32 @@ export function resolveWorldWidth(style: StyleSettings): WorldWidth | null {
 }
 
 /**
- * Pick the unit normal at a path sample. The nib is an undirected line —
- * `n` and `−n` describe the same chisel orientation — so we always return
- * the representative on the same side as the tangent-perpendicular `tn`
- * (rotate tangent 90° CCW). This makes the result a pure local function
- * of `tangent` and `world`: continuous as the tangent rotates, with no
- * dependence on prior samples or wrap history.
+ * Pick the unit normal at a path sample. The simplest possible rule:
  *
- * With no world component we return `tn`. Otherwise we slerp from `tn`
- * toward whichever of `±world.normal` has positive dot with `tn`. Because
- * that target is at most π/2 away from `tn`, the interpolated normal
- * never crosses the centerline and consecutive samples on a smooth path
- * cannot disagree by more than the local tangent rotation.
+ *   n = slerp(tn, worldNormal, blend)        along the shortest arc
+ *
+ * where `tn = perp(tangent)`. There is **no** ± representative pick of
+ * the world normal and **no** threading against the previous sample.
+ * Every sample is a pure local function of `tangent`, `worldNormal`,
+ * and `blend`; consecutive samples on a smooth path therefore produce
+ * smooth normals.
+ *
+ * The single rotational direction (always shortest arc to the literal
+ * `worldNormal`) is what the user asked for: "bend all normals in the
+ * same direction, in perpetuity." This is well-defined as long as `tn`
+ * never becomes anti-parallel to `worldNormal` along the stroke — which
+ * requires the tangent to swing through more than 180°, i.e. a closed
+ * loop. Strokes in this codebase are always open, so the degeneracy
+ * cannot occur in practice.
  */
 export function blendedNormal(tangent: Vec2, world: WorldWidth | null): Vec2 {
   const tn: Vec2 = { x: -tangent.y, y: tangent.x };
   if (!world || world.blend <= 0) return tn;
-  // Pick the representative of the (undirected) world normal that sits on
-  // the same side of the tangent as `tn`.
-  const dot = tn.x * world.normal.x + tn.y * world.normal.y;
-  const wn: Vec2 = dot >= 0
-    ? world.normal
-    : { x: -world.normal.x, y: -world.normal.y };
+  const wn = world.normal;
   if (world.blend >= 1) return wn;
   const aT = Math.atan2(tn.y, tn.x);
   const aW = Math.atan2(wn.y, wn.x);
-  // After the ± choice above, |aW − aT| is at most π/2; the shortest
-  // signed difference is just the raw subtraction wrapped into (−π, π].
+  // Shortest signed arc in (−π, π].
   let diff = aW - aT;
   while (diff > Math.PI) diff -= 2 * Math.PI;
   while (diff <= -Math.PI) diff += 2 * Math.PI;
@@ -99,25 +98,16 @@ export function blendedNormal(tangent: Vec2, world: WorldWidth | null): Vec2 {
 }
 
 /**
- * Sample-to-sample threading of the post-blend normal. `blendedNormal` is
- * locally well-defined on the *undirected* nib line, but the directed
- * representation it returns can flip 180° at the sample where
- * `tn · worldNormal` crosses zero (because the picked ± representative of
- * the world normal flips). For an open stroke that flip is a strict
- * artifact: it swaps the left/right border of the quad strip and creates
- * a bow-tie. We thread by flipping the result whenever it points opposite
- * to the previous sample's `n`. Strokes are always open in this codebase,
- * so unconditional threading is safe.
+ * Backwards-compatible alias. `blendedNormal` is now a pure local
+ * function with no boundary discontinuity, so neither prior-sample
+ * threading nor ± representative picking is needed. `prev` is ignored.
  */
 export function consistentNormal(
   tangent: Vec2,
   world: WorldWidth | null,
-  prev: Vec2 | null,
+  _prev: Vec2 | null,
 ): Vec2 {
-  const n = blendedNormal(tangent, world);
-  if (!prev) return n;
-  const dot = n.x * prev.x + n.y * prev.y;
-  return dot >= 0 ? n : { x: -n.x, y: -n.y };
+  return blendedNormal(tangent, world);
 }
 
 /**
