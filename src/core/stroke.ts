@@ -99,16 +99,25 @@ export function blendedNormal(tangent: Vec2, world: WorldWidth | null): Vec2 {
 }
 
 /**
- * Kept for backwards compatibility with call sites that used to rely on
- * sign-threading. `blendedNormal` is now locally consistent on its own,
- * so this is just a thin alias and `prev` is ignored.
+ * Sample-to-sample threading of the post-blend normal. `blendedNormal` is
+ * locally well-defined on the *undirected* nib line, but the directed
+ * representation it returns can flip 180° at the sample where
+ * `tn · worldNormal` crosses zero (because the picked ± representative of
+ * the world normal flips). For an open stroke that flip is a strict
+ * artifact: it swaps the left/right border of the quad strip and creates
+ * a bow-tie. We thread by flipping the result whenever it points opposite
+ * to the previous sample's `n`. Strokes are always open in this codebase,
+ * so unconditional threading is safe.
  */
 export function consistentNormal(
   tangent: Vec2,
   world: WorldWidth | null,
-  _prev: Vec2 | null,
+  prev: Vec2 | null,
 ): Vec2 {
-  return blendedNormal(tangent, world);
+  const n = blendedNormal(tangent, world);
+  if (!prev) return n;
+  const dot = n.x * prev.x + n.y * prev.y;
+  return dot >= 0 ? n : { x: -n.x, y: -n.y };
 }
 
 /**
