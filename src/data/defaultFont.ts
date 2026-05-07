@@ -830,6 +830,7 @@ export const defaultFont: Font = {
     worldAngle: 0,
     capStart: 'round',
     capEnd: 'round',
+    triMode: 'ribbon-density',
   },
   glyphs: glyphsRecord,
   kerning: KERNING,

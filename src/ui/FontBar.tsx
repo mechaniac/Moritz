@@ -21,6 +21,7 @@ import {
 export function FontBar(): JSX.Element {
   const font = useAppStore((s) => s.font);
   const view = useAppStore((s) => s.glyphView);
+  const loadFontIntoStore = useAppStore((s) => s.loadFont);
   const setFont = useAppStore.setState;
   const [savedIds, setSavedIds] = useState<string[]>(() => listFontIds());
   const [name, setName] = useState(font.name);
@@ -46,12 +47,12 @@ export function FontBar(): JSX.Element {
     if (!id) return;
     if (isBuiltInId(id)) {
       const f = getBuiltInFont(id);
-      if (f) setFont(f.view ? { font: f.font, glyphView: f.view } : { font: f.font });
+      if (f) loadFontIntoStore(f.font, f.view);
       return;
     }
     const env = loadFontEnvelope(id);
     if (!env) return;
-    setFont(env.view ? { font: env.font, glyphView: env.view } : { font: env.font });
+    loadFontIntoStore(env.font, env.view);
   };
   const onDeleteCurrent = () => {
     if (!canDelete) return;
@@ -62,7 +63,7 @@ export function FontBar(): JSX.Element {
     if (builtIn) {
       const original = resetBuiltInFont(font.id);
       setSavedIds(listFontIds());
-      if (original) setFont({ font: original });
+      if (original) loadFontIntoStore(original);
     } else {
       deleteFont(font.id);
       setSavedIds(listFontIds());
@@ -75,7 +76,7 @@ export function FontBar(): JSX.Element {
     const text = await file.text();
     try {
       const env = importFontJson(text);
-      setFont(env.view ? { font: env.font, glyphView: env.view } : { font: env.font });
+      loadFontIntoStore(env.font, env.view);
     } catch (err) {
       alert((err as Error).message);
     }

@@ -13,7 +13,7 @@ import { renderLayoutToSvg } from '../../core/export/svg.js';
 import { svgToPng } from '../../core/export/png.js';
 import { bubbleGeometry, type BubbleShape } from '../../core/bubble.js';
 import { downloadBlob } from '../../state/persistence.js';
-import { useAppStore } from '../../state/store.js';
+import { fontWithOverrides, useAppStore } from '../../state/store.js';
 import {
   useTypesetterStore,
   type TextBlock,
@@ -21,7 +21,14 @@ import {
 import type { Font } from '../../core/types.js';
 
 export function TypeSetter(): JSX.Element {
-  const font = useAppStore((s) => s.font);
+  const baseFont = useAppStore((s) => s.font);
+  const styleOverrides = useAppStore((s) => s.styleOverrides);
+  // Pipeline order: glyphsetter → stylesetter → typesetter. We render with
+  // the StyleSetter overlay merged onto the font's intrinsic style.
+  const font = useMemo(
+    () => fontWithOverrides(baseFont, styleOverrides),
+    [baseFont, styleOverrides],
+  );
   const {
     pageImage,
     pageW,

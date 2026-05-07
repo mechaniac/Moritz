@@ -8,21 +8,37 @@
  *   - Canvas    (center, flex)              : draws + manipulates anchors and
  *                                             tangent handles.
  *   - Inspector (right, fixed width)        : view options, "Preview style"
- *                                             (live-edits font.style — also
- *                                             editable in StyleSetter), and
- *                                             guides.
+ *                                             (live-edits the intrinsic
+ *                                             `font.style`), and guides.
  *
  * Anchor positions and tangent handles are the ONLY per-glyph editable data
  * here. Everything else (caps, triangulation, ribbon density, etc.) lives in
- * `font.style` and is shared with StyleSetter.
+ * `font.style` and is the typeface's intrinsic baseline.
+ *
+ * Pipeline order is glyphsetter → stylesetter → typesetter. The GlyphSetter
+ * always renders from `font.style` directly; it deliberately ignores the
+ * StyleSetter's overlay (`styleOverrides`). Edits made here are the new
+ * baseline that StyleSetter and TypeSetter modulate downstream.
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { outlineStroke } from '../../core/stroke.js';
-import { segmentLength, strokeToSegments } from '../../core/bezier.js';
+import { outlineStroke, redistributePolygonEvenly } from '../../core/stroke.js';
+import {
+  closestPointT,
+  segmentLength,
+  strokeToSegments,
+  type CubicSegment,
+} from '../../core/bezier.js';
 import { triangulatePolygon } from '../../core/triangulate.js';
-import { triangulateStrokeRibbon } from '../../core/ribbon.js';
+import { ribbonDebugSpline0, ribbonDebugSpline1, triangulateStrokeRibbon } from '../../core/ribbon.js';
 import { makeWidthMod } from '../../core/widthEffects.js';
+import { transformGlyph } from '../../core/transform.js';
+import {
+  jitterActive,
+  jitterGlyphSpline,
+  jitterPolygon,
+  resolveJitterSeed,
+} from '../../core/effects.js';
 import { layout as layoutText } from '../../core/layout.js';
 import type { GlyphViewOptions } from '../../state/store.js';
 import { computeLayerGeometry } from './guides.js';
@@ -41,15 +57,15 @@ import {
   translateStroke,
 } from '../../core/glyphOps.js';
 import type {
-  CapShape,
   Font,
   Glyph,
   Stroke,
   StyleSettings,
-  TriMode,
   Vec2,
 } from '../../core/types.js';
 import { useAppStore } from '../../state/store.js';
+import { StyleControls } from '../stylesetter/StyleControls.js';
+import { builtInFonts } from '../../data/builtInFonts.js';
 
 const PADDING = 20;
 
@@ -61,7 +77,7 @@ const DEFAULT_BOX = 140;
 
 // Fixed widths for the outer columns. Center canvas takes the rest.
 const GRID_W = 360;
-const INSPECTOR_W = 300;
+const INSPECTOR_W = 360;
 
 /**
  * Apply reference-font metrics (advance + side bearings) to a glyph.
@@ -260,6 +276,7 @@ export function GlyphSetter(): JSX.Element {
           glyph={glyph}
           updateGlyph={updateSelectedGlyph}
           updateAllGlyphs={updateAllGlyphs}
+          original={builtInFonts.find((f) => f.id === font.id)?.style}
         />
       </div>
     </div>
@@ -362,16 +379,20 @@ function ThumbSvg(props: {
   view: GlyphViewOptions;
 }): JSX.Element {
   const { glyph, font } = props;
+  const display = useMemo(
+    () => previewGlyph(glyph, font.style, { instanceIndex: 0, char: glyph.char }),
+    [glyph, font.style],
+  );
   const paths = useMemo(
     () =>
-      glyph.strokes.map((s, i) => {
+      display.strokes.map((s, i) => {
         const { polygon, triangles } = triangulateForStyle(s, font.style, {
           instanceIndex: i,
           char: glyph.char,
-        });
+        }, glyph.box.h);
         return trianglesD(polygon, triangles);
       }),
-    [glyph, font.style],
+    [display, font.style, glyph.char],
   );
   return (
     <svg
@@ -403,6 +424,16 @@ function GlyphEditor(props: {
   const SCALE = view.editorScale;
   const dragRef = useRef<Drag | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+
+  // Glyph as it would render in the StyleSetter / TypeSetter, i.e. with the
+  // style's affine (slant, scaleX, scaleY) and per-glyph spline jitter
+  // applied. The raw `glyph` is still used for editing handles / hit
+  // testing — only the visual previews (fill, debug border, triangulation
+  // overlay) use this transformed copy so the user sees the final look.
+  const displayGlyph = useMemo(
+    () => previewGlyph(glyph, font.style, { instanceIndex: 0, char }),
+    [glyph, font.style, char],
+  );
 
   const viewW = Math.max(DEFAULT_BOX, glyph.box.w) * SCALE + PADDING * 2;
   const viewH = Math.max(DEFAULT_BOX, glyph.box.h) * SCALE + PADDING * 2;
@@ -525,8 +556,12 @@ function GlyphEditor(props: {
       if (!p) return;
       const stroke = glyph.strokes[strokeIdx];
       if (!stroke) return;
-      const segIdx = nearestSegmentIndex(stroke, p);
-      onChange((g) => insertAnchor(g, strokeIdx, segIdx, 0.5));
+      // Project the click onto the stroke: pick the segment whose nearest
+      // point on the curve is closest to p, then insert an anchor at that
+      // exact parameter t. Result: the new anchor lands under the cursor.
+      const hit = nearestPointOnStroke(stroke, p);
+      if (!hit) return;
+      onChange((g) => insertAnchor(g, strokeIdx, hit.segIdx, hit.t));
       return;
     }
     const p = toGlyph(e.clientX, e.clientY);
@@ -858,13 +893,14 @@ function GlyphEditor(props: {
             >
               {Object.entries(font.glyphs).map(([c, g]) => {
                 if (c === char) return null;
+                const dg = previewGlyph(g, font.style, { instanceIndex: 0, char: c });
                 return (
                   <g key={`other-${c}`} opacity={0.05}>
-                    {g.strokes.map((s, i) => {
+                    {dg.strokes.map((s, i) => {
                       const { polygon, triangles } = triangulateForStyle(s, font.style, {
                         instanceIndex: i,
                         char: c,
-                      });
+                      }, g.box.h);
                       return <path key={`o${i}`} d={trianglesD(polygon, triangles)} />;
                     })}
                   </g>
@@ -879,11 +915,11 @@ function GlyphEditor(props: {
               fill={`rgba(0,0,0,${view.fillOpacity})`}
               pointerEvents="none"
             >
-              {glyph.strokes.map((s, i) => {
+              {displayGlyph.strokes.map((s, i) => {
                 const { polygon, triangles } = triangulateForStyle(s, font.style, {
                   instanceIndex: i,
                   char,
-                });
+                }, glyph.box.h);
                 return <path key={`o${i}`} d={trianglesD(polygon, triangles)} />;
               })}
             </g>
@@ -897,7 +933,7 @@ function GlyphEditor(props: {
               strokeLinejoin="round"
               strokeLinecap="round"
             >
-              {glyph.strokes.map((s, i) => {
+              {displayGlyph.strokes.map((s, i) => {
                 const poly = outlineStroke(s, font.style);
                 const sw = 1.4 / SCALE;
                 const dotR = 2.6 / SCALE;
@@ -905,14 +941,14 @@ function GlyphEditor(props: {
                 const closed = poly.length > 0 ? [...poly, poly[0]!] : [];
                 return (
                   <g key={`b${i}`}>
-                    <path d={polylineD(closed)} stroke="#222" strokeWidth={sw} />
+                    <path d={polylineD(closed)} stroke="#1d6fe6" strokeWidth={sw} />
                     {poly.map((p, k) => (
                       <g key={`v${i}-${k}`}>
                         <circle
                           cx={p.x}
                           cy={p.y}
                           r={dotR}
-                          fill="#111"
+                          fill="#1d6fe6"
                           stroke="#fff"
                           strokeWidth={sw * 0.6}
                         />
@@ -920,7 +956,7 @@ function GlyphEditor(props: {
                           x={p.x + dotR * 1.4}
                           y={p.y - dotR * 1.4}
                           fontSize={fontPx}
-                          fill="#111"
+                          fill="#1d6fe6"
                           stroke="#fff"
                           strokeWidth={sw * 0.4}
                           paintOrder="stroke"
@@ -944,11 +980,11 @@ function GlyphEditor(props: {
               strokeLinejoin="round"
               strokeLinecap="round"
             >
-              {glyph.strokes.map((s, i) => {
+              {displayGlyph.strokes.map((s, i) => {
                 const { polygon, triangles } = triangulateForStyle(s, font.style, {
                   instanceIndex: i,
                   char,
-                });
+                }, glyph.box.h);
                 const sw = 0.6 / SCALE;
                 return (
                   <g key={`t${i}`}>
@@ -972,7 +1008,6 @@ function GlyphEditor(props: {
               })}
             </g>
           )}
-          {/* control geometry */}
           <g transform={xform}>
             {glyph.strokes.map((s, sIdx) => (
               <StrokeOverlay
@@ -988,6 +1023,154 @@ function GlyphEditor(props: {
               />
             ))}
           </g>
+          {/* spline0 + tangents debug overlay (drawn ON TOP of control
+              geometry so it isn't hidden by anchor squares). */}
+          {view.showSpline0 && (
+            <g transform={xform} pointerEvents="none">
+              {displayGlyph.strokes.map((s, i) => {
+                const data = ribbonDebugSpline0(s, font.style);
+                if (data.length === 0) return null;
+                const r = 4 / SCALE;
+                const sw = 1.6 / SCALE;
+                const refHalf = ((s.width ?? font.style.defaultWidth).samples[0]?.width ?? 10) * 0.5;
+                const tanLen = Math.max(8 / SCALE, refHalf * 1.5);
+                const normLen = Math.max(6 / SCALE, refHalf * 1.0);
+                return (
+                  <g key={`sp0-${i}`}>
+                    {data.map((a, k) => {
+                      const inEnd = {
+                        x: a.p.x - a.tangentIn.x * tanLen,
+                        y: a.p.y - a.tangentIn.y * tanLen,
+                      };
+                      const outEnd = {
+                        x: a.p.x + a.tangentOut.x * tanLen,
+                        y: a.p.y + a.tangentOut.y * tanLen,
+                      };
+                      const nL = {
+                        x: a.p.x + a.normal.x * normLen,
+                        y: a.p.y + a.normal.y * normLen,
+                      };
+                      const nR = {
+                        x: a.p.x - a.normal.x * normLen,
+                        y: a.p.y - a.normal.y * normLen,
+                      };
+                      const hasIn = a.tangentIn.x !== 0 || a.tangentIn.y !== 0;
+                      const hasOut = a.tangentOut.x !== 0 || a.tangentOut.y !== 0;
+                      return (
+                        <g key={`sp0-${i}-${k}`}>
+                          <line
+                            x1={nL.x}
+                            y1={nL.y}
+                            x2={nR.x}
+                            y2={nR.y}
+                            stroke="#ffaa00"
+                            strokeWidth={sw}
+                            strokeLinecap="round"
+                          />
+                          {hasIn && (
+                            <line
+                              x1={a.p.x}
+                              y1={a.p.y}
+                              x2={inEnd.x}
+                              y2={inEnd.y}
+                              stroke="#1e90ff"
+                              strokeWidth={sw}
+                              strokeLinecap="round"
+                            />
+                          )}
+                          {hasOut && (
+                            <line
+                              x1={a.p.x}
+                              y1={a.p.y}
+                              x2={outEnd.x}
+                              y2={outEnd.y}
+                              stroke="#1e90ff"
+                              strokeWidth={sw}
+                              strokeLinecap="round"
+                            />
+                          )}
+                          <circle
+                            cx={a.p.x}
+                            cy={a.p.y}
+                            r={r}
+                            fill="#1e90ff"
+                            stroke="#ffffff"
+                            strokeWidth={sw}
+                          />
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              })}
+            </g>
+          )}
+          {/* spline1 (subdivided spine) + per-vertex normals debug overlay. */}
+          {view.showSpline1 && (
+            <g transform={xform} pointerEvents="none">
+              {displayGlyph.strokes.map((s, i) => {
+                const spineSubdiv = font.style.ribbonSpineSubdiv ?? font.style.ribbonSamples ?? 4;
+                const brokenAnchorSubdiv = font.style.ribbonBrokenAnchorSubdiv ?? 0;
+                const spineLengthAware = font.style.ribbonSpineLengthAware === true;
+                const data = ribbonDebugSpline1(s, font.style, spineSubdiv, null, brokenAnchorSubdiv, spineLengthAware, displayGlyph.box.h);
+                if (data.length === 0) return null;
+                const r = 2.5 / SCALE;
+                const sw = 1.2 / SCALE;
+                const tanLen = Math.max(5 / SCALE, 6 / SCALE);
+                return (
+                  <g key={`sp1-${i}`}>
+                    {data.map((v, k) => {
+                      // Normal bar length = the actual contracted half-width
+                      // used by the ribbon (so it shows what the renderer sees).
+                      const half = v.half;
+                      const nL = {
+                        x: v.p.x + v.normal.x * half,
+                        y: v.p.y + v.normal.y * half,
+                      };
+                      const nR = {
+                        x: v.p.x - v.normal.x * half,
+                        y: v.p.y - v.normal.y * half,
+                      };
+                      const tEnd = {
+                        x: v.p.x + v.tangent.x * tanLen,
+                        y: v.p.y + v.tangent.y * tanLen,
+                      };
+                      return (
+                        <g key={`sp1-${i}-${k}`}>
+                          <line
+                            x1={nL.x}
+                            y1={nL.y}
+                            x2={nR.x}
+                            y2={nR.y}
+                            stroke="#22dd88"
+                            strokeWidth={sw}
+                            strokeLinecap="round"
+                          />
+                          <line
+                            x1={v.p.x}
+                            y1={v.p.y}
+                            x2={tEnd.x}
+                            y2={tEnd.y}
+                            stroke="#0066cc"
+                            strokeWidth={sw}
+                            strokeLinecap="round"
+                          />
+                          <circle
+                            cx={v.p.x}
+                            cy={v.p.y}
+                            r={r}
+                            fill="#22dd88"
+                            stroke="#003322"
+                            strokeWidth={sw * 0.6}
+                          />
+                        </g>
+                      );
+                    })}
+                  </g>
+                );
+              })}
+            </g>
+          )}
         </svg>
       </div>
     </>
@@ -1004,8 +1187,9 @@ function Inspector(props: {
   glyph: Glyph | undefined;
   updateGlyph: (fn: (g: Glyph) => Glyph) => void;
   updateAllGlyphs: (fn: (g: Glyph, char: string) => Glyph) => void;
+  original?: StyleSettings;
 }): JSX.Element {
-  const { view, setView, style, setStyle, glyph, updateGlyph, updateAllGlyphs } = props;
+  const { view, setView, style, setStyle, glyph, updateGlyph, updateAllGlyphs, original } = props;
   return (
     <aside
       className="mz-glyphsetter__inspector"
@@ -1063,6 +1247,178 @@ function Inspector(props: {
           onChange={(v) => setView({ showTriangles: v })}
           tooltip="Show the triangulation mesh used by the renderer."
         />
+        <Check
+          label="Spline0 + tangents"
+          checked={view.showSpline0}
+          onChange={(v) => setView({ showSpline0: v })}
+          tooltip="Debug: dot at every user anchor, lines for in/out tangents, and the world-blended normal at each anchor."
+        />
+        <Check
+          label="Spline1 + normals"
+          checked={view.showSpline1}
+          onChange={(v) => setView({ showSpline1: v })}
+          tooltip="Debug: full row of subdivided spine vertices (anchors + ribbon spine subdivisions) with their tangents and world-blended normals scaled to the local half-width."
+        />
+        <button
+          type="button"
+          disabled={!glyph}
+          onClick={() => {
+            if (!glyph) return;
+            const spineSubdiv = style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4;
+            const borderSubdiv = style.ribbonBorderSubdiv ?? 0;
+            const capSubdiv = style.ribbonCapSubdiv;
+            const brokenAnchorSubdiv = style.ribbonBrokenAnchorSubdiv ?? 0;
+            const spineLengthAware = style.ribbonSpineLengthAware === true;
+            const dump = {
+              char: glyph.char,
+              box: glyph.box,
+              style: {
+                triMode: style.triMode,
+                ribbonSpineSubdiv: spineSubdiv,
+                ribbonBorderSubdiv: borderSubdiv,
+                ribbonCapSubdiv: capSubdiv,
+                ribbonBrokenAnchorSubdiv: brokenAnchorSubdiv,
+                ribbonSpineLengthAware: spineLengthAware,
+                capRoundBulge: style.capRoundBulge,
+                capStart: style.capStart,
+                capEnd: style.capEnd,
+                widthOrientation: style.widthOrientation,
+                worldAngle: style.worldAngle,
+                worldBlend: style.worldBlend,
+                worldContract: style.worldContract,
+                defaultWidth: style.defaultWidth,
+              },
+              strokes: glyph.strokes.map((s, i) => {
+                const spline0 = ribbonDebugSpline0(s, style);
+                const spline1 = ribbonDebugSpline1(s, style, spineSubdiv, null, brokenAnchorSubdiv, spineLengthAware, glyph.box.h);
+                const ribbon = triangulateStrokeRibbon(s, style, {
+                  spineSubdiv,
+                  borderSubdiv,
+                  capSubdiv,
+                  brokenAnchorSubdiv,
+                  spineLengthAware,
+                  referenceLength: glyph.box.h,
+                });
+                // Per-sample summary: spine point, both raw and threaded
+                // normal, the resulting left/right border points, and a
+                // flipped flag so bow-ties jump out at a glance.
+                const samples = spline1.map((v, k) => ({
+                  k,
+                  p: v.p,
+                  tangent: v.tangent,
+                  rawNormal: v.rawNormal,
+                  normal: v.normal,
+                  flipped: v.flipped,
+                  half: v.half,
+                  left: { x: v.p.x + v.normal.x * v.half, y: v.p.y + v.normal.y * v.half },
+                  right: { x: v.p.x - v.normal.x * v.half, y: v.p.y - v.normal.y * v.half },
+                }));
+                const flippedIdx = samples.filter((x) => x.flipped).map((x) => x.k);
+                return {
+                  index: i,
+                  id: s.id,
+                  capStart: s.capStart,
+                  capEnd: s.capEnd,
+                  width: s.width,
+                  vertices: s.vertices,
+                  spline0,
+                  spline1,
+                  samples,
+                  flippedSampleIndices: flippedIdx,
+                  ribbon: {
+                    polygonCount: ribbon.polygon.length,
+                    triangleCount: ribbon.triangles.length,
+                    polygon: ribbon.polygon,
+                    triangles: ribbon.triangles,
+                  },
+                };
+              }),
+            };
+            // eslint-disable-next-line no-console
+            console.log('[ribbon-debug]', dump);
+            // Also print a plain-text summary so you can read it without
+            // expanding the live object reference in DevTools.
+            for (const sd of dump.strokes) {
+              // eslint-disable-next-line no-console
+              console.log(
+                `[ribbon-debug] stroke #${sd.index} (${sd.id}): ` +
+                  `polygonCount=${sd.ribbon.polygonCount}, ` +
+                  `triangleCount=${sd.ribbon.triangleCount}, ` +
+                  `flippedSampleIndices=[${sd.flippedSampleIndices.join(',')}]`,
+              );
+              const tbl = sd.samples.map((s) => ({
+                k: s.k,
+                px: +s.p.x.toFixed(2),
+                py: +s.p.y.toFixed(2),
+                tx: +s.tangent.x.toFixed(3),
+                ty: +s.tangent.y.toFixed(3),
+                rawNx: +s.rawNormal.x.toFixed(3),
+                rawNy: +s.rawNormal.y.toFixed(3),
+                nx: +s.normal.x.toFixed(3),
+                ny: +s.normal.y.toFixed(3),
+                flipped: s.flipped,
+                half: +s.half.toFixed(2),
+              }));
+              // eslint-disable-next-line no-console
+              console.table(tbl);
+            }
+            // Also stash on window for ad-hoc inspection in DevTools.
+            (window as unknown as { __moritzRibbonDebug?: unknown }).__moritzRibbonDebug = dump;
+          }}
+          title="Log full ribbon state of the current glyph (spline0, spline1, polygon, triangles) to the browser console. Also stored on window.__moritzRibbonDebug."
+          style={{ marginTop: 4 }}
+        >
+          Log ribbon state
+        </button>
+        <button
+          type="button"
+          disabled={!glyph}
+          onClick={() => {
+            if (!glyph) return;
+            const spineSubdiv = style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4;
+            const spineLengthAware = style.ribbonSpineLengthAware === true;
+            const referenceLength = glyph.box.h;
+            // eslint-disable-next-line no-console
+            console.log(
+              `[length-aware-diag] glyph='${glyph.char}' triMode=${style.triMode} ` +
+                `spineSubdiv=${spineSubdiv} spineLengthAware=${spineLengthAware} ` +
+                `referenceLength(box.h)=${referenceLength}`,
+            );
+            const refStep = referenceLength > 0 ? referenceLength / (spineSubdiv + 1) : 0;
+            for (let i = 0; i < glyph.strokes.length; i++) {
+              const s = glyph.strokes[i]!;
+              const segs = strokeToSegments(s);
+              const lens = segs.map(segmentLength);
+              const total = lens.reduce((a, b) => a + b, 0) || 1;
+              const avg = total / Math.max(1, segs.length);
+              const counts = lens.map((l) =>
+                spineLengthAware && refStep > 0
+                  ? Math.max(0, Math.round(l / refStep) - 1)
+                  : spineSubdiv,
+              );
+              // eslint-disable-next-line no-console
+              console.log(
+                `[length-aware-diag]  stroke #${i} (${s.id}): segments=${segs.length} ` +
+                  `total=${total.toFixed(2)} avg=${avg.toFixed(2)} ` +
+                  `refStep=${refStep.toFixed(2)} (= box.h/${spineSubdiv + 1})`,
+              );
+              const tbl = lens.map((l, k) => ({
+                segment: k,
+                length: +l.toFixed(3),
+                ratioToRef: +(l / referenceLength).toFixed(3),
+                fixedCount: spineSubdiv,
+                lengthAwareCount: refStep > 0 ? Math.max(0, Math.round(l / refStep) - 1) : spineSubdiv,
+                actualCount: counts[k],
+              }));
+              // eslint-disable-next-line no-console
+              console.table(tbl);
+            }
+          }}
+          title="Log per-segment arc lengths and the integer subdivision counts that the length-aware spine option WOULD assign vs the fixed count. Use this to verify whether your current glyph has segments of differing length (a uniform glyph won't visibly change when the toggle flips)."
+          style={{ marginTop: 4 }}
+        >
+          Log length-aware diagnostics
+        </button>
         <RefFontPicker
           family={view.refFontFamily}
           opacity={view.refFontOpacity}
@@ -1205,88 +1561,11 @@ function Inspector(props: {
           />
         </Section>
       )}
-      <Section
-        title="Preview style"
-        tone="style"
-        subtitle="Shared with StyleSetter"
-      >
-        <Row label="Algorithm" tooltip="Triangulation algorithm. earcut: minimal triangle count from the outline polygon. ribbon-fixed: quad strip with N samples per Bezier segment. ribbon-density: quad strip with subdivision driven by spacing in glyph units.">
-          <select
-            value={style.triMode ?? 'earcut'}
-            onChange={(e) => setStyle({ triMode: e.target.value as TriMode })}
-            style={{ fontSize: 12, flex: 1 }}
-          >
-            <option value="earcut">earcut (minimal)</option>
-            <option value="ribbon-fixed">ribbon (fixed N)</option>
-            <option value="ribbon-density">ribbon (density)</option>
-          </select>
-        </Row>
-        {style.triMode === 'ribbon-fixed' && (
-          <NumSlider
-            label="samples / seg"
-            min={0}
-            max={64}
-            step={1}
-            value={style.ribbonSamples ?? 6}
-            onChange={(v) => setStyle({ ribbonSamples: Math.round(v) })}
-            format={(v) => v.toFixed(0)}
-            tooltip="Number of interior samples per Bezier segment. Higher = smoother quad strip but more triangles."
-          />
-        )}
-        {style.triMode === 'ribbon-density' && (
-          <NumSlider
-            label="density"
-            min={0.05}
-            max={4}
-            step={0.05}
-            value={1 / Math.max(0.0001, style.ribbonSpacing ?? 4)}
-            onChange={(v) => setStyle({ ribbonSpacing: 1 / Math.max(0.05, v) })}
-            format={(v) => v.toFixed(2)}
-            tooltip="Sample density in 1/(glyph units). Higher places samples closer together along the path arc length."
-          />
-        )}
-        {(style.triMode === 'ribbon-fixed' || style.triMode === 'ribbon-density') && (
-          <>
-            <NumSlider
-              label="spread"
-              min={0}
-              max={1}
-              step={0.05}
-              value={style.ribbonSpread ?? 1}
-              onChange={(v) => setStyle({ ribbonSpread: v })}
-              tooltip="0 = parameter-uniform sample placement (cheap, can clump). 1 = arc-length-uniform (even spacing along curve length)."
-            />
-            <NumSlider
-              label="anchor pull"
-              min={0}
-              max={1}
-              step={0.05}
-              value={style.ribbonAnchorPull ?? 0}
-              onChange={(v) => setStyle({ ribbonAnchorPull: v })}
-              tooltip="Bias samples toward anchor points with active tangents (helps preserve sharp turns)."
-            />
-          </>
-        )}
-        <Row label="Cap start" tooltip="Cap shape at the first vertex of every stroke. Per-stroke overrides take precedence.">
-          <CapSelect
-            value={normalizeSimpleCap(style.capStart)}
-            onChange={(v) => setStyle({ capStart: v })}
-          />
-        </Row>
-        <Row label="Cap end" tooltip="Cap shape at the last vertex of every stroke.">
-          <CapSelect
-            value={normalizeSimpleCap(style.capEnd)}
-            onChange={(v) => setStyle({ capEnd: v })}
-          />
-        </Row>
-        <NumSlider
-          label="cap bulge"
-          min={0}
-          max={2}
-          step={0.05}
-          value={style.capRoundBulge ?? 1}
-          onChange={(v) => setStyle({ capRoundBulge: v })}
-          tooltip="Roundness of round caps. 0 = flat. 1 = true semicircle. >1 pushes the cap further past the endpoint for a bulbous look."
+      <Section title="Styles" tone="style" subtitle="Forward to StyleSetter">
+        <StyleControls
+          style={style}
+          setStyle={setStyle}
+          {...(original ? { original } : {})}
         />
       </Section>
       <Section title="Guides" tone="local">
@@ -1504,7 +1783,7 @@ function KerningEntry(props: {
         const { polygon, triangles } = triangulateForStyle(s, font.style, {
           instanceIndex: i,
           char: glyph.char,
-        });
+        }, glyph.box.h);
         return trianglesD(polygon, triangles);
       }),
     }));
@@ -1606,8 +1885,10 @@ function Section(props: {
   tone: 'local' | 'style';
   subtitle?: string;
   children: React.ReactNode;
+  defaultOpen?: boolean;
 }): JSX.Element {
   const isStyle = props.tone === 'style';
+  const [open, setOpen] = useState(props.defaultOpen ?? true);
   return (
     <section
       className={`mz-inspector__section mz-inspector__section--${props.tone}`}
@@ -1621,7 +1902,27 @@ function Section(props: {
         gap: 6,
       }}
     >
-      <header style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+      <header
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: 8,
+          cursor: 'pointer',
+          userSelect: 'none',
+        }}
+      >
+        <span
+          aria-hidden
+          style={{
+            fontSize: 10,
+            color: isStyle ? '#7a4f10' : '#666',
+            width: 10,
+            display: 'inline-block',
+          }}
+        >
+          {open ? '▾' : '▸'}
+        </span>
         <strong
           style={{
             fontSize: 12,
@@ -1636,7 +1937,7 @@ function Section(props: {
           <span style={{ fontSize: 11, color: '#888' }}>{props.subtitle}</span>
         )}
       </header>
-      {props.children}
+      {open && props.children}
     </section>
   );
 }
@@ -1719,27 +2020,6 @@ function RefFontPicker(props: {
           tooltip="How visible the reference font is behind the edited glyph (0 = invisible, 1 = solid black)."
         />
       )}
-    </div>
-  );
-}
-
-function Row(props: {
-  label: string;
-  children: React.ReactNode;
-  tooltip?: string;
-}): JSX.Element {
-  return (
-    <div
-      title={props.tooltip}
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 6,
-        fontSize: 12,
-      }}
-    >
-      <span style={{ color: '#666', width: 80, flexShrink: 0 }}>{props.label}</span>
-      {props.children}
     </div>
   );
 }
@@ -1841,7 +2121,7 @@ function StrokeOverlay(props: {
       <path
         d={d}
         fill="none"
-        stroke={isStrokeSelected ? '#222' : '#888'}
+        stroke={isStrokeSelected ? '#1d6fe6' : '#888'}
         strokeWidth={HAIR}
         onPointerDown={(e) => props.onStrokePointerDown(e, strokeIdx)}
         style={{ cursor: isStrokeSelected ? 'grabbing' : 'grab' }}
@@ -1862,7 +2142,7 @@ function StrokeOverlay(props: {
                   y1={v.p.y}
                   x2={inAbs.x}
                   y2={inAbs.y}
-                  stroke="#222"
+                  stroke="#1d6fe6"
                   strokeWidth={HAIR / 2}
                 />
                 <circle
@@ -1870,7 +2150,7 @@ function StrokeOverlay(props: {
                   cy={inAbs.y}
                   r={HANDLE}
                   fill="#fff"
-                  stroke="#222"
+                  stroke="#1d6fe6"
                   strokeWidth={HAIR / 2}
                   style={{ cursor: 'grab' }}
                   onPointerDown={(e) =>
@@ -1886,7 +2166,7 @@ function StrokeOverlay(props: {
                   y1={v.p.y}
                   x2={outAbs.x}
                   y2={outAbs.y}
-                  stroke="#222"
+                  stroke="#1d6fe6"
                   strokeWidth={HAIR / 2}
                 />
                 <circle
@@ -1894,7 +2174,7 @@ function StrokeOverlay(props: {
                   cy={outAbs.y}
                   r={HANDLE}
                   fill="#fff"
-                  stroke="#222"
+                  stroke="#1d6fe6"
                   strokeWidth={HAIR / 2}
                   style={{ cursor: 'grab' }}
                   onPointerDown={(e) =>
@@ -1908,8 +2188,8 @@ function StrokeOverlay(props: {
               y={v.p.y - ANCHOR / 2}
               width={ANCHOR}
               height={ANCHOR}
-              fill={sel ? '#222' : '#fff'}
-              stroke="#222"
+              fill={sel ? '#1d6fe6' : '#fff'}
+              stroke={sel ? '#1d6fe6' : '#222'}
               strokeWidth={HAIR / 2}
               style={{ cursor: 'grab' }}
               onPointerDown={(e) =>
@@ -1924,28 +2204,6 @@ function StrokeOverlay(props: {
 }
 
 // ---------- helpers ---------------------------------------------------------
-
-type SimpleCap = 'round' | 'flat' | 'tapered';
-function normalizeSimpleCap(c: CapShape): SimpleCap {
-  return c === 'round' || c === 'flat' || c === 'tapered' ? c : 'round';
-}
-
-function CapSelect(props: {
-  value: SimpleCap;
-  onChange: (v: SimpleCap) => void;
-}): JSX.Element {
-  return (
-    <select
-      value={props.value}
-      onChange={(e) => props.onChange(e.target.value as SimpleCap)}
-      style={{ fontSize: 12, flex: 1 }}
-    >
-      <option value="round">round</option>
-      <option value="flat">flat</option>
-      <option value="tapered">tapered</option>
-    </select>
-  );
-}
 
 // SINGLE SOURCE OF TRUTH for the rendered fill: build the path d from the
 // SAME triangle list the debug overlay uses, so the visible shape is
@@ -1968,11 +2226,17 @@ function trianglesD(
  * Triangulate one stroke using the active style's triMode. Single source of
  * truth: the editor canvas, thumbnail grid, and SVG export all funnel
  * through this OR the matching helper in `core/export/svg.ts`.
+ *
+ * When `ctx` is supplied, the polygon is also passed through shape-jitter
+ * (matching the StyleSetter / TypeSetter SVG path). Spline jitter and the
+ * affine `transformGlyph` step happen at the GLYPH level — see
+ * `previewGlyph()` below.
  */
 function triangulateForStyle(
   stroke: Stroke,
   style: StyleSettings,
   ctx?: { instanceIndex: number; char: string },
+  referenceLength?: number,
 ): { polygon: readonly Vec2[]; triangles: readonly (readonly [number, number, number])[] } {
   const widthFx = style.effects?.widthWiggle || style.effects?.widthTaper;
   let widthMod = null as ReturnType<typeof makeWidthMod>;
@@ -1982,25 +2246,62 @@ function triangulateForStyle(
     for (const s of segs) arc += segmentLength(s);
     widthMod = makeWidthMod(style, ctx, arc);
   }
+  const evenness = style.vertexEvenness ?? 0;
   const mode = style.triMode ?? 'earcut';
-  if (mode === 'ribbon-fixed') {
-    return triangulateStrokeRibbon(stroke, style, {
-      kind: 'fixed',
-      samplesPerSegment: style.ribbonSamples ?? 6,
-      spread: style.ribbonSpread ?? 1,
-      anchorPull: style.ribbonAnchorPull ?? 0,
+  let polygon: readonly Vec2[];
+  let triangles: readonly (readonly [number, number, number])[];
+  if (mode === 'ribbon-fixed' || mode === 'ribbon-density') {
+    const r = triangulateStrokeRibbon(stroke, style, {
+      spineSubdiv: style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4,
+      borderSubdiv: style.ribbonBorderSubdiv ?? 0,
+      capSubdiv: style.ribbonCapSubdiv,
+      brokenAnchorSubdiv: style.ribbonBrokenAnchorSubdiv ?? 0,
+      spineLengthAware: style.ribbonSpineLengthAware === true,
+      referenceLength,
     }, widthMod);
+    polygon = r.polygon;
+    triangles = r.triangles;
+  } else {
+    polygon = outlineStroke(stroke, style, widthMod);
+    if (evenness > 0 && polygon.length >= 3) {
+      polygon = redistributePolygonEvenly(polygon, evenness);
+    }
+    triangles = triangulatePolygon(polygon);
   }
-  if (mode === 'ribbon-density') {
-    return triangulateStrokeRibbon(stroke, style, {
-      kind: 'density',
-      spacing: style.ribbonSpacing ?? 4,
-      spread: style.ribbonSpread ?? 1,
-      anchorPull: style.ribbonAnchorPull ?? 0,
-    }, widthMod);
+  // Vertex evenness only runs in earcut mode; ribbon modes have their own
+  // arc-length-uniform control (`ribbonSpread`) and resampling would break
+  // the strip's index list.
+  // Shape jitter is applied AFTER triangulation so the triangle index list
+  // stays valid (only point coordinates move). Mirrors svg.ts.
+  const shapeJitter = style.effects?.shapeJitter;
+  if (ctx && jitterActive(shapeJitter) && polygon.length > 0) {
+    const seed = resolveJitterSeed(shapeJitter, ctx, 0x5ec0);
+    polygon = jitterPolygon(polygon, shapeJitter, seed);
   }
-  const poly = outlineStroke(stroke, style, widthMod);
-  return { polygon: poly, triangles: triangulatePolygon(poly) };
+  return { polygon, triangles };
+}
+
+/**
+ * Build the glyph the editor should DISPLAY: raw glyph passed through the
+ * style's affine (slant / scaleX / scaleY) and per-glyph spline jitter.
+ * Editing handles still read from the raw glyph so the user is always
+ * manipulating the underlying source.
+ */
+function previewGlyph(
+  raw: Glyph,
+  style: StyleSettings,
+  ctx: { instanceIndex: number; char: string },
+): Glyph {
+  const transformed = transformGlyph(style, raw);
+  const splineJitter = style.effects?.splineJitter;
+  if (jitterActive(splineJitter)) {
+    return jitterGlyphSpline(
+      transformed,
+      splineJitter,
+      resolveJitterSeed(splineJitter, ctx, 0x5a17),
+    );
+  }
+  return transformed;
 }
 
 function polylineD(points: readonly Vec2[]): string {
@@ -2012,21 +2313,32 @@ function polylineD(points: readonly Vec2[]): string {
   return d;
 }
 
-function nearestSegmentIndex(stroke: Stroke, p: Vec2): number {
-  // Cheap heuristic: pick the segment whose midpoint is closest to p.
-  // Good enough for inserting an anchor on alt-click.
+/**
+ * Project `p` onto the entire stroke and return both the segment index and
+ * the parameter `t` of the closest point on that segment. Lets alt-click
+ * insert a new anchor exactly at the click position rather than at the
+ * segment midpoint.
+ */
+function nearestPointOnStroke(
+  stroke: Stroke,
+  p: Vec2,
+): { segIdx: number; t: number } | null {
   const segs = strokeToSegments(stroke);
-  let bestIdx = 0;
-  let bestDist = Infinity;
+  if (segs.length === 0) return null;
+  let best = { segIdx: 0, t: 0.5, d2: Infinity };
   for (let i = 0; i < segs.length; i++) {
-    const seg = segs[i]!;
-    const mx = (seg.p0.x + seg.p1.x) / 2;
-    const my = (seg.p0.y + seg.p1.y) / 2;
-    const d = (mx - p.x) ** 2 + (my - p.y) ** 2;
-    if (d < bestDist) {
-      bestDist = d;
-      bestIdx = i;
-    }
+    const seg: CubicSegment = segs[i]!;
+    const t = closestPointT(seg, p);
+    // Reuse pointAt via a local Bernstein eval to avoid an extra import.
+    const u = 1 - t;
+    const b0 = u * u * u;
+    const b1 = 3 * u * u * t;
+    const b2 = 3 * u * t * t;
+    const b3 = t * t * t;
+    const x = b0 * seg.p0.x + b1 * seg.c1.x + b2 * seg.c2.x + b3 * seg.p1.x;
+    const y = b0 * seg.p0.y + b1 * seg.c1.y + b2 * seg.c2.y + b3 * seg.p1.y;
+    const d2 = (x - p.x) ** 2 + (y - p.y) ** 2;
+    if (d2 < best.d2) best = { segIdx: i, t, d2 };
   }
-  return bestIdx;
+  return { segIdx: best.segIdx, t: best.t };
 }

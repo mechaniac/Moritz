@@ -2,6 +2,18 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './app.js';
 import './styles.css';
+import { syncLocalOverridesToRepo } from './state/persistence.js';
+import { builtInFonts } from './data/builtInFonts.js';
+import { getFileFont } from './data/fontFiles.js';
+
+// One-shot migration: in dev, push any in-browser edits of the system fonts
+// into the repo as `src/data/fonts/<id>.json` if no file exists yet. This
+// captures pre-existing localStorage overrides on the first run after the
+// file-based-fonts feature was introduced.
+void syncLocalOverridesToRepo(
+  builtInFonts.map((f) => f.id),
+  (id) => !!getFileFont(id),
+);
 
 const el = document.getElementById('root');
 if (!el) throw new Error('Missing #root');

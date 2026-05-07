@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { outlineStroke, widthAt } from '../../src/core/stroke.js';
+import { outlineStroke, redistributePolygonEvenly, widthAt } from '../../src/core/stroke.js';
 import { constantWidth, v2, ZERO, type StyleSettings, type Stroke } from '../../src/core/types.js';
 
 const style: StyleSettings = {
@@ -226,6 +226,51 @@ describe('stroke', () => {
     // Each polygon vertex sits at (anchor.x ± exp, anchor.y ∓ exp).
     for (const p of poly) {
       expect(Math.abs(Math.abs(p.y) - exp)).toBeLessThan(1e-6);
+    }
+  });
+
+  it('redistributePolygonEvenly with amount 0 returns input untouched', () => {
+    const poly = [v2(0, 0), v2(10, 0), v2(10, 1), v2(0, 1)];
+    expect(redistributePolygonEvenly(poly, 0)).toBe(poly);
+  });
+
+  it('redistributePolygonEvenly with amount 1 places vertices at uniform arc positions', () => {
+    // Skewed polygon: most vertices clustered near one corner.
+    const poly = [v2(0, 0), v2(1, 0), v2(2, 0), v2(10, 0), v2(10, 10), v2(0, 10)];
+    const out = redistributePolygonEvenly(poly, 1);
+    expect(out.length).toBe(poly.length);
+    // Compute arc length of each output point along the ORIGINAL polyline.
+    const N = poly.length;
+    const cum: number[] = [0];
+    for (let i = 0; i < N; i++) {
+      const a = poly[i]!;
+      const b = poly[(i + 1) % N]!;
+      cum.push(cum[i]! + Math.hypot(b.x - a.x, b.y - a.y));
+    }
+    const P = cum[N]!;
+    // For each output point find which original segment it lies on and compute arc.
+    const arcOf = (p: { x: number; y: number }): number => {
+      for (let i = 0; i < N; i++) {
+        const a = poly[i]!;
+        const b = poly[(i + 1) % N]!;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const segLen = Math.hypot(dx, dy);
+        if (segLen === 0) continue;
+        const u = ((p.x - a.x) * dx + (p.y - a.y) * dy) / (segLen * segLen);
+        if (u < -1e-9 || u > 1 + 1e-9) continue;
+        const proj = { x: a.x + dx * u, y: a.y + dy * u };
+        if (Math.hypot(proj.x - p.x, proj.y - p.y) < 1e-6) {
+          return cum[i]! + u * segLen;
+        }
+      }
+      return -1;
+    };
+    for (let i = 0; i < N; i++) {
+      const expected = (i * P) / N;
+      const got = arcOf(out[i]!);
+      expect(got).toBeGreaterThanOrEqual(0);
+      expect(Math.abs(got - expected)).toBeLessThan(1e-6);
     }
   });
 });

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { triangulateStrokeRibbon } from '../../src/core/ribbon.js';
+import {
+  ribbonDebugSpline0,
+  triangulateStrokeRibbon,
+} from '../../src/core/ribbon.js';
 import {
   constantWidth,
   v2,
@@ -28,28 +31,28 @@ const lineStroke: Stroke = {
 };
 
 describe('triangulateStrokeRibbon', () => {
-  it('fixed mode emits 2 quad-strip triangles per pair of samples + cap fans', () => {
+  it('emits a quad strip + cap fans for a single segment', () => {
     const r = triangulateStrokeRibbon(lineStroke, style, {
-      kind: 'fixed',
-      samplesPerSegment: 4,
+      spineSubdiv: 4,
+      borderSubdiv: 0,
     });
-    // 5 samples → 4 quads → 8 quad triangles + a density-scaled fan per cap.
-    // Cap fan steps now follow the density knob (≥ CAP_FAN_STEPS_MIN = 3 each),
-    // so the lower bound is 8 + 3 + 3 = 14.
-    expect(r.triangles.length).toBeGreaterThanOrEqual(8 + 3 + 3);
+    // spineSubdiv=4 → 4 interior vertices + 2 anchors = 6 spine vertices →
+    // 5 quads → 10 quad triangles. Two round caps add capSubdiv triangles
+    // each (default capSubdiv = spineSubdiv + 2 = 6).
+    expect(r.triangles.length).toBeGreaterThanOrEqual(10 + 6 + 6);
     expect(r.polygon.length).toBeGreaterThan(0);
   });
 
-  it('density mode subdivides longer strokes into more triangles', () => {
-    const r1 = triangulateStrokeRibbon(lineStroke, style, {
-      kind: 'density',
-      spacing: 50,
+  it('borderSubdiv multiplies the quad count', () => {
+    const a = triangulateStrokeRibbon(lineStroke, style, {
+      spineSubdiv: 2,
+      borderSubdiv: 0,
     });
-    const r2 = triangulateStrokeRibbon(lineStroke, style, {
-      kind: 'density',
-      spacing: 5,
+    const b = triangulateStrokeRibbon(lineStroke, style, {
+      spineSubdiv: 2,
+      borderSubdiv: 3,
     });
-    expect(r2.triangles.length).toBeGreaterThan(r1.triangles.length);
+    expect(b.triangles.length).toBeGreaterThan(a.triangles.length);
   });
 
   it('throws on closed strokes (open-stroke invariant)', () => {
@@ -62,7 +65,29 @@ describe('triangulateStrokeRibbon', () => {
       ],
     };
     expect(() =>
-      triangulateStrokeRibbon(closed, style, { kind: 'fixed', samplesPerSegment: 2 }),
+      triangulateStrokeRibbon(closed, style, {
+        spineSubdiv: 2,
+        borderSubdiv: 0,
+      }),
     ).toThrow(/closed/i);
+  });
+});
+
+describe('ribbonDebugSpline0', () => {
+  it('returns one entry per anchor with unit tangents and a normal', () => {
+    const data = ribbonDebugSpline0(lineStroke, style);
+    expect(data).toHaveLength(2);
+    // First anchor: tangentIn is zero, tangentOut points along +x.
+    expect(data[0]!.tangentIn).toEqual({ x: 0, y: 0 });
+    expect(data[0]!.tangentOut.x).toBeCloseTo(1);
+    expect(data[0]!.tangentOut.y).toBeCloseTo(0);
+    // Last anchor: tangentOut is zero, tangentIn points along +x.
+    expect(data[1]!.tangentOut).toEqual({ x: 0, y: 0 });
+    expect(data[1]!.tangentIn.x).toBeCloseTo(1);
+    expect(data[1]!.tangentIn.y).toBeCloseTo(0);
+    // Normal is unit length.
+    for (const a of data) {
+      expect(Math.hypot(a.normal.x, a.normal.y)).toBeCloseTo(1);
+    }
   });
 });

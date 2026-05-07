@@ -94,7 +94,16 @@ export type StyleSettings = {
    * `widthOrientation`. When undefined, the legacy enum is consulted.
    */
   readonly worldBlend?: number;
-  /** Used whenever `worldBlend > 0`. Radians. */
+  /**
+   * 0..1 — world-axis width contraction. Independent of `worldBlend`.
+   * Scales the local half-width by a factor that depends on how aligned
+   * the (already-blended) normal is with `worldAngle`'s perpendicular.
+   * 0 = no contraction (default), 1 = full contraction (zero width when
+   * the normal is perpendicular to the world normal). Mimics a chisel
+   * nib whose thickness collapses in one world direction.
+   */
+  readonly worldContract?: number;
+  /** Used whenever `worldBlend > 0` or `worldContract > 0`. Radians. */
   readonly worldAngle: number;
   readonly capStart: CapShape;
   readonly capEnd: CapShape;
@@ -120,6 +129,45 @@ export type StyleSettings = {
   readonly ribbonSpread?: number;
   /** 0..1 — bias samples toward anchors with active tangents. */
   readonly ribbonAnchorPull?: number;
+  /**
+   * Ribbon: vertices added BETWEEN each pair of spline0 anchors when
+   * building spline1 (the spine). 0 = anchors only. Integer.
+   */
+  readonly ribbonSpineSubdiv?: number;
+  /**
+   * Ribbon: when true, distribute spine subdivisions according to each
+   * segment's arc length instead of giving every segment the same count.
+   * The step size is derived from the global `ribbonSpineSubdiv` applied
+   * to the *average* segment length, so longer segments get more interior
+   * vertices and shorter ones get fewer. Each segment still receives an
+   * integer count and its own samples remain arc-length-uniform within
+   * the segment.
+   */
+  readonly ribbonSpineLengthAware?: boolean;
+  /**
+   * Ribbon: vertices added between each pair of border-polyline vertices
+   * when building the actual shape vertices. 0 = no extra subdivision.
+   * Integer.
+   */
+  readonly ribbonBorderSubdiv?: number;
+  /** Ribbon: round-cap fan steps. Integer ≥ 1. Default = spineSubdiv + 2. */
+  readonly ribbonCapSubdiv?: number;
+  /**
+   * Ribbon: extra spline1 samples added on EACH side of any anchor whose
+   * `breakTangent` is true (i.e. corner anchors). Each iteration halves
+   * the gap between the closest existing sample and the broken anchor,
+   * so vertex density grows geometrically toward the corner. 0 = off.
+   * Integer.
+   */
+  readonly ribbonBrokenAnchorSubdiv?: number;
+  /**
+   * 0..1 — redistributes the outline polygon's vertices along its perimeter
+   * by arc length. 0 = leave untouched, 1 = perfectly uniform spacing.
+   * Applied only in `'earcut'` triMode (the polygon is re-triangulated after
+   * resampling). Useful when world-blend strokes pinch their natural sample
+   * spacing and triangles begin to overlap.
+   */
+  readonly vertexEvenness?: number;
 
   // ---- Spacing & metrics (all in font units; all optional w/ sane defaults) ---
 

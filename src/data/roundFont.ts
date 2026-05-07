@@ -820,6 +820,7 @@ export const roundFont: Font = {
     worldAngle: 0,
     capStart: 'round',
     capEnd: 'round',
+    triMode: 'ribbon-density',
   },
   glyphs: glyphsRecord,
 };

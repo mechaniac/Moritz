@@ -66,16 +66,68 @@ export function loadFontEnvelope(id: string): LoadedFont | null {
 
 export function saveFont(font: Font, view?: GlyphViewOptions): void {
   const env: FontEnvelope = { format: 'moritz-font', version: 2, font, view };
-  localStorage.setItem(PREFIX + font.id, JSON.stringify(env));
+  const json = JSON.stringify(env);
+  localStorage.setItem(PREFIX + font.id, json);
   const ids = new Set(listFontIds());
   ids.add(font.id);
   localStorage.setItem(INDEX_KEY, JSON.stringify([...ids]));
+  // In dev, also persist the envelope into the repo via the Vite plugin
+  // (`src/data/fonts/<id>.json`). On reload it becomes the new baseline
+  // for built-ins, so edits to the system fonts are version-controlled.
+  if (import.meta.env?.DEV) {
+    void writeFontFile(font.id, JSON.stringify(env, null, 2));
+  }
 }
 
 export function deleteFont(id: string): void {
   localStorage.removeItem(PREFIX + id);
   const ids = listFontIds().filter((x) => x !== id);
   localStorage.setItem(INDEX_KEY, JSON.stringify(ids));
+}
+
+/**
+ * Dev-only: PUT the JSON to the dev plugin so it gets written to
+ * `src/data/fonts/<id>.json`. Failures are logged but never thrown — the
+ * UI keeps working from localStorage if the plugin isn't reachable.
+ */
+async function writeFontFile(id: string, body: string): Promise<void> {
+  try {
+    const res = await fetch(`/__moritz/fonts/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    if (!res.ok) console.warn(`[moritz] saving font ${id} to repo failed: ${res.status}`);
+  } catch (err) {
+    console.warn(`[moritz] saving font ${id} to repo failed`, err);
+  }
+}
+
+/**
+ * One-shot migration: in dev, for each id given, if there's a localStorage
+ * override but no committed file yet, push the localStorage envelope to the
+ * dev plugin. Captures the developer's existing browser-edited fonts into
+ * the repo on first run after this feature was added.
+ */
+export async function syncLocalOverridesToRepo(
+  ids: readonly string[],
+  hasFile: (id: string) => boolean,
+): Promise<void> {
+  if (!import.meta.env?.DEV) return;
+  for (const id of ids) {
+    if (hasFile(id)) continue;
+    const raw = localStorage.getItem(PREFIX + id);
+    if (!raw) continue;
+    const parsed = parseStored(raw);
+    if (!parsed) continue;
+    const env: FontEnvelope = {
+      format: 'moritz-font',
+      version: 2,
+      font: parsed.font,
+      view: parsed.view,
+    };
+    await writeFontFile(id, JSON.stringify(env, null, 2));
+  }
 }
 
 export function exportFontJson(font: Font, view?: GlyphViewOptions): string {

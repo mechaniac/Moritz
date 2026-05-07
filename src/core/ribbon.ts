@@ -1,25 +1,38 @@
 /**
  * Ribbon (quad-strip) triangulation of a stroke.
  *
- * Goal: a denser, more uniformly distributed triangle mesh than earcut, for
- * jiggle / distortion effects — WHILE matching the original outline
- * exactly. Two invariants:
+ * Hierarchy (each level is an integer subdivision of the previous):
  *
- *   1. Every spine anchor (segment endpoint) IS a sample. The mesh meets
- *      the earcut outline at every anchor (same miter join), so subdividing
- *      a segment never overlaps with or pulls away from the next.
- *   2. The offset polyline is C0-continuous across segments: at an interior
- *      anchor, both adjacent segments share one miter-joined left/right
- *      offset pair.
+ *   spline0      = the user-defined cubic Bezier spline (Stroke.vertices →
+ *                  CubicSegment[]). The "core" of the glyph.
  *
- * Two density modes:
- *   - 'fixed':   N interior samples per segment (good for previews).
- *   - 'density': interior subdivisions chosen so consecutive samples are
- *                spaced ≈ `spacing` arc-length units apart.
+ *   spline1      = spline0 evaluated at evenly distributed positions inside
+ *                  every segment. `spineSubdiv` extra interior vertices are
+ *                  inserted between each pair of spline0 anchors. At each
+ *                  vertex we record point + (world-bent) outward normal.
  *
- * Caps are emitted as triangle fans around the start / end center point,
- * so the entire ribbon (sides + caps) is one cohesive triangle list and
- * the rendered fill is the union of those triangles.
+ *   bordersplines= for each spline1 vertex, extend ±halfWidth along the
+ *                  blended normal. Yields two parallel polylines (left,
+ *                  right) with EQUAL vertex counts.
+ *
+ *   shape verts  = `borderSubdiv` linear interpolations inserted between
+ *                  every consecutive pair of border-polyline vertices.
+ *                  Caps (round / flat / tapered) attach at the two
+ *                  endpoint pairs.
+ *
+ * Every step is a perfect integer subdivision (0 = none, 1 = one vertex
+ * inserted between each pair, 2 = two, ...). No fractional sampling, no
+ * adaptive flattening, no miter math at interior anchors — at an anchor
+ * we use the average of the in/out tangents and a single normal.
+ *
+ * Distribution within a Bezier segment is arc-length-uniform (using a
+ * per-segment chord LUT) so that integer subdivisions look visually even
+ * regardless of how the cubic's parameter speed varies.
+ *
+ * The world-bend behaviour — the perpendicular's angle being interpolated
+ * toward `style.worldAngle` — is handled by `blendedNormal` from
+ * stroke.ts, which mathematically guarantees the offset stays on the
+ * correct side of the centerline.
  */
 
 import {
@@ -27,137 +40,64 @@ import {
   segmentLength,
   strokeToSegments,
   tangentAt,
+  type CubicSegment,
 } from './bezier.js';
-import { blendedNormal, resolveWorldWidth, widthAt, type WorldWidth } from './stroke.js';
+import { blendedNormal, consistentNormal, contractFactor, resolveWorldWidth, widthAt, type WorldWidth } from './stroke.js';
 import type { Stroke, StyleSettings, Vec2 } from './types.js';
 import type { WidthMod } from './widthEffects.js';
 import type { Triangle } from './triangulate.js';
 
-export type RibbonOptions =
-  | { kind: 'fixed'; samplesPerSegment: number; spread?: number; anchorPull?: number }
-  | { kind: 'density'; spacing: number; spread?: number; anchorPull?: number };
+/** Spine vertex = one sample on spline1 with its outward normal. */
+type SpineVertex = {
+  readonly p: Vec2;          // point on spline0 (the centerline)
+  readonly tangent: Vec2;    // unit tangent at that point
+  readonly normal: Vec2;     // unit normal, world-blended; left = p + half·n
+  readonly half: number;     // half-width at this arc fraction
+  readonly tArc: number;     // arc-length fraction along the whole stroke
+};
+
+export type RibbonOptions = {
+  /** Vertices inserted BETWEEN each pair of spline0 anchors. Integer ≥ 0. */
+  readonly spineSubdiv: number;
+  /** Vertices inserted between each pair of border-polyline vertices. Integer ≥ 0. */
+  readonly borderSubdiv: number;
+  /** Cap fan steps (round caps). Integer ≥ 1. Defaults to spineSubdiv+2. */
+  readonly capSubdiv?: number;
+  /**
+   * Extra spline1 samples added on each side of any broken-tangent anchor.
+   * Each iteration halves the gap between the anchor and its closest
+   * existing sample. Integer ≥ 0.
+   */
+  readonly brokenAnchorSubdiv?: number;
+  /**
+   * If true, distribute spine subdivisions across segments based on each
+   * segment's arc length. Step size is `referenceLength / (spineSubdiv+1)`,
+   * so `spineSubdiv` describes the count for a segment of `referenceLength`
+   * arc; longer segments get more interior vertices, shorter ones fewer.
+   * Each segment still gets an integer count and uniform spacing within
+   * itself. Falls back to per-stroke average length if `referenceLength`
+   * is not provided.
+   */
+  readonly spineLengthAware?: boolean;
+  /**
+   * Reference arc length for `spineLengthAware`. Pass the glyph's box
+   * height (or any glyph-level scale) so segments across DIFFERENT strokes
+   * are comparable. If omitted while `spineLengthAware` is on, defaults to
+   * the per-stroke average (which makes single-segment strokes always get
+   * exactly `spineSubdiv`).
+   */
+  readonly referenceLength?: number;
+};
 
 export type RibbonResult = {
   readonly polygon: Vec2[];
   readonly triangles: Triangle[];
 };
 
-const CAP_FAN_STEPS_MIN = 3;
-const CAP_FAN_STEPS_MAX = 64;
-const MITER_LIMIT = 4;
-
-/**
- * Number of fan steps for a round cap of the given radius sweeping `|sweep|`
- * radians. Subdivides the cap arc using the same density knob as the spine:
- *   - density mode: arc-length / spacing
- *   - fixed   mode: samplesPerSegment (the cap is treated like one segment
- *                   worth of subdivision, so caps and spine match visually).
- */
-function capFanSteps(radius: number, sweep: number, opts: RibbonOptions): number {
-  const arc = Math.abs(sweep) * Math.max(0, radius);
-  let n: number;
-  if (opts.kind === 'density') {
-    const spacing = Math.max(0.0001, opts.spacing);
-    n = Math.ceil(arc / spacing);
-  } else {
-    // Scale samplesPerSegment by sweep / PI so a half-circle maps to ~N steps.
-    const base = Math.max(0, opts.samplesPerSegment | 0) + 1;
-    n = Math.ceil(base * (Math.abs(sweep) / Math.PI));
-  }
-  return Math.max(CAP_FAN_STEPS_MIN, Math.min(CAP_FAN_STEPS_MAX, n));
-}
+/** Per-segment chord LUT for arc-length-uniform sampling within a segment. */
 const ARC_LUT_SAMPLES = 32;
 
-function unitNormal(t: Vec2): Vec2 {
-  const len = Math.hypot(t.x, t.y) || 1;
-  return { x: -t.y / len, y: t.x / len };
-}
-void unitNormal;
-
-function intersectLines(
-  p1: Vec2,
-  d1: Vec2,
-  p2: Vec2,
-  d2: Vec2,
-): Vec2 | null {
-  const denom = d1.x * d2.y - d1.y * d2.x;
-  if (Math.abs(denom) < 1e-9) return null;
-  const dx = p2.x - p1.x;
-  const dy = p2.y - p1.y;
-  const t = (dx * d2.y - dy * d2.x) / denom;
-  return { x: p1.x + t * d1.x, y: p1.y + t * d1.y };
-}
-
-/**
- * (left, right) offset pair at an interior anchor: intersect the offset
- * lines coming from the previous segment with those leaving into the next.
- * Falls back to the average of the two endpoint pairs when the miter is
- * degenerate (parallel tangents) or beyond the miter limit (near-180°
- * reflex corner).
- */
-function jointOffsetPair(
-  pAnchor: Vec2,
-  prevTangent: Vec2,
-  nextTangent: Vec2,
-  prevHalf: number,
-  nextHalf: number,
-  world: WorldWidth | null,
-): { left: Vec2; right: Vec2 } {
-  const nPrev = blendedNormal(prevTangent, world);
-  const nNext = blendedNormal(nextTangent, world);
-  const leftPrev = {
-    x: pAnchor.x + nPrev.x * prevHalf,
-    y: pAnchor.y + nPrev.y * prevHalf,
-  };
-  const leftNext = {
-    x: pAnchor.x + nNext.x * nextHalf,
-    y: pAnchor.y + nNext.y * nextHalf,
-  };
-  const rightPrev = {
-    x: pAnchor.x - nPrev.x * prevHalf,
-    y: pAnchor.y - nPrev.y * prevHalf,
-  };
-  const rightNext = {
-    x: pAnchor.x - nNext.x * nextHalf,
-    y: pAnchor.y - nNext.y * nextHalf,
-  };
-  const limit = MITER_LIMIT * Math.max(prevHalf, nextHalf, 0.001);
-
-  const lHit = intersectLines(leftPrev, prevTangent, leftNext, nextTangent);
-  const left =
-    lHit && Math.hypot(lHit.x - pAnchor.x, lHit.y - pAnchor.y) <= limit
-      ? lHit
-      : { x: (leftPrev.x + leftNext.x) / 2, y: (leftPrev.y + leftNext.y) / 2 };
-  const rHit = intersectLines(rightPrev, prevTangent, rightNext, nextTangent);
-  const right =
-    rHit && Math.hypot(rHit.x - pAnchor.x, rHit.y - pAnchor.y) <= limit
-      ? rHit
-      : {
-          x: (rightPrev.x + rightNext.x) / 2,
-          y: (rightPrev.y + rightNext.y) / 2,
-        };
-  return { left, right };
-}
-
-type SpineSample = {
-  readonly p: Vec2;
-  readonly tangent: Vec2; // for cap orientation only
-  readonly left: Vec2;
-  readonly right: Vec2;
-};
-
-function interiorCount(segLen: number, opts: RibbonOptions): number {
-  if (opts.kind === 'fixed') return Math.max(0, opts.samplesPerSegment | 0);
-  const spacing = Math.max(0.0001, opts.spacing);
-  return Math.max(0, Math.ceil(segLen / spacing) - 1);
-}
-
-/**
- * Build a small arc-length lookup for a single Bezier segment so we can map
- * an arc-length fraction back to a parameter `t`. Returns ARC_LUT_SAMPLES+1
- * cumulative chord lengths sampled at uniform `t`.
- */
-function buildArcLut(seg: import('./bezier.js').CubicSegment): number[] {
+function buildArcLut(seg: CubicSegment): readonly number[] {
   const lut = new Array<number>(ARC_LUT_SAMPLES + 1);
   lut[0] = 0;
   let prev = pointAt(seg, 0);
@@ -171,12 +111,11 @@ function buildArcLut(seg: import('./bezier.js').CubicSegment): number[] {
   return lut;
 }
 
-/** Invert the arc-length LUT: given target fraction f in [0,1], return t. */
+/** Invert an arc-length LUT: arc fraction f in [0,1] → segment parameter t. */
 function tForArcFraction(lut: readonly number[], f: number): number {
   const total = lut[lut.length - 1]!;
   if (total <= 0) return f;
   const target = f * total;
-  // Binary search for the bracketing LUT interval.
   let lo = 0;
   let hi = lut.length - 1;
   while (lo + 1 < hi) {
@@ -190,53 +129,181 @@ function tForArcFraction(lut: readonly number[], f: number): number {
   return (lo + u) / ARC_LUT_SAMPLES;
 }
 
-/**
- * Pick the parameter `t` for the i-th interior sample of a segment with
- * `interior` total interior samples.
- *
- * Two orthogonal knobs:
- *   - `spread`     in [0,1]: blend between parameter-uniform sampling (0;
- *                  clusters near anchors when the cubic has nonzero
- *                  endpoint speed) and arc-length-uniform sampling (1;
- *                  even spacing along the actual curve length).
- *   - `anchorPull` in [0,1]: bias the arc-length target so samples cluster
- *                  near the segment endpoint(s) whose handle is active.
- *                  At 1 a one-sided-active end behaves like a zero-tangent
- *                  anchor (zero param speed there); the inactive end stays
- *                  uniformly spaced. Curves with two active ends use a
- *                  symmetric smoothstep that clusters at both.
- *
- * `anchorPull` is applied in arc-length space, so it works regardless of
- * the underlying cubic's parameter speed.
- */
-function sampleT(
-  i: number,
-  interior: number,
-  spread: number,
-  anchorPull: number,
-  startActive: boolean,
-  endActive: boolean,
-  arcLut: readonly number[],
-): number {
-  const u = i / (interior + 1);
-  // Choose the cluster-target arc fraction based on which ends are active.
-  // All four maps satisfy f(0)=0 and f(1)=1.
-  let cluster: number;
-  if (startActive && endActive) cluster = u * u * (3 - 2 * u); // smoothstep
-  else if (startActive) cluster = u * u; // slow at 0, fast at 1
-  else if (endActive) cluster = u * (2 - u); // fast at 0, slow at 1
-  else cluster = u; // no clustering
-  const targetArc = u + (cluster - u) * anchorPull;
-  if (spread <= 0 && anchorPull <= 0) return u;
-  const tArc = arcLut.length > 1 ? tForArcFraction(arcLut, targetArc) : targetArc;
-  if (spread >= 1) return tArc;
-  const lo = anchorPull > 0 ? tArc : u;
-  return lo + (tArc - lo) * spread;
+function unitOrZero(v: Vec2): Vec2 {
+  const len = Math.hypot(v.x, v.y);
+  return len > 0 ? { x: v.x / len, y: v.y / len } : { x: 0, y: 0 };
 }
 
 /**
- * Triangulate a stroke as a ribbon (quad strip + cap fans). Open-stroke
- * invariant is enforced (matching `outlineStroke`).
+ * Build the arc-length fractions f∈(0,1) at which a segment should be
+ * sampled on top of its two endpoint anchors. Returns the union of:
+ *   - the uniform interior grid f = k/(N+1) for k=1..N (N = spineSubdiv)
+ *   - if `breakStart`: B halvings toward f=0, starting from the closest
+ *     existing fraction f0 (or f0=1 when N=0): f0/2, f0/4, …, f0/2^B
+ *   - if `breakEnd`: mirror toward f=1
+ * Sorted ascending, deduped within a small epsilon.
+ */
+function segmentSampleFractions(
+  spineSubdiv: number,
+  brokenAnchorSubdiv: number,
+  breakStart: boolean,
+  breakEnd: boolean,
+): number[] {
+  const fs: number[] = [];
+  for (let k = 1; k <= spineSubdiv; k++) fs.push(k / (spineSubdiv + 1));
+  if (brokenAnchorSubdiv > 0) {
+    if (breakStart) {
+      const f0 = fs.length > 0 ? fs[0]! : 1;
+      let f = f0;
+      for (let k = 0; k < brokenAnchorSubdiv; k++) {
+        f = f * 0.5;
+        fs.push(f);
+      }
+    }
+    if (breakEnd) {
+      const endAnchor =
+        spineSubdiv > 0 ? spineSubdiv / (spineSubdiv + 1) : 0;
+      let gap = 1 - endAnchor;
+      for (let k = 0; k < brokenAnchorSubdiv; k++) {
+        gap = gap * 0.5;
+        fs.push(1 - gap);
+      }
+    }
+  }
+  fs.sort((a, b) => a - b);
+  // Dedupe (geometrical halvings can in principle coincide with uniform
+  // grid points only when brokenAnchorSubdiv==0 with N≥1, which we already
+  // skipped; keep this guard for safety).
+  const eps = 1e-9;
+  const out: number[] = [];
+  for (const f of fs) {
+    if (out.length === 0 || Math.abs(out[out.length - 1]! - f) > eps) out.push(f);
+  }
+  return out;
+}
+
+/**
+ * Build spline1: spine0 anchors + arc-length-uniform interior vertices per
+ * segment, optionally densified near broken-tangent anchors. At interior
+ * anchors the in/out tangents are averaged (single tangent ⇒ single normal
+ * ⇒ single offset point per side, no miter trickery).
+ */
+function buildSpine1(
+  segments: readonly CubicSegment[],
+  spineSubdiv: number,
+  profile: import('./types.js').WidthProfile,
+  widthMod: WidthMod | null,
+  world: WorldWidth | null,
+  breakFlags: readonly boolean[],
+  brokenAnchorSubdiv: number,
+  spineLengthAware: boolean,
+  referenceLength: number | undefined,
+): SpineVertex[] {
+  const lens = segments.map(segmentLength);
+  const total = lens.reduce((s, x) => s + x, 0) || 1;
+  const cum: number[] = [0];
+  for (let i = 0; i < lens.length; i++) cum.push(cum[i]! + lens[i]!);
+  const luts = segments.map(buildArcLut);
+
+  // Per-segment integer subdivision count. Without length-awareness, every
+  // segment gets the global `spineSubdiv`. With it, the global value sets a
+  // step size measured against `referenceLength` (if provided — typically
+  // the glyph box height so segments across strokes are comparable) or the
+  // per-stroke average otherwise. Step = ref / (spineSubdiv + 1).
+  const perSegSubdiv: number[] = (() => {
+    if (!spineLengthAware) return segments.map(() => spineSubdiv);
+    const ref = referenceLength && referenceLength > 0
+      ? referenceLength
+      : total / segments.length;
+    const step = ref > 0 ? ref / (spineSubdiv + 1) : 0;
+    if (step <= 0) return segments.map(() => spineSubdiv);
+    return lens.map((l) => Math.max(0, Math.round(l / step) - 1));
+  })();
+
+  const sampleAt = (segIdx: number, t: number, prev: Vec2 | null, tangentOverride?: Vec2): SpineVertex => {
+    const seg = segments[segIdx]!;
+    const p = pointAt(seg, t);
+    const tan = unitOrZero(tangentOverride ?? tangentAt(seg, t));
+    const tArc = (cum[segIdx]! + lens[segIdx]! * t) / total;
+    const half = widthAt(profile, tArc) * (widthMod ? widthMod(tArc) : 1) * 0.5;
+    const normal = consistentNormal(tan, world, prev);
+    const halfContracted = half * contractFactor(tan, world);
+    return { p, tangent: tan, normal, half: halfContracted, tArc };
+  };
+
+  const out: SpineVertex[] = [];
+  let prev: Vec2 | null = null;
+  // Start anchor (segment 0, t=0).
+  out.push(sampleAt(0, 0, prev));
+  prev = out[out.length - 1]!.normal;
+  for (let s = 0; s < segments.length; s++) {
+    // Interior subdivisions of segment s, arc-length-uniform via LUT,
+    // densified near any broken-tangent endpoints.
+    const breakStart = breakFlags[s] === true;
+    const breakEnd = breakFlags[s + 1] === true;
+    const fs = segmentSampleFractions(perSegSubdiv[s]!, brokenAnchorSubdiv, breakStart, breakEnd);
+    for (const f of fs) {
+      const t = tForArcFraction(luts[s]!, f);
+      out.push(sampleAt(s, t, prev));
+      prev = out[out.length - 1]!.normal;
+    }
+    // Anchor at the END of segment s. For interior anchors (s < N-1),
+    // average the outgoing tangent of seg[s] with the incoming tangent of
+    // seg[s+1] for a clean, kink-aware single-normal offset.
+    if (s < segments.length - 1) {
+      const tPrev = tangentAt(segments[s]!, 1);
+      const tNext = tangentAt(segments[s + 1]!, 0);
+      const avg = unitOrZero({ x: tPrev.x + tNext.x, y: tPrev.y + tNext.y });
+      out.push(sampleAt(s, 1, prev, avg));
+    } else {
+      // Final end anchor — straightforward.
+      out.push(sampleAt(s, 1, prev));
+    }
+    prev = out[out.length - 1]!.normal;
+  }
+  return out;
+}
+
+/** Build the two border polylines from spline1: left = p + half·n, right = p − half·n. */
+function buildBorders(spine: readonly SpineVertex[]): { lefts: Vec2[]; rights: Vec2[] } {
+  const lefts: Vec2[] = [];
+  const rights: Vec2[] = [];
+  for (const v of spine) {
+    lefts.push({ x: v.p.x + v.normal.x * v.half, y: v.p.y + v.normal.y * v.half });
+    rights.push({ x: v.p.x - v.normal.x * v.half, y: v.p.y - v.normal.y * v.half });
+  }
+  return { lefts, rights };
+}
+
+/**
+ * Subdivide a polyline by inserting `borderSubdiv` linearly interpolated
+ * vertices between every consecutive pair. Original vertices are kept.
+ */
+function subdivideBorder(border: readonly Vec2[], borderSubdiv: number): Vec2[] {
+  if (borderSubdiv <= 0 || border.length < 2) return border.slice();
+  const out: Vec2[] = [];
+  out.push(border[0]!);
+  for (let i = 0; i < border.length - 1; i++) {
+    const a = border[i]!;
+    const b = border[i + 1]!;
+    for (let k = 1; k <= borderSubdiv; k++) {
+      const u = k / (borderSubdiv + 1);
+      out.push({ x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u });
+    }
+    out.push(b);
+  }
+  return out;
+}
+
+/** Resolve a CapShape to a kind handled by the ribbon emitter. */
+function capKind(c: import('./types.js').CapShape): 'flat' | 'round' | 'tapered' {
+  if (c === 'flat' || c === 'round' || c === 'tapered') return c;
+  return 'flat';
+}
+
+/**
+ * Triangulate a stroke as a quad-strip ribbon with optional caps.
+ * Open-stroke invariant matches outlineStroke (closed strokes throw).
  */
 export function triangulateStrokeRibbon(
   stroke: Stroke,
@@ -254,277 +321,178 @@ export function triangulateStrokeRibbon(
   }
   const segments = strokeToSegments(stroke);
   if (segments.length === 0) return { polygon: [], triangles: [] };
+
   const profile = stroke.width ?? style.defaultWidth;
   const world = resolveWorldWidth(style);
+  const spineSubdiv = Math.max(0, Math.floor(opts.spineSubdiv));
+  const borderSubdiv = Math.max(0, Math.floor(opts.borderSubdiv));
+  const capSubdiv = Math.max(1, Math.floor(opts.capSubdiv ?? spineSubdiv + 2));
+  const brokenAnchorSubdiv = Math.max(0, Math.floor(opts.brokenAnchorSubdiv ?? 0));
+  const spineLengthAware = opts.spineLengthAware === true;
+  const referenceLength = opts.referenceLength;
+  const breakFlags = stroke.vertices.map((v) => v.breakTangent === true);
 
-  const lens = segments.map(segmentLength);
-  const total = lens.reduce((s, x) => s + x, 0) || 1;
-  const cum: number[] = [0];
-  for (let i = 0; i < lens.length; i++) cum.push(cum[i]! + lens[i]!);
-
-  const interiorSample = (segIdx: number, tLocal: number): SpineSample => {
-    const seg = segments[segIdx]!;
-    const p = pointAt(seg, tLocal);
-    const tan = tangentAt(seg, tLocal);
-    const tArc = (cum[segIdx]! + lens[segIdx]! * tLocal) / total;
-    const half =
-      widthAt(profile, tArc) * (widthMod ? widthMod(tArc) : 1) * 0.5;
-    const n = blendedNormal(tan, world);
-    return {
-      p,
-      tangent: tan,
-      left: { x: p.x + n.x * half, y: p.y + n.y * half },
-      right: { x: p.x - n.x * half, y: p.y - n.y * half },
-    };
-  };
-
-  const startAnchor = (): SpineSample => interiorSample(0, 0);
-  const endAnchor = (): SpineSample =>
-    interiorSample(segments.length - 1, 1);
-  const interiorAnchor = (segIdx: number): SpineSample => {
-    const segPrev = segments[segIdx]!;
-    const segNext = segments[segIdx + 1]!;
-    const p = pointAt(segPrev, 1);
-    const tPrev = tangentAt(segPrev, 1);
-    const tNext = tangentAt(segNext, 0);
-    const tArc = cum[segIdx + 1]! / total;
-    const half =
-      widthAt(profile, tArc) * (widthMod ? widthMod(tArc) : 1) * 0.5;
-    const { left, right } = jointOffsetPair(
-      p,
-      tPrev,
-      tNext,
-      half,
-      half,
-      world,
-    );
-    return {
-      p,
-      tangent: { x: (tPrev.x + tNext.x) * 0.5, y: (tPrev.y + tNext.y) * 0.5 },
-      left,
-      right,
-    };
-  };
-
-  // Build the full sample list. Order:
-  //   anchor0, [interior of seg0], anchor1, [interior of seg1], ..., anchorN
-  const spread = Math.max(0, Math.min(1, opts.spread ?? 0));
-  const anchorPull = Math.max(0, Math.min(1, opts.anchorPull ?? 0));
-  const samples: SpineSample[] = [];
-  samples.push(startAnchor());
-  for (let s = 0; s < segments.length; s++) {
-    const interior = interiorCount(lens[s]!, opts);
-    // anchorPull is applied per-end: only ends with an active handle
-    // (control point not coincident with anchor) get the clustering bias.
-    const seg = segments[s]!;
-    const startActive = seg.c1.x !== seg.p0.x || seg.c1.y !== seg.p0.y;
-    const endActive = seg.c2.x !== seg.p1.x || seg.c2.y !== seg.p1.y;
-    const segAnchorPull = startActive || endActive ? anchorPull : 0;
-    const needsLut = spread > 0 || segAnchorPull > 0;
-    const arcLut = needsLut ? buildArcLut(seg) : [];
-    for (let i = 1; i <= interior; i++) {
-      const tLocal = sampleT(
-        i,
-        interior,
-        spread,
-        segAnchorPull,
-        startActive,
-        endActive,
-        arcLut,
-      );
-      samples.push(interiorSample(s, tLocal));
-    }
-    if (s < segments.length - 1) samples.push(interiorAnchor(s));
+  // ----- Hierarchy -----
+  const spine = buildSpine1(
+    segments,
+    spineSubdiv,
+    profile,
+    widthMod ?? null,
+    world,
+    breakFlags,
+    brokenAnchorSubdiv,
+    spineLengthAware,
+    referenceLength,
+  );
+  const { lefts: leftBorder, rights: rightBorder } = buildBorders(spine);
+  const lefts = subdivideBorder(leftBorder, borderSubdiv);
+  const rights = subdivideBorder(rightBorder, borderSubdiv);
+  // Invariant: equal-length parallel sequences, anchor-coincident at index 0 and N-1.
+  if (lefts.length !== rights.length || lefts.length < 2) {
+    return { polygon: [], triangles: [] };
   }
-  samples.push(endAnchor());
 
-  if (samples.length < 2) return { polygon: [], triangles: [] };
+  // ----- Cap geometry -----
+  const startV = spine[0]!;
+  const endV = spine[spine.length - 1]!;
+  const capStartShape = capKind(stroke.capStart ?? style.capStart);
+  const capEndShape = capKind(stroke.capEnd ?? style.capEnd);
+  const bulge = style.capRoundBulge ?? 1;
 
-  const lefts = samples.map((s) => s.left);
-  const rights = samples.map((s) => s.right);
-  const pStart = samples[0]!.p;
-  const pEnd = samples[samples.length - 1]!.p;
-  const tStart = samples[0]!.tangent;
-  const tEnd = samples[samples.length - 1]!.tangent;
-
+  // ----- Polygon assembly -----
+  // Layout (CCW around the shape, in this order):
+  //   [0 .. L-1]              left border, start → end
+  //   [L .. L+capEndN]        end-cap fan vertices (excl. first & last,
+  //                           which ARE the left/right end-border points)
+  //   [.. .. M]               right border, end → start (REVERSED)
+  //   [M+1 .. M+capStartN]    start-cap fan vertices
+  //
+  // Triangles are emitted as a quad strip across left/right pairs plus the
+  // cap fans/triangles around the two centerline endpoints.
   const polygon: Vec2[] = [];
   const triangles: Triangle[] = [];
 
   // Lefts forward.
-  for (const p of lefts) polygon.push(p);
-  const leftIdx = lefts.map((_, i) => i);
+  const leftIdx: number[] = [];
+  for (const p of lefts) {
+    leftIdx.push(polygon.length);
+    polygon.push(p);
+  }
+  const leftEndIdx = leftIdx[leftIdx.length - 1]!;
+  const leftStartIdx = leftIdx[0]!;
 
-  // Resolve cap kinds (stroke override > style). Same logic as outlineStroke.
-  const capStartShape = stroke.capStart ?? style.capStart;
-  const capEndShape = stroke.capEnd ?? style.capEnd;
-  const capKind = (c: typeof capStartShape): 'flat' | 'round' | 'tapered' => {
-    if (c === 'flat' || c === 'round' || c === 'tapered') return c;
-    return 'flat'; // 'custom' falls back to flat for now
+  /**
+   * Emit a deterministic cap arching between two existing border endpoints
+   * `from` and `to`, bulging in the direction of `tangentBias` (i.e. the
+   * cap's apex is pushed perpendicular to the chord on the side that has
+   * positive dot with `tangentBias`). NO dependency on the spine normal
+   * sign or worldBlend value — always a clean, symmetric half-bulge.
+   *
+   * Returns the indices of the cap-interior vertices in the order they
+   * were appended (so `[from, ...interior, to]` is the cap chord polyline).
+   */
+  const emitRoundCapInterior = (from: Vec2, to: Vec2, tangentBias: Vec2): number[] => {
+    const interior: number[] = [];
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const chord = Math.hypot(dx, dy);
+    if (chord === 0) return interior;
+    let perpX = -dy / chord;
+    let perpY = dx / chord;
+    if (perpX * tangentBias.x + perpY * tangentBias.y < 0) {
+      perpX = -perpX;
+      perpY = -perpY;
+    }
+    const radius = chord * 0.5 * bulge;
+    for (let k = 1; k < capSubdiv; k++) {
+      const theta = (Math.PI * k) / capSubdiv;
+      const along = (1 - Math.cos(theta)) * 0.5;
+      const out = Math.sin(theta) * radius;
+      polygon.push({
+        x: from.x + dx * along + perpX * out,
+        y: from.y + dy * along + perpY * out,
+      });
+      interior.push(polygon.length - 1);
+    }
+    return interior;
   };
-  const endCapKind = capKind(capEndShape);
-  const startCapKind = capKind(capStartShape);
 
-  // ----- End cap -----
-  // The end cap closes from leftLast → ... → rightLast around pEnd.
-  // Geometry varies by kind:
-  //   flat    → no center vertex, single triangle (left,right,pEnd-not-needed);
-  //              actually the left-last/right-last/quad-strip already meet at
-  //              pEnd indirectly — we just emit one triangle covering the
-  //              chord-to-spine area.
-  //   round   → fan of CAP_FAN_STEPS arc points centered on pEnd.
-  //   tapered → single tip vertex pushed by half-width along +tEnd.
-  const endLeftIdx = leftIdx[leftIdx.length - 1]!;
-  // rightIdx is filled inside one of the cap branches below — every branch
-  // pushes rights to the polygon and sets this mapping.
-  let rightIdx: number[] = [];
-  // Push rights (reversed) AFTER cap geometry. We need the rightIdx mapping
-  // ready, so compute it first by emitting cap fan vertices, then rights.
-  const endFan: number[] = [endLeftIdx];
-  if (endCapKind === 'round') {
-    const endCenterIdx = polygon.length;
-    polygon.push(pEnd);
-    const endStartAngle = Math.atan2(
-      lefts[lefts.length - 1]!.y - pEnd.y,
-      lefts[lefts.length - 1]!.x - pEnd.x,
-    );
-    const endEndAngle = Math.atan2(
-      rights[rights.length - 1]!.y - pEnd.y,
-      rights[rights.length - 1]!.x - pEnd.x,
-    );
-    let dEnd = endEndAngle - endStartAngle;
-    while (dEnd <= -Math.PI) dEnd += Math.PI * 2;
-    while (dEnd > Math.PI) dEnd -= Math.PI * 2;
-    const eMid = endStartAngle + dEnd * 0.5;
-    if (Math.cos(eMid) * tEnd.x + Math.sin(eMid) * tEnd.y < 0) {
-      dEnd = dEnd > 0 ? dEnd - Math.PI * 2 : dEnd + Math.PI * 2;
+  /** Tapered cap: single tip vertex bulged perpendicular to chord. */
+  const emitTaperedTip = (from: Vec2, to: Vec2, tangentBias: Vec2): number => {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const chord = Math.hypot(dx, dy);
+    let perpX = chord > 0 ? -dy / chord : -tangentBias.y;
+    let perpY = chord > 0 ? dx / chord : tangentBias.x;
+    if (perpX * tangentBias.x + perpY * tangentBias.y < 0) {
+      perpX = -perpX;
+      perpY = -perpY;
     }
-    const endRadius = Math.hypot(
-      lefts[lefts.length - 1]!.x - pEnd.x,
-      lefts[lefts.length - 1]!.y - pEnd.y,
-    );
-    const endSteps = capFanSteps(endRadius, dEnd, opts);
-    // Decompose into (along tEnd, perp tEnd) and scale the along component
-    // by the global bulge knob; chord endpoints have along=0 and stay put.
-    const bulge = style.capRoundBulge ?? 1;
-    const eTx = tEnd.x;
-    const eTy = tEnd.y;
-    const ePx = -tEnd.y;
-    const ePy = tEnd.x;
-    for (let k = 1; k < endSteps; k++) {
-      const t = k / endSteps;
-      const ang = endStartAngle + dEnd * t;
-      const px = Math.cos(ang) * endRadius;
-      const py = Math.sin(ang) * endRadius;
-      const along = px * eTx + py * eTy;
-      const cross = px * ePx + py * ePy;
-      polygon.push({
-        x: pEnd.x + along * bulge * eTx + cross * ePx,
-        y: pEnd.y + along * bulge * eTy + cross * ePy,
-      });
-      endFan.push(polygon.length - 1);
-    }
-    // Now push rights and finish fan.
-    const rightStartIdxR = polygon.length;
-    for (let i = rights.length - 1; i >= 0; i--) polygon.push(rights[i]!);
-    rightIdx = rights.map(
-      (_, i) => rightStartIdxR + (rights.length - 1 - i),
-    );
-    endFan.push(rightIdx[rightIdx.length - 1]!);
-    for (let k = 0; k < endFan.length - 1; k++) {
-      triangles.push([endCenterIdx, endFan[k]!, endFan[k + 1]!]);
-    }
-  } else if (endCapKind === 'tapered') {
-    // Single tip vertex pushed by half-width * bulge along +tEnd.
-    const half = Math.hypot(
-      lefts[lefts.length - 1]!.x - pEnd.x,
-      lefts[lefts.length - 1]!.y - pEnd.y,
-    );
-    const bulgeT = style.capRoundBulge ?? 1;
-    const tipIdx = polygon.length;
-    polygon.push({ x: pEnd.x + tEnd.x * half * bulgeT, y: pEnd.y + tEnd.y * half * bulgeT });
-    const rightStartIdxT = polygon.length;
-    for (let i = rights.length - 1; i >= 0; i--) polygon.push(rights[i]!);
-    rightIdx = rights.map(
-      (_, i) => rightStartIdxT + (rights.length - 1 - i),
-    );
-    triangles.push([endLeftIdx, tipIdx, rightIdx[rightIdx.length - 1]!]);
-  } else {
-    // flat: no extra vertices; the polygon edge from leftLast to rightLast
-    // closes the cap directly. The quad strip already meets the chord.
-    const rightStartIdxF = polygon.length;
-    for (let i = rights.length - 1; i >= 0; i--) polygon.push(rights[i]!);
-    rightIdx = rights.map(
-      (_, i) => rightStartIdxF + (rights.length - 1 - i),
-    );
-  }
-
-  // ----- Start cap -----
-  // Mirrors the end cap. Bows out in -tStart direction.
-  const startRightIdx = rightIdx[0]!;
-  const startLeftIdx = leftIdx[0]!;
-  if (startCapKind === 'round') {
-    const startCenterIdx = polygon.length;
-    polygon.push(pStart);
-    const startFan: number[] = [startRightIdx];
-    const startStartAngle = Math.atan2(
-      rights[0]!.y - pStart.y,
-      rights[0]!.x - pStart.x,
-    );
-    const startEndAngle = Math.atan2(
-      lefts[0]!.y - pStart.y,
-      lefts[0]!.x - pStart.x,
-    );
-    let dStart = startEndAngle - startStartAngle;
-    while (dStart <= -Math.PI) dStart += Math.PI * 2;
-    while (dStart > Math.PI) dStart -= Math.PI * 2;
-    const sMid = startStartAngle + dStart * 0.5;
-    if (Math.cos(sMid) * -tStart.x + Math.sin(sMid) * -tStart.y < 0) {
-      dStart = dStart > 0 ? dStart - Math.PI * 2 : dStart + Math.PI * 2;
-    }
-    const startRadius = Math.hypot(
-      rights[0]!.x - pStart.x,
-      rights[0]!.y - pStart.y,
-    );
-    const startSteps = capFanSteps(startRadius, dStart, opts);
-    // Bulge along -tStart (the cap's outward direction).
-    const bulgeS = style.capRoundBulge ?? 1;
-    const sTx = -tStart.x;
-    const sTy = -tStart.y;
-    const sPx = -sTy;
-    const sPy = sTx;
-    for (let k = 1; k < startSteps; k++) {
-      const t = k / startSteps;
-      const ang = startStartAngle + dStart * t;
-      const px = Math.cos(ang) * startRadius;
-      const py = Math.sin(ang) * startRadius;
-      const along = px * sTx + py * sTy;
-      const cross = px * sPx + py * sPy;
-      polygon.push({
-        x: pStart.x + along * bulgeS * sTx + cross * sPx,
-        y: pStart.y + along * bulgeS * sTy + cross * sPy,
-      });
-      startFan.push(polygon.length - 1);
-    }
-    startFan.push(startLeftIdx);
-    for (let k = 0; k < startFan.length - 1; k++) {
-      triangles.push([startCenterIdx, startFan[k]!, startFan[k + 1]!]);
-    }
-  } else if (startCapKind === 'tapered') {
-    const half = Math.hypot(
-      rights[0]!.x - pStart.x,
-      rights[0]!.y - pStart.y,
-    );
-    const bulgeST = style.capRoundBulge ?? 1;
-    const tipIdx = polygon.length;
+    const out = chord * 0.5 * bulge;
     polygon.push({
-      x: pStart.x - tStart.x * half * bulgeST,
-      y: pStart.y - tStart.y * half * bulgeST,
+      x: (from.x + to.x) * 0.5 + perpX * out,
+      y: (from.y + to.y) * 0.5 + perpY * out,
     });
-    triangles.push([startRightIdx, tipIdx, startLeftIdx]);
-  }
-  // flat: nothing to emit.
+    return polygon.length - 1;
+  };
 
-  // Quad strip between consecutive samples (2 triangles per quad).
+  // ----- End cap (from leftEnd around pEnd to rightEnd) -----
+  const rightIdx: number[] = new Array(rights.length);
+  const lLast = lefts[lefts.length - 1]!;
+  const rLast = rights[rights.length - 1]!;
+  if (capEndShape === 'round') {
+    const interior = emitRoundCapInterior(lLast, rLast, endV.tangent);
+    // Push rights reversed AFTER cap interior so polygon stays CCW.
+    for (let i = rights.length - 1; i >= 0; i--) {
+      rightIdx[i] = polygon.length;
+      polygon.push(rights[i]!);
+    }
+    const rightEndIdx = rightIdx[rights.length - 1]!;
+    // Fan from pEnd-anchor vertex would be unstable; instead fan from leftEnd.
+    let prevIdx = leftEndIdx;
+    for (const k of interior) {
+      triangles.push([leftEndIdx, prevIdx, k]);
+      // (degenerate when prevIdx === leftEndIdx; harmless and rendered as zero-area)
+      prevIdx = k;
+    }
+    triangles.push([leftEndIdx, prevIdx, rightEndIdx]);
+  } else if (capEndShape === 'tapered') {
+    const tipIdx = emitTaperedTip(lLast, rLast, endV.tangent);
+    for (let i = rights.length - 1; i >= 0; i--) {
+      rightIdx[i] = polygon.length;
+      polygon.push(rights[i]!);
+    }
+    triangles.push([leftEndIdx, tipIdx, rightIdx[rights.length - 1]!]);
+  } else {
+    // flat
+    for (let i = rights.length - 1; i >= 0; i--) {
+      rightIdx[i] = polygon.length;
+      polygon.push(rights[i]!);
+    }
+  }
+
+  const rightStartIdx = rightIdx[0]!;
+
+  // ----- Start cap (from rightStart around pStart to leftStart) -----
+  const lFirst = lefts[0]!;
+  const rFirst = rights[0]!;
+  // Bulge in the −tangent direction at the start (cap is "behind" the spine).
+  const startBias: Vec2 = { x: -startV.tangent.x, y: -startV.tangent.y };
+  if (capStartShape === 'round') {
+    const interior = emitRoundCapInterior(rFirst, lFirst, startBias);
+    let prevIdx = rightStartIdx;
+    for (const k of interior) {
+      triangles.push([rightStartIdx, prevIdx, k]);
+      prevIdx = k;
+    }
+    triangles.push([rightStartIdx, prevIdx, leftStartIdx]);
+  } else if (capStartShape === 'tapered') {
+    const tipIdx = emitTaperedTip(rFirst, lFirst, startBias);
+    triangles.push([rightStartIdx, tipIdx, leftStartIdx]);
+  }
+  // flat: nothing to emit; the polygon edge already closes the cap.
+
+  // ----- Quad strip across left/right pairs -----
   for (let i = 0; i < lefts.length - 1; i++) {
     const l0 = leftIdx[i]!;
     const l1 = leftIdx[i + 1]!;
@@ -535,4 +503,108 @@ export function triangulateStrokeRibbon(
   }
 
   return { polygon, triangles };
+}
+
+// ---------------------------------------------------------------------------
+// Debug helpers (used by the editor / overlay views; pure functions).
+// ---------------------------------------------------------------------------
+
+export type Spline0DebugAnchor = {
+  readonly p: Vec2;
+  /** Unit incoming tangent at the anchor (zero if anchor is an endpoint or has no in-handle). */
+  readonly tangentIn: Vec2;
+  /** Unit outgoing tangent at the anchor (zero if anchor is an endpoint or has no out-handle). */
+  readonly tangentOut: Vec2;
+  /** World-blended normal at the anchor (single direction; uses averaged tangent at interior anchors). */
+  readonly normal: Vec2;
+};
+
+/**
+ * Returns the anchor / tangent / world-blended-normal data for spline0,
+ * for debug visualization. Pure function; no DOM.
+ */
+export function ribbonDebugSpline0(
+  stroke: Stroke,
+  style: StyleSettings,
+): Spline0DebugAnchor[] {
+  if (stroke.vertices.length < 2) return [];
+  const segments = strokeToSegments(stroke);
+  if (segments.length === 0) return [];
+  const world = resolveWorldWidth(style);
+  const out: Spline0DebugAnchor[] = [];
+  let prev: Vec2 | null = null;
+  for (let i = 0; i < stroke.vertices.length; i++) {
+    const v = stroke.vertices[i]!;
+    const isFirst = i === 0;
+    const isLast = i === stroke.vertices.length - 1;
+    const tangentOut = !isLast ? unitOrZero(tangentAt(segments[i]!, 0)) : { x: 0, y: 0 };
+    const tangentIn = !isFirst ? unitOrZero(tangentAt(segments[i - 1]!, 1)) : { x: 0, y: 0 };
+    let avg: Vec2;
+    if (isFirst) avg = tangentOut;
+    else if (isLast) avg = tangentIn;
+    else avg = unitOrZero({ x: tangentIn.x + tangentOut.x, y: tangentIn.y + tangentOut.y });
+    const normal = consistentNormal(avg, world, prev);
+    out.push({ p: v.p, tangentIn, tangentOut, normal });
+    prev = normal;
+  }
+  return out;
+}
+
+/** One sample on spline1 with its tangent, world-blended normal, and half-width. */
+export type Spline1DebugSample = {
+  readonly p: Vec2;
+  readonly tangent: Vec2;
+  /** Sign-continuous (threaded) world-blended normal — the one actually used. */
+  readonly normal: Vec2;
+  /** Raw `blendedNormal(tangent, world)` BEFORE sign-threading. */
+  readonly rawNormal: Vec2;
+  /** True iff sign-threading flipped the normal relative to `rawNormal`. */
+  readonly flipped: boolean;
+  readonly half: number;
+};
+
+/**
+ * Returns the full row of spline1 samples (the subdivided spine) used by
+ * the ribbon triangulator: every anchor + `spineSubdiv` interior vertices
+ * per segment, each with its tangent, sign-continuous world-blended
+ * normal, and (contracted) half-width. Pure function; no DOM.
+ */
+export function ribbonDebugSpline1(
+  stroke: Stroke,
+  style: StyleSettings,
+  spineSubdiv: number,
+  widthMod?: WidthMod | null,
+  brokenAnchorSubdiv: number = 0,
+  spineLengthAware: boolean = false,
+  referenceLength?: number,
+): Spline1DebugSample[] {
+  if (stroke.vertices.length < 2) return [];
+  const segments = strokeToSegments(stroke);
+  if (segments.length === 0) return [];
+  const profile = stroke.width ?? style.defaultWidth;
+  const world = resolveWorldWidth(style);
+  const breakFlags = stroke.vertices.map((v) => v.breakTangent === true);
+  const spine = buildSpine1(
+    segments,
+    Math.max(0, Math.floor(spineSubdiv)),
+    profile,
+    widthMod ?? null,
+    world,
+    breakFlags,
+    Math.max(0, Math.floor(brokenAnchorSubdiv)),
+    spineLengthAware,
+    referenceLength,
+  );
+  return spine.map((v) => {
+    const raw = blendedNormal(v.tangent, world);
+    const flipped = raw.x * v.normal.x + raw.y * v.normal.y < 0;
+    return {
+      p: v.p,
+      tangent: v.tangent,
+      normal: v.normal,
+      rawNormal: raw,
+      flipped,
+      half: v.half,
+    };
+  });
 }

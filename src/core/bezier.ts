@@ -81,6 +81,20 @@ export function segmentLength(seg: CubicSegment): number {
 }
 
 /**
+ * Project `q` onto the segment and return the parameter `t∈[0,1]` of the
+ * nearest point on the curve. Used by the editor to insert an anchor
+ * exactly under an alt-click. Powered by bezier-js's `.project()`.
+ */
+export function closestPointT(seg: CubicSegment, q: Vec2): number {
+  const b = new Bezier(seg.p0, seg.c1, seg.c2, seg.p1);
+  const r = b.project(q) as { t?: number };
+  if (typeof r.t === 'number' && Number.isFinite(r.t)) {
+    return Math.min(1, Math.max(0, r.t));
+  }
+  return 0.5;
+}
+
+/**
  * Walk a chain of segments and produce N+1 evenly-spaced (by parameter)
  * sample points across the entire stroke, paired with their cumulative
  * normalized arc length t∈[0,1] for width lookup, plus tangent.

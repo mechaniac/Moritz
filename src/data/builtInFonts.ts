@@ -8,27 +8,62 @@ import {
 } from '../state/persistence.js';
 import { defaultFont } from './defaultFont.js';
 import { roundFont } from './roundFont.js';
+import { getFileFont } from './fontFiles.js';
 
-/** The bundled, never-mutated originals. */
-export const builtInFonts: readonly Font[] = [defaultFont, roundFont];
+/** The bundled, never-mutated TS originals. */
+const bundledFonts: readonly Font[] = [defaultFont, roundFont];
 
-const builtInIds = new Set(builtInFonts.map((f) => f.id));
+const builtInIds = new Set(bundledFonts.map((f) => f.id));
+
+/**
+ * The effective built-in for an id: a JSON override under
+ * `src/data/fonts/<id>.json` (the developer's tracked edits) wins over
+ * the bundled TS skeleton. This is how saved system-font edits become
+ * the new baseline after a restart.
+ */
+const effectiveBuiltIn = (id: string): Font | undefined => {
+  const file = getFileFont(id);
+  if (file) return file.font;
+  return bundledFonts.find((f) => f.id === id);
+};
+
+/** All built-in fonts in their *current* (file-overridden) form. */
+export const builtInFonts: readonly Font[] = bundledFonts.map(
+  (f) => effectiveBuiltIn(f.id) ?? f,
+);
 
 export const isBuiltInId = (id: string): boolean => builtInIds.has(id);
 
-/** Return the built-in font (and any saved view settings) for `id`. If
- *  the user has saved an override under the same id, the override wins. */
+/** Return the built-in font (and any saved view settings) for `id`.
+ *
+ *  Priority:
+ *   - DEV: committed JSON file > localStorage override > bundled TS.
+ *     The repo is the source of truth so external edits to the JSON are
+ *     picked up on reload.
+ *   - PROD: localStorage override > committed JSON file > bundled TS.
+ *     No dev plugin, so user-side overrides still work.
+ */
 export const getBuiltInFont = (id: string): LoadedFont | undefined => {
   if (!builtInIds.has(id)) return undefined;
-  const overridden = loadFontEnvelope(id);
-  if (overridden) return overridden;
-  const font = builtInFonts.find((f) => f.id === id);
+  const file = getFileFont(id);
+  const local = loadFontEnvelope(id);
+  const dev = !!import.meta.env?.DEV;
+  if (dev) {
+    if (file) return file;
+    if (local) return local;
+  } else {
+    if (local) return local;
+    if (file) return file;
+  }
+  const font = bundledFonts.find((f) => f.id === id);
   return font ? { font } : undefined;
 };
 
-/** Drop any user override of a built-in font, restoring the bundled original. */
+/** Drop any user override of a built-in font, restoring the bundled (or
+ *  file-tracked) baseline. Note: only the localStorage override is removed
+ *  here; the JSON file in `src/data/fonts/` (if any) stays put. */
 export const resetBuiltInFont = (id: string): Font | undefined => {
   if (!builtInIds.has(id)) return undefined;
   deleteFont(id);
-  return builtInFonts.find((f) => f.id === id);
+  return effectiveBuiltIn(id);
 };

@@ -6,7 +6,7 @@
  */
 
 import type { LayoutResult } from '../layout.js';
-import { outlineStroke } from '../stroke.js';
+import { outlineStroke, redistributePolygonEvenly } from '../stroke.js';
 import { triangulatePolygon } from '../triangulate.js';
 import { triangulateStrokeRibbon } from '../ribbon.js';
 import { jitterActive, jitterPolygon, resolveJitterSeed } from '../effects.js';
@@ -49,26 +49,35 @@ function triangulateForStyle(
   stroke: Stroke,
   style: StyleSettings,
   widthMod: WidthMod | null,
+  referenceLength?: number,
 ): { polygon: readonly Vec2[]; triangles: readonly (readonly [number, number, number])[] } {
   const mode = style.triMode ?? 'earcut';
-  if (mode === 'ribbon-fixed') {
-    return triangulateStrokeRibbon(stroke, style, {
-      kind: 'fixed',
-      samplesPerSegment: style.ribbonSamples ?? 6,
-      spread: style.ribbonSpread ?? 1,
-      anchorPull: style.ribbonAnchorPull ?? 0,
+  const evenness = style.vertexEvenness ?? 0;
+  let polygon: readonly Vec2[];
+  let triangles: readonly (readonly [number, number, number])[];
+  if (mode === 'ribbon-fixed' || mode === 'ribbon-density') {
+    const r = triangulateStrokeRibbon(stroke, style, {
+      spineSubdiv: style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4,
+      borderSubdiv: style.ribbonBorderSubdiv ?? 0,
+      capSubdiv: style.ribbonCapSubdiv,
+      brokenAnchorSubdiv: style.ribbonBrokenAnchorSubdiv ?? 0,
+      spineLengthAware: style.ribbonSpineLengthAware === true,
+      referenceLength,
     }, widthMod);
+    polygon = r.polygon;
+    triangles = r.triangles;
+  } else {
+    polygon = outlineStroke(stroke, style, widthMod);
+    if (evenness > 0 && polygon.length >= 3) {
+      polygon = redistributePolygonEvenly(polygon, evenness);
+    }
+    triangles = triangulatePolygon(polygon);
   }
-  if (mode === 'ribbon-density') {
-    return triangulateStrokeRibbon(stroke, style, {
-      kind: 'density',
-      spacing: style.ribbonSpacing ?? 4,
-      spread: style.ribbonSpread ?? 1,
-      anchorPull: style.ribbonAnchorPull ?? 0,
-    }, widthMod);
-  }
-  const poly = outlineStroke(stroke, style, widthMod);
-  return { polygon: poly, triangles: triangulatePolygon(poly) };
+  // Note: vertex evenness is intentionally not applied in ribbon modes —
+  // resampling the perimeter would invalidate the strip indices and force a
+  // fall-back to earcut. Ribbon modes use `ribbonSpread` for arc-length
+  // uniform sampling instead.
+  return { polygon, triangles };
 }
 
 function strokeArcLen(stroke: Stroke): number {
@@ -110,7 +119,7 @@ export function renderLayoutToSvg(
             strokeArcLen(stroke),
           )
         : null;
-      const { polygon, triangles } = triangulateForStyle(stroke, font.style, widthMod);
+      const { polygon, triangles } = triangulateForStyle(stroke, font.style, widthMod, pg.glyph.box.h);
       if (polygon.length === 0 || triangles.length === 0) continue;
       const jittered = jitterActive(shapeJitter)
         ? jitterPolygon(

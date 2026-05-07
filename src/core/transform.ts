@@ -9,8 +9,13 @@
  *
  * Affine (in font units, origin at glyph baseline-left of box):
  *
- *   x' = scaleX * x + tan(slant) * scaleY * y
+ *   x' = scaleX * x + tan(slant) * scaleY * (y - pivotY)
  *   y' = scaleY * y
+ *
+ * `pivotY` defaults to 0 (legacy behavior). `transformGlyph` passes the
+ * glyph box mid-height so the slant pivots around the visual center: the
+ * top of the glyph leans one way and the bottom the other by equal amounts,
+ * keeping the glyph centered in its advance box instead of drifting sideways.
  *
  * Note slant uses `tan` so an angle is intuitive (e.g. 12° = mild italic).
  * Handles are deltas relative to their anchor — they transform as vectors
@@ -30,14 +35,20 @@ export type Affine = {
   readonly ty: number;
 };
 
-export function affineFromStyle(style: StyleSettings): Affine {
+export function affineFromStyle(
+  style: StyleSettings,
+  slantPivotY = 0,
+): Affine {
   const sh = Math.tan(style.slant);
+  // Pivoting the shear around y = slantPivotY keeps that y-line fixed in x,
+  // so positive y leans right and negative y leans left equally — the glyph
+  // doesn't drift sideways as a whole when slant changes.
   return {
     a: style.scaleX,
     b: 0,
     c: sh * style.scaleY,
     d: style.scaleY,
-    tx: 0,
+    tx: -sh * style.scaleY * slantPivotY,
     ty: 0,
   };
 }
@@ -57,6 +68,7 @@ export function transformVertex(m: Affine, v: Vertex): Vertex {
     p: applyPoint(m, v.p),
     inHandle: applyVector(m, v.inHandle),
     outHandle: applyVector(m, v.outHandle),
+    ...(v.breakTangent === true ? { breakTangent: true } : {}),
   };
 }
 
@@ -66,7 +78,9 @@ export function transformStroke(m: Affine, s: Stroke): Stroke {
 
 /** Returns a new glyph with all stroke control points transformed. */
 export function transformGlyph(style: StyleSettings, g: Glyph): Glyph {
-  const m = affineFromStyle(style);
+  // Pivot the slant around the vertical mid-line of the glyph box so the
+  // visual lean stays centered (top moves right, bottom moves left equally).
+  const m = affineFromStyle(style, g.box.h / 2);
   return {
     ...g,
     box: { w: g.box.w * style.scaleX, h: g.box.h * style.scaleY },

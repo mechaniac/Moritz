@@ -35,38 +35,98 @@ import type { WidthMod } from './widthEffects.js';
 /**
  * Resolved world-orientation context for the renderer.
  *   - `normal`: the unit vector the nib lays its width along.
- *   - `blend` : in (0, 1]. 1 = pure world (constant nib direction);
- *               <1 = mixed with the path's tangent-perpendicular normal.
- * Returns `null` when the effect is fully off (pure tangent normals).
+ *   - `blend`    : in [0, 1]. 1 = pure world (constant nib direction);
+ *                  0 = no rotation toward world; intermediate slerps.
+ *   - `contract` : in [0, 1]. 0 = no width modulation; 1 = half-width
+ *                  collapses to 0 when the offset normal is perpendicular
+ *                  to `normal`. Models a chisel nib whose thickness varies
+ *                  with alignment to the world axis.
+ * Returns `null` only when BOTH effects are off (pure tangent normals,
+ * full width).
  */
-export type WorldWidth = { readonly normal: Vec2; readonly blend: number };
+export type WorldWidth = {
+  readonly normal: Vec2;
+  readonly blend: number;
+  readonly contract: number;
+};
 
 export function resolveWorldWidth(style: StyleSettings): WorldWidth | null {
   const blend =
     style.worldBlend ?? (style.widthOrientation === 'world' ? 1 : 0);
-  if (!(blend > 0)) return null;
+  const contract = style.worldContract ?? 0;
+  if (!(blend > 0) && !(contract > 0)) return null;
   const a = style.worldAngle;
   return {
     normal: { x: -Math.sin(a), y: Math.cos(a) },
-    blend: Math.min(1, blend),
+    blend: Math.min(1, Math.max(0, blend)),
+    contract: Math.min(1, Math.max(0, contract)),
   };
 }
 
 /**
- * Pick the unit normal at a path sample. With no world component we use the
- * tangent-perpendicular (rotate tangent 90° CCW). With a world component we
- * linearly interpolate the two unit normals and renormalize — this is the
- * "nib that still tracks the curve" look at intermediate blends.
+ * Pick the unit normal at a path sample. The nib is an undirected line —
+ * `n` and `−n` describe the same chisel orientation — so we always return
+ * the representative on the same side as the tangent-perpendicular `tn`
+ * (rotate tangent 90° CCW). This makes the result a pure local function
+ * of `tangent` and `world`: continuous as the tangent rotates, with no
+ * dependence on prior samples or wrap history.
+ *
+ * With no world component we return `tn`. Otherwise we slerp from `tn`
+ * toward whichever of `±world.normal` has positive dot with `tn`. Because
+ * that target is at most π/2 away from `tn`, the interpolated normal
+ * never crosses the centerline and consecutive samples on a smooth path
+ * cannot disagree by more than the local tangent rotation.
  */
 export function blendedNormal(tangent: Vec2, world: WorldWidth | null): Vec2 {
   const tn: Vec2 = { x: -tangent.y, y: tangent.x };
-  if (!world) return tn;
-  if (world.blend >= 1) return world.normal;
-  const x = tn.x * (1 - world.blend) + world.normal.x * world.blend;
-  const y = tn.y * (1 - world.blend) + world.normal.y * world.blend;
-  const len = Math.hypot(x, y);
-  if (len < 1e-9) return world.normal;
-  return { x: x / len, y: y / len };
+  if (!world || world.blend <= 0) return tn;
+  // Pick the representative of the (undirected) world normal that sits on
+  // the same side of the tangent as `tn`.
+  const dot = tn.x * world.normal.x + tn.y * world.normal.y;
+  const wn: Vec2 = dot >= 0
+    ? world.normal
+    : { x: -world.normal.x, y: -world.normal.y };
+  if (world.blend >= 1) return wn;
+  const aT = Math.atan2(tn.y, tn.x);
+  const aW = Math.atan2(wn.y, wn.x);
+  // After the ± choice above, |aW − aT| is at most π/2; the shortest
+  // signed difference is just the raw subtraction wrapped into (−π, π].
+  let diff = aW - aT;
+  while (diff > Math.PI) diff -= 2 * Math.PI;
+  while (diff <= -Math.PI) diff += 2 * Math.PI;
+  const a = aT + diff * world.blend;
+  return { x: Math.cos(a), y: Math.sin(a) };
+}
+
+/**
+ * Kept for backwards compatibility with call sites that used to rely on
+ * sign-threading. `blendedNormal` is now locally consistent on its own,
+ * so this is just a thin alias and `prev` is ignored.
+ */
+export function consistentNormal(
+  tangent: Vec2,
+  world: WorldWidth | null,
+  _prev: Vec2 | null,
+): Vec2 {
+  return blendedNormal(tangent, world);
+}
+
+/**
+ * Multiplier on the local half-width that implements `worldContract`.
+ * Returns 1 when the effect is off. Otherwise:
+ *   factor = 1 − contract · (1 − |tn · worldNormal|)
+ * Width is full when the tangent-perpendicular `tn` is aligned with the
+ * world normal and shrinks to (1 − contract) when `tn` is perpendicular
+ * to it. The measure uses `tn` (NOT the possibly world-blended `n`) so
+ * `worldContract` behaves identically regardless of `worldBlend` — they
+ * are independent effects.
+ */
+export function contractFactor(tangent: Vec2, world: WorldWidth | null): number {
+  if (!world || world.contract <= 0) return 1;
+  const tnx = -tangent.y;
+  const tny = tangent.x;
+  const align = Math.abs(tnx * world.normal.x + tny * world.normal.y);
+  return 1 - world.contract * (1 - align);
 }
 
 /**
@@ -110,17 +170,21 @@ export function widthAt(profile: WidthProfile, t: number): number {
   return s[s.length - 1]!.width;
 }
 
-/** Compute (left, right) offset points for a path point with given tangent. */
+/** Compute (left, right) offset points + the normal used. `prev` lets the
+ *  caller maintain sign continuity across a sequence (see `consistentNormal`). */
 function offsetPair(
   p: Vec2,
   tangent: Vec2,
   halfWidth: number,
   world: WorldWidth | null,
-): { left: Vec2; right: Vec2 } {
-  const n = blendedNormal(tangent, world);
+  prev: Vec2 | null,
+): { left: Vec2; right: Vec2; n: Vec2 } {
+  const n = consistentNormal(tangent, world, prev);
+  const h = halfWidth * contractFactor(tangent, world);
   return {
-    left: { x: p.x + n.x * halfWidth, y: p.y + n.y * halfWidth },
-    right: { x: p.x - n.x * halfWidth, y: p.y - n.y * halfWidth },
+    left: { x: p.x + n.x * h, y: p.y + n.y * h },
+    right: { x: p.x - n.x * h, y: p.y - n.y * h },
+    n,
   };
 }
 
@@ -134,6 +198,9 @@ type SegmentOffsets = {
   readonly halfEnd: number;
   readonly pStart: Vec2;
   readonly pEnd: Vec2;
+  /** Normal used at the first / last sample (for cross-segment continuity). */
+  readonly nStart: Vec2;
+  readonly nEnd: Vec2;
 };
 
 function offsetSegment(
@@ -143,6 +210,7 @@ function offsetSegment(
   tArcEnd: number,
   world: WorldWidth | null,
   widthMod: WidthMod | null,
+  prevNormal: Vec2 | null,
 ): SegmentOffsets {
   // Adaptive flattening: collect t-values in [0,1] of `seg` such that each
   // consecutive pair bounds a sub-cubic that is "flat enough" both
@@ -154,14 +222,20 @@ function offsetSegment(
 
   const lefts: Vec2[] = [];
   const rights: Vec2[] = [];
+  let prev: Vec2 | null = prevNormal;
+  let nFirst: Vec2 | null = null;
+  let nLast: Vec2 | null = null;
   for (const t of ts) {
     const p = pointAt(seg, t);
     const tangent = tangentAt(seg, t);
     const tArc = tArcStart + (tArcEnd - tArcStart) * t;
     const half = (widthAt(profile, tArc) * (widthMod ? widthMod(tArc) : 1)) / 2;
-    const { left, right } = offsetPair(p, tangent, half, world);
+    const { left, right, n } = offsetPair(p, tangent, half, world, prev);
     lefts.push(left);
     rights.push(right);
+    if (nFirst === null) nFirst = n;
+    nLast = n;
+    prev = n;
   }
   const tangentStart = tangentAt(seg, 0);
   const tangentEnd = tangentAt(seg, 1);
@@ -174,6 +248,8 @@ function offsetSegment(
     halfEnd: (widthAt(profile, tArcEnd) * (widthMod ? widthMod(tArcEnd) : 1)) / 2,
     pStart: pointAt(seg, 0),
     pEnd: pointAt(seg, 1),
+    nStart: nFirst ?? { x: 0, y: 1 },
+    nEnd: nLast ?? { x: 0, y: 1 },
   };
 }
 
@@ -388,6 +464,19 @@ function roundCap(
   return out;
 }
 
+/**
+ * Pick the perpendicular of `n` whose dot with `forward` is positive — i.e.
+ * the side of the chord that points "out the stroke's end". When `n` is
+ * already perpendicular to the path tangent (no world blend) this simply
+ * returns `forward`; with world blend > 0 it returns a rotated direction
+ * aligned with the actual cap chord normal.
+ */
+export function pickOutward(n: Vec2, forward: Vec2): Vec2 {
+  const a: Vec2 = { x: n.y, y: -n.x };
+  const dot = a.x * forward.x + a.y * forward.y;
+  return dot >= 0 ? a : { x: -a.x, y: -a.y };
+}
+
 function buildCap(
   cap: CapShape,
   center: Vec2,
@@ -477,12 +566,13 @@ function buildSides(
   const total = lens.reduce((a, b) => a + b, 0) || 1;
   const offsets: SegmentOffsets[] = [];
   let acc = 0;
+  let prevNormal: Vec2 | null = null;
   for (let i = 0; i < segments.length; i++) {
     const tA = acc / total;
     const tB = (acc + lens[i]!) / total;
-    offsets.push(
-      offsetSegment(segments[i]!, profile, tA, tB, world, widthMod),
-    );
+    const segOff = offsetSegment(segments[i]!, profile, tA, tB, world, widthMod, prevNormal);
+    offsets.push(segOff);
+    prevNormal = segOff.nEnd;
     acc += lens[i]!;
   }
 
@@ -569,6 +659,58 @@ function buildSides(
 }
 
 /**
+ * Redistribute a closed polygon's vertices along its own perimeter.
+ *
+ * For each input vertex i, blend its current arc-length position toward
+ * `i * P / N` (perfectly uniform spacing) by `amount` (0..1), then resample
+ * the polyline at that new arc position. Vertex count is preserved so any
+ * triangulation built independently from the same N (e.g. earcut) stays
+ * valid in shape — but the index list will likely not.
+ *
+ * `amount <= 0` returns the input array as-is. Polygons with fewer than 3
+ * vertices or zero perimeter are returned unchanged.
+ */
+export function redistributePolygonEvenly(
+  polygon: readonly Vec2[],
+  amount: number,
+): readonly Vec2[] {
+  if (!(amount > 0) || polygon.length < 3) return polygon;
+  const N = polygon.length;
+  const cum = new Float64Array(N + 1);
+  for (let i = 0; i < N; i++) {
+    const a = polygon[i]!;
+    const b = polygon[(i + 1) % N]!;
+    cum[i + 1] = cum[i] + Math.hypot(b.x - a.x, b.y - a.y);
+  }
+  const P = cum[N]!;
+  if (!(P > 0)) return polygon;
+  const t = Math.min(1, amount);
+  const out: Vec2[] = new Array(N);
+  // Cache start arc for vertex 0 (its even position is 0 too — anchored).
+  for (let i = 0; i < N; i++) {
+    const original = cum[i]!;
+    const even = (i * P) / N;
+    let s = original + (even - original) * t;
+    // Wrap into [0, P).
+    s = ((s % P) + P) % P;
+    // Find segment k with cum[k] <= s < cum[k+1] via binary search.
+    let lo = 0;
+    let hi = N;
+    while (lo + 1 < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (cum[mid]! <= s) lo = mid;
+      else hi = mid;
+    }
+    const segLen = cum[lo + 1]! - cum[lo]!;
+    const u = segLen > 0 ? (s - cum[lo]!) / segLen : 0;
+    const a = polygon[lo]!;
+    const b = polygon[(lo + 1) % N]!;
+    out[i] = { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u };
+  }
+  return out;
+}
+
+/**
  * Outline a single stroke into a closed polygon, given the active style.
  * Stroke-level overrides on `width`, `capStart`, `capEnd` win over the style.
  */
@@ -584,13 +726,25 @@ export function outlineStroke(
   const capEnd = stroke.capEnd ?? style.capEnd;
   const bulge = style.capRoundBulge ?? 1;
 
-  const endCap = buildCap(capEnd, pEnd, lefts[lefts.length - 1]!, rights[rights.length - 1]!, tangentEnd, bulge);
+  // The cap's outward axis must be perpendicular to the chord between the
+  // two offset endpoints (left/right), NOT along the path tangent. With
+  // world-blended widths the offsets sit on the blended normal `n`, so the
+  // chord runs along n and the outward axis is its perpendicular, oriented
+  // along (or opposite to) the tangent so the cap bulges out of the stroke.
+  const world = resolveWorldWidth(style);
+  const nEnd = blendedNormal(tangentEnd, world);
+  const nStart = blendedNormal(tangentStart, world);
+  // perp(n) rotated so its dot with tangent is positive = "forward".
+  const perpEnd = pickOutward(nEnd, tangentEnd);
+  const perpStart = pickOutward(nStart, { x: -tangentStart.x, y: -tangentStart.y });
+
+  const endCap = buildCap(capEnd, pEnd, lefts[lefts.length - 1]!, rights[rights.length - 1]!, perpEnd, bulge);
   const startCap = buildCap(
     capStart,
     pStart,
     rights[0]!,
     lefts[0]!,
-    { x: -tangentStart.x, y: -tangentStart.y },
+    perpStart,
     bulge,
   );
 
