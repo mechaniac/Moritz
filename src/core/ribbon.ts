@@ -15,10 +15,14 @@
  *                  blended normal. Yields two parallel polylines (left,
  *                  right) with EQUAL vertex counts.
  *
- *   shape verts  = `borderSubdiv` linear interpolations inserted between
- *                  every consecutive pair of border-polyline vertices.
- *                  Caps (round / flat / tapered) attach at the two
- *                  endpoint pairs.
+ *   shape verts  = `borderSubdiv` Catmull-Rom interpolations inserted
+ *                  between every consecutive pair of border-polyline
+ *                  vertices. Original border vertices are preserved
+ *                  exactly; the inserted ones round / smooth the
+ *                  silhouette so higher subdiv values produce a
+ *                  smoother shape (not just more points on the same
+ *                  chord). Caps (round / flat / tapered) attach at the
+ *                  two endpoint pairs.
  *
  * Every step is a perfect integer subdivision (0 = none, 1 = one vertex
  * inserted between each pair, 2 = two, ...). No fractional sampling, no
@@ -304,21 +308,53 @@ function buildBorders(spine: readonly SpineVertex[]): { lefts: Vec2[]; rights: V
 }
 
 /**
- * Subdivide a polyline by inserting `borderSubdiv` linearly interpolated
- * vertices between every consecutive pair. Original vertices are kept.
+ * Subdivide a polyline by inserting `borderSubdiv` interpolated vertices
+ * between every consecutive pair. Inserted vertices follow a uniform
+ * Catmull-Rom spline through the original polyline so subdivision
+ * ROUNDS / SMOOTHS the silhouette rather than producing more low-poly
+ * segments along the same chord. Original vertices are kept exactly
+ * (Catmull-Rom is interpolating), which preserves the strip's
+ * left/right index correspondence and the anchor-coincident endpoints.
+ *
+ * At the open ends we mirror the neighbor (`P0 = 2·P1 − P2`,
+ * `P3 = 2·Pn − P(n−1)`) so the spline's slope at the cap matches the
+ * direction the border was already heading — no kink at the joint
+ * between the strip and its end-cap fan.
  */
 function subdivideBorder(border: readonly Vec2[], borderSubdiv: number): Vec2[] {
   if (borderSubdiv <= 0 || border.length < 2) return border.slice();
+  const n = border.length;
   const out: Vec2[] = [];
   out.push(border[0]!);
-  for (let i = 0; i < border.length - 1; i++) {
-    const a = border[i]!;
-    const b = border[i + 1]!;
+  for (let i = 0; i < n - 1; i++) {
+    const p1 = border[i]!;
+    const p2 = border[i + 1]!;
+    const p0 = i > 0
+      ? border[i - 1]!
+      : { x: 2 * p1.x - p2.x, y: 2 * p1.y - p2.y };
+    const p3 = i + 2 < n
+      ? border[i + 2]!
+      : { x: 2 * p2.x - p1.x, y: 2 * p2.y - p1.y };
     for (let k = 1; k <= borderSubdiv; k++) {
-      const u = k / (borderSubdiv + 1);
-      out.push({ x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u });
+      const t = k / (borderSubdiv + 1);
+      const t2 = t * t;
+      const t3 = t2 * t;
+      // Uniform Catmull-Rom (tension = 0.5).
+      const x = 0.5 * (
+        (2 * p1.x) +
+        (-p0.x + p2.x) * t +
+        (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+        (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3
+      );
+      const y = 0.5 * (
+        (2 * p1.y) +
+        (-p0.y + p2.y) * t +
+        (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+        (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3
+      );
+      out.push({ x, y });
     }
-    out.push(b);
+    out.push(p2);
   }
   return out;
 }

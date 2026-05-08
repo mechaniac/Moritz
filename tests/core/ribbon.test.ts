@@ -55,6 +55,49 @@ describe('triangulateStrokeRibbon', () => {
     expect(b.triangles.length).toBeGreaterThan(a.triangles.length);
   });
 
+  it('borderSubdiv smooths a curved single segment (Catmull-Rom rounds, not lerps)', () => {
+    // S-shaped single cubic. With borderSubdiv = 0 each border vertex is
+    // already on a smooth curve, but with borderSubdiv > 0 the inserted
+    // vertices follow a Catmull-Rom spline THROUGH the borders, which
+    // for any curved border means the inserted vertex sits OFF the
+    // chord between its two neighbors. With pure linear lerp it would
+    // sit ON that chord (dev == 0 for every inserted index).
+    const flatStyle: StyleSettings = { ...style, capStart: 'flat', capEnd: 'flat' };
+    const sShape: Stroke = {
+      id: 's',
+      vertices: [
+        { p: v2(0, 0), inHandle: ZERO, outHandle: v2(40, 60) },
+        { p: v2(100, 0), inHandle: v2(-40, -60), outHandle: ZERO },
+      ],
+    };
+    // Just compare the *inserted* vertices: borderSubdiv=3 inserts 3 new
+    // vertices between every pair of border vertices. Catmull-Rom always
+    // puts those off-chord on a curved input; linear lerp always puts
+    // them on-chord.
+    const onChordCount = (poly: readonly { x: number; y: number }[]) => {
+      let n = 0;
+      for (let i = 1; i < poly.length - 1; i++) {
+        const a = poly[i - 1]!;
+        const b = poly[i + 1]!;
+        const p = poly[i]!;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const d = Math.abs((p.x - a.x) * dy - (p.y - a.y) * dx) / len;
+        if (d < 1e-6) n++;
+      }
+      return n;
+    };
+    const r = triangulateStrokeRibbon(sShape, flatStyle, {
+      spineSubdiv: 4,
+      borderSubdiv: 3,
+    });
+    // With linear lerp every inserted vertex (≥ spineSubdiv·borderSubdiv on
+    // each side, well above 10) is collinear with its neighbors. With
+    // Catmull-Rom on a curved border, none of them are.
+    expect(onChordCount(r.polygon)).toBeLessThan(5);
+  });
+
   it('throws on closed strokes (open-stroke invariant)', () => {
     const closed: Stroke = {
       id: 's',

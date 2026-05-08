@@ -460,14 +460,14 @@ export function StyleControls(props: StyleControlsProps): JSX.Element {
                 Length-aware spine
               </label>
               <Slider
-                label="Border subdiv"
+                label="Shape subdiv"
                 min={0}
                 max={16}
                 step={1}
                 value={style.ribbonBorderSubdiv ?? 0}
                 onChange={(v) => setStyle({ ribbonBorderSubdiv: Math.round(v) })}
                 defaultValue={original?.ribbonBorderSubdiv ?? 0}
-                tooltip="Vertices added between each pair of border-polyline vertices to produce the actual shape vertices. 0 = shape vertices coincide with the spine offsets."
+                tooltip="Vertices added between each pair of border-polyline vertices using a Catmull-Rom spline through the borders. Higher values round / smooth the silhouette (the original border vertices are preserved). 0 = shape vertices coincide with the spine offsets (low-poly look)."
               />
               <Slider
                 label="Cap subdiv"
@@ -499,7 +499,7 @@ export function StyleControls(props: StyleControlsProps): JSX.Element {
             value={style.vertexEvenness ?? 0}
             onChange={(v) => setStyle({ vertexEvenness: v })}
             defaultValue={original?.vertexEvenness ?? 0}
-            tooltip="Earcut only: re-distribute outline polygon vertices uniformly along the perimeter before triangulating. (Ribbon modes are uniform by construction — use Spine/Border subdiv instead.)"
+            tooltip="Earcut only: re-distribute outline polygon vertices uniformly along the perimeter before triangulating. (Ribbon modes are uniform by construction — use Spine/Shape subdiv instead.)"
           />
         </Section>
       )}
