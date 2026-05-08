@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { layout } from '../../core/layout.js';
 import { renderLayoutToSvg } from '../../core/export/svg.js';
 import {
@@ -24,6 +24,10 @@ export function StyleSetter(): JSX.Element {
   const setText = useAppStore((s) => s.setText);
   const setTextScale = useAppStore((s) => s.setTextScale);
 
+  // Glyph-box / kerning debug overlay. Local to the StyleSetter view —
+  // it's a viewing aid, not a style property, and never affects exports.
+  const [debugOverlay, setDebugOverlay] = useState(false);
+
   // Effective style = font.style with the StyleSetter overlay merged in.
   // All reads in this component go through `eff` so the preview reflects
   // overrides immediately. All writes go via `setStyle` (the overlay).
@@ -35,8 +39,12 @@ export function StyleSetter(): JSX.Element {
   const svg = useMemo(() => {
     const merged = fontWithOverrides(font, styleOverrides);
     const result = layout(text, merged);
-    return renderLayoutToSvg(result, merged, { padding: 30, scale: textScale });
-  }, [text, font, styleOverrides, textScale]);
+    return renderLayoutToSvg(result, merged, {
+      padding: 30,
+      scale: textScale,
+      debugOverlay,
+    });
+  }, [text, font, styleOverrides, textScale, debugOverlay]);
 
   const original = useMemo(
     () => builtInFonts.find((f) => f.id === font.id)?.style,
@@ -92,6 +100,17 @@ export function StyleSetter(): JSX.Element {
             onChange={setTextScale}
             tooltip="Visual zoom for the preview only. Doesn't affect exported font units."
           />
+          <label
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+            title="Overlay each glyph's advance box, side-bearing ticks, and kerning offsets between adjacent glyphs. Preview-only — never written to exports."
+          >
+            <input
+              type="checkbox"
+              checked={debugOverlay}
+              onChange={(e) => setDebugOverlay(e.target.checked)}
+            />
+            Glyph debug overlay
+          </label>
         </Section>
 
         <StyleControls
