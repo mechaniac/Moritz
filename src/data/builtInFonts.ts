@@ -6,7 +6,7 @@ import {
   loadFontEnvelope,
   type LoadedFont,
 } from '../state/persistence.js';
-import { defaultFont } from './defaultFont.js';
+import { defaultFont, withCommonGlyphFallback } from './defaultFont.js';
 import { roundFont } from './roundFont.js';
 import { getFileFont } from './fontFiles.js';
 
@@ -23,13 +23,14 @@ const builtInIds = new Set(bundledFonts.map((f) => f.id));
  */
 const effectiveBuiltIn = (id: string): Font | undefined => {
   const file = getFileFont(id);
-  if (file) return file.font;
-  return bundledFonts.find((f) => f.id === id);
+  if (file) return withCommonGlyphFallback(file.font);
+  const bundled = bundledFonts.find((f) => f.id === id);
+  return bundled ? withCommonGlyphFallback(bundled) : undefined;
 };
 
 /** All built-in fonts in their *current* (file-overridden) form. */
 export const builtInFonts: readonly Font[] = bundledFonts.map(
-  (f) => effectiveBuiltIn(f.id) ?? f,
+  (f) => effectiveBuiltIn(f.id) ?? withCommonGlyphFallback(f),
 );
 
 export const isBuiltInId = (id: string): boolean => builtInIds.has(id);
@@ -48,15 +49,19 @@ export const getBuiltInFont = (id: string): LoadedFont | undefined => {
   const file = getFileFont(id);
   const local = loadFontEnvelope(id);
   const dev = !!import.meta.env?.DEV;
+  const wrap = (lf: LoadedFont): LoadedFont => ({
+    ...lf,
+    font: withCommonGlyphFallback(lf.font),
+  });
   if (dev) {
-    if (file) return file;
-    if (local) return local;
+    if (file) return wrap(file);
+    if (local) return wrap(local);
   } else {
-    if (local) return local;
-    if (file) return file;
+    if (local) return wrap(local);
+    if (file) return wrap(file);
   }
   const font = bundledFonts.find((f) => f.id === id);
-  return font ? { font } : undefined;
+  return font ? { font: withCommonGlyphFallback(font) } : undefined;
 };
 
 /** Drop any user override of a built-in font, restoring the bundled (or
@@ -67,3 +72,5 @@ export const resetBuiltInFont = (id: string): Font | undefined => {
   deleteFont(id);
   return effectiveBuiltIn(id);
 };
+
+export { withCommonGlyphFallback };

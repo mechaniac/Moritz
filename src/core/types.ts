@@ -202,6 +202,23 @@ export type StyleSettings = {
    * spacing and triangles begin to overlap.
    */
   readonly vertexEvenness?: number;
+  /**
+   * 0..1 — relax (Laplacian-smooth) the rendered shape polygon while
+   * pinning user-defined anchor positions. Higher values = more
+   * iterations + bigger per-iteration step. Smooths high-frequency
+   * wobble introduced by extreme tangent or width settings. Applied in
+   * BOTH earcut and ribbon modes; in ribbon mode anchor positions on
+   * both borders are preserved exactly.
+   */
+  readonly relaxCurves?: number;
+  /**
+   * 0..1 — relax tangents by sliding each non-anchor polygon vertex
+   * toward the arc-length midpoint of its two neighbors (along their
+   * chord). Equalizes edge spacing and removes perpendicular wobble.
+   * Pinned anchors anchor the chord. Applied in BOTH earcut and ribbon
+   * modes.
+   */
+  readonly relaxTangents?: number;
 
   // ---- Spacing & metrics (all in font units; all optional w/ sane defaults) ---
 

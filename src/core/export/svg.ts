@@ -9,6 +9,7 @@ import type { LayoutResult } from '../layout.js';
 import { effectiveStyleForGlyph, outlineStroke, redistributePolygonEvenly } from '../stroke.js';
 import { triangulatePolygon } from '../triangulate.js';
 import { triangulateStrokeRibbon } from '../ribbon.js';
+import { relaxCurves, relaxSliderToParams, relaxTangents } from '../relax.js';
 import { jitterActive, jitterPolygon, resolveJitterSeed } from '../effects.js';
 import { makeWidthMod, type WidthMod } from '../widthEffects.js';
 import { segmentLength, strokeToSegments } from '../bezier.js';
@@ -26,6 +27,11 @@ export type SvgRenderOptions = {
    *   - left/right side-bearing markers (vertical ticks at the box edges)
    *   - kerning offsets between adjacent glyphs (a labeled red bar
    *     spanning the [previous-cursor, applied-kern] range)
+   *   - on hover of any glyph: a small red "+" badge sitting at the
+   *     position where the kerning bar to the NEXT glyph would be (only
+   *     when no kerning entry exists yet). Carries `data-action="add-kern"`
+   *     and `data-pair="AB"` so the host can wire a click handler via
+   *     event delegation.
    *   - each overlay element carries a <title> child so hovering it in
    *     a browser surfaces the underlying values as a native tooltip
    * Useful in StyleSetter to inspect spacing without polluting exports.
@@ -67,6 +73,7 @@ function triangulateForStyle(
   const evenness = style.vertexEvenness ?? 0;
   let polygon: readonly Vec2[];
   let triangles: readonly (readonly [number, number, number])[];
+  let pinned: ReadonlySet<number> = new Set();
   if (mode === 'ribbon-fixed' || mode === 'ribbon-density') {
     const r = triangulateStrokeRibbon(stroke, style, {
       spineSubdiv: ribbonSpineSubdivOf(style),
@@ -78,12 +85,23 @@ function triangulateForStyle(
     }, widthMod);
     polygon = r.polygon;
     triangles = r.triangles;
+    pinned = new Set(r.anchorPolygonIndices);
   } else {
     polygon = outlineStroke(stroke, style, widthMod);
     if (evenness > 0 && polygon.length >= 3) {
       polygon = redistributePolygonEvenly(polygon, evenness);
     }
     triangles = triangulatePolygon(polygon);
+  }
+  // Relax passes: smooth the polygon while pinning anchors. Index list
+  // stays valid because the passes preserve vertex count and order.
+  const rc = relaxSliderToParams(style.relaxCurves ?? 0);
+  if (rc.iterations > 0 && polygon.length >= 3) {
+    polygon = relaxCurves(polygon, pinned, rc.strength, rc.iterations);
+  }
+  const rt = relaxSliderToParams(style.relaxTangents ?? 0);
+  if (rt.iterations > 0 && polygon.length >= 3) {
+    polygon = relaxTangents(polygon, pinned, rt.strength, rt.iterations);
   }
   // Note: vertex evenness is intentionally not applied in ribbon modes —
   // resampling the perimeter would invalidate the strip indices and force a
@@ -200,6 +218,16 @@ function buildDebugOverlay(
       ? `<g transform="${wrap}" fill="none" font-family="monospace">`
       : `<g fill="none" font-family="monospace">`,
   );
+  // CSS: keep each glyph's "+K" helper hidden by default; reveal it only
+  // while the user is hovering THAT glyph (or the helper itself — which
+  // matters because the helper sits in the gap, OUTSIDE the glyph box).
+  parts.push(
+    `<style>` +
+      `.mz-glyph .mz-add-kern{display:none}` +
+      `.mz-glyph:hover .mz-add-kern{display:inline}` +
+      `.mz-add-kern{cursor:pointer}` +
+      `</style>`,
+  );
 
   const boxStroke = '#888';
   const boxFill = 'rgba(140,140,140,0.04)';
@@ -221,10 +249,19 @@ function buildDebugOverlay(
   const labelPx = Math.max(6, Math.min(14, avgBoxH * 0.12));
   const tickPx = Math.max(0.5, avgBoxH * 0.005);
 
-  // 1) Per-glyph: advance box + side-bearing strips + char label.
-  // Each glyph wrapped in its own <g> with a <title> so hovering anywhere
-  // on the box/strips/label shows a native tooltip.
-  for (const pg of layoutResult.glyphs) {
+  // 1) Per-glyph: advance box + side-bearing strips + char label, plus a
+  // hover-only "+K" helper for the pair (this glyph, next glyph) when
+  // no kerning entry exists yet. The helper sits at the same position
+  // an actual kerning bar would occupy. Each glyph is wrapped in its
+  // own <g class="mz-glyph"> so the CSS :hover above scopes the helper
+  // strictly to that glyph.
+  const trackingTop = font.style.tracking ?? 0;
+  const kerningMap = font.kerning;
+  const scaleXTop = font.style.scaleX;
+  const helperSq = Math.max(8, Math.min(16, avgBoxH * 0.12));
+  for (let gi = 0; gi < layoutResult.glyphs.length; gi++) {
+    const pg = layoutResult.glyphs[gi]!;
+    parts.push(`<g class="mz-glyph">`);
     const x = pg.origin.x + padding;
     const y = pg.origin.y + padding;
     const w = pg.glyph.box.w;
@@ -284,6 +321,41 @@ function buildDebugOverlay(
       `<text x="${fmt(x + labelPx * 0.3)}" y="${fmt(y + labelPx * 1.05)}" ` +
         `font-size="${fmt(labelPx)}" fill="${labelFill}">${escapeXml(pg.char)}</text>`,
     );
+
+    // Hover-only "+K" helper for this glyph's outgoing pair. Position
+    // matches where a real kerning bar would draw (centered on the
+    // post-tracking cursor, mid-height of the glyph band).
+    const next = layoutResult.glyphs[gi + 1];
+    const sameLine = next && Math.abs(next.origin.y - pg.origin.y) <= 0.5;
+    if (sameLine && next) {
+      const pair = pg.char + next.char;
+      const hasKern = kerningMap && kerningMap[pair] !== undefined;
+      if (!hasKern) {
+        const prevRightLocal = pg.origin.x + pg.glyph.box.w + padding;
+        const rsbLocal = pg.glyph.sidebearings?.right ?? 0;
+        const cxHelper = prevRightLocal + rsbLocal + trackingTop;
+        const yBaseLocal = Math.max(pg.origin.y, next.origin.y) + padding;
+        const hBandLocal = Math.min(pg.glyph.box.h, next.glyph.box.h);
+        const cyHelper = yBaseLocal + hBandLocal * 0.5;
+        const tip = `Add kerning '${pair}' → jumps to GlyphSetter`;
+        // scaleXTop unused at the helper position (k=0 implies kdx=0), but
+        // referenced in the tooltip for parity with the real kerning bar.
+        void scaleXTop;
+        parts.push(
+          `<g class="mz-add-kern" data-action="add-kern" data-pair="${escapeXml(pair)}" pointer-events="all">` +
+            `<title>${escapeXml(tip)}</title>` +
+            `<rect x="${fmt(cxHelper - helperSq / 2)}" y="${fmt(cyHelper - helperSq / 2)}" ` +
+              `width="${fmt(helperSq)}" height="${fmt(helperSq)}" ` +
+              `fill="${kernColor}" stroke="#fff" stroke-width="${fmt(helperSq * 0.08)}" />` +
+            `<text x="${fmt(cxHelper)}" y="${fmt(cyHelper + helperSq * 0.32)}" ` +
+              `text-anchor="middle" font-size="${fmt(helperSq * 0.95)}" ` +
+              `font-weight="bold" fill="#fff">+</text>` +
+            `</g>`,
+        );
+      }
+    }
+
+    parts.push(`</g>`); // close .mz-glyph
   }
 
   // 2) Inter-glyph spacing components between adjacent glyphs on the same
@@ -311,7 +383,6 @@ function buildDebugOverlay(
     // Actually rsb already drawn per-glyph; cursor after rsb:
     const afterRsb = prevRight + rsb;
     const afterTrack = afterRsb + tracking;
-    const afterKern = afterTrack + kdx;
     void x; void curLeft;
 
     // Mid-height band shared by tracking + kerning indicators.
@@ -339,20 +410,31 @@ function buildDebugOverlay(
       parts.push('</g>');
     }
 
-    // Kerning (only if non-zero).
-    if (k !== 0) {
-      const xa = Math.min(afterTrack, afterKern);
-      const xb = Math.max(afterTrack, afterKern);
+    // Kerning: draw whenever an entry exists for this pair (including
+    // value 0). Width clamped to a minimum so zero/near-zero deltas
+    // still read as a fat vertical bar at the bar's position. Carries
+    // `data-action="edit-kern"` / `data-pair` so the host can wire a
+    // click handler that jumps to the kerning entry in GlyphSetter.
+    const hasKernEntry = kerning && kerning[prev.char + cur.char] !== undefined;
+    if (hasKernEntry) {
+      const minW = Math.max(tickPx * 6, bandH * 0.6);
+      const span = Math.abs(kdx);
+      const xa = afterTrack + Math.min(0, kdx) - (span < minW ? (minW - span) * 0.5 : 0);
+      const w = Math.max(span, minW);
       const tip =
         `kerning '${prev.char}${cur.char}': ${k > 0 ? '+' : ''}${fmt(k)} font units\n` +
-        `applied dx: ${k > 0 ? '+' : ''}${fmt(kdx)} (\u00d7 scaleX ${fmt(scaleX)})`;
-      parts.push(`<g pointer-events="all"><title>${escapeXml(tip)}</title>`);
+        `applied dx: ${k > 0 ? '+' : ''}${fmt(kdx)} (\u00d7 scaleX ${fmt(scaleX)})\n` +
+        `click to edit`;
       parts.push(
-        `<rect x="${fmt(xa)}" y="${fmt(yMid - bandH * 0.75)}" width="${fmt(xb - xa)}" height="${fmt(bandH * 1.5)}" ` +
-          `fill="${kernColor}" fill-opacity="0.35" stroke="${kernColor}" stroke-width="${fmt(tickPx)}" />`,
+        `<g class="mz-edit-kern" data-action="edit-kern" data-pair="${escapeXml(prev.char + cur.char)}" pointer-events="all" style="cursor:pointer">` +
+          `<title>${escapeXml(tip)}</title>`,
       );
       parts.push(
-        `<text x="${fmt((xa + xb) / 2)}" y="${fmt(yMid + bandH * 1.4)}" ` +
+        `<rect x="${fmt(xa)}" y="${fmt(yMid - bandH * 0.75)}" width="${fmt(w)}" height="${fmt(bandH * 1.5)}" ` +
+          `fill="${kernColor}" fill-opacity="0.55" stroke="${kernColor}" stroke-width="${fmt(tickPx * 1.5)}" />`,
+      );
+      parts.push(
+        `<text x="${fmt(xa + w / 2)}" y="${fmt(yMid + bandH * 1.4)}" ` +
           `text-anchor="middle" font-size="${fmt(labelPx * 0.85)}" fill="${kernColor}">` +
           `${k > 0 ? '+' : ''}${fmt(k)}</text>`,
       );

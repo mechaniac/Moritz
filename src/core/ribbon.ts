@@ -96,6 +96,13 @@ export type RibbonOptions = {
 export type RibbonResult = {
   readonly polygon: Vec2[];
   readonly triangles: Triangle[];
+  /**
+   * Indices in `polygon` that correspond to user-defined spline0 anchors
+   * (one per anchor on the LEFT border + one per anchor on the RIGHT
+   * border). Callers can pass this to `relaxCurves` / `relaxTangents` as
+   * the pinned set so smoothing never drags an anchor off its position.
+   */
+  readonly anchorPolygonIndices: number[];
 };
 
 /** Per-segment chord LUT for arc-length-uniform sampling within a segment. */
@@ -203,7 +210,7 @@ function buildSpine1(
   brokenAnchorSubdiv: number,
   spineLengthAware: boolean,
   referenceLength: number | undefined,
-): SpineVertex[] {
+): { vertices: SpineVertex[]; anchorSpineIndices: number[] } {
   const lens = segments.map(segmentLength);
   const total = lens.reduce((s, x) => s + x, 0) || 1;
   const cum: number[] = [0];
@@ -268,7 +275,9 @@ function buildSpine1(
   };
 
   const out: SpineVertex[] = [];
+  const anchorSpineIndices: number[] = [];
   // Start anchor (segment 0, t=0).
+  anchorSpineIndices.push(out.length);
   out.push(sampleAt(0, 0));
   for (let s = 0; s < segments.length; s++) {
     // Interior subdivisions of segment s, arc-length-uniform via LUT,
@@ -287,13 +296,15 @@ function buildSpine1(
       const tPrev = tangentAt(segments[s]!, 1);
       const tNext = tangentAt(segments[s + 1]!, 0);
       const avg = unitOrZero({ x: tPrev.x + tNext.x, y: tPrev.y + tNext.y });
+      anchorSpineIndices.push(out.length);
       out.push(sampleAt(s, 1, avg));
     } else {
       // Final end anchor — straightforward.
+      anchorSpineIndices.push(out.length);
       out.push(sampleAt(s, 1));
     }
   }
-  return out;
+  return { vertices: out, anchorSpineIndices };
 }
 
 /** Build the two border polylines from spline1: left = p + half·n, right = p − half·n. */
@@ -375,7 +386,7 @@ export function triangulateStrokeRibbon(
   opts: RibbonOptions,
   widthMod?: WidthMod | null,
 ): RibbonResult {
-  if (stroke.vertices.length < 2) return { polygon: [], triangles: [] };
+  if (stroke.vertices.length < 2) return { polygon: [], triangles: [], anchorPolygonIndices: [] };
   const a = stroke.vertices[0]!.p;
   const z = stroke.vertices[stroke.vertices.length - 1]!.p;
   if (a.x === z.x && a.y === z.y) {
@@ -384,7 +395,7 @@ export function triangulateStrokeRibbon(
     );
   }
   const segments = strokeToSegments(stroke);
-  if (segments.length === 0) return { polygon: [], triangles: [] };
+  if (segments.length === 0) return { polygon: [], triangles: [], anchorPolygonIndices: [] };
 
   const profile = stroke.width ?? style.defaultWidth;
   const world = resolveWorldWidth(style);
@@ -397,7 +408,7 @@ export function triangulateStrokeRibbon(
   const breakFlags = stroke.vertices.map((v) => v.breakTangent === true);
 
   // ----- Hierarchy -----
-  const spine = buildSpine1(
+  const { vertices: spine, anchorSpineIndices } = buildSpine1(
     segments,
     stroke.vertices,
     spineSubdiv,
@@ -414,8 +425,10 @@ export function triangulateStrokeRibbon(
   const rights = subdivideBorder(rightBorder, borderSubdiv);
   // Invariant: equal-length parallel sequences, anchor-coincident at index 0 and N-1.
   if (lefts.length !== rights.length || lefts.length < 2) {
-    return { polygon: [], triangles: [] };
+    return { polygon: [], triangles: [], anchorPolygonIndices: [] };
   }
+  // Anchor positions in the subdivided border polylines.
+  const anchorBorderIndices = anchorSpineIndices.map((k) => k * (borderSubdiv + 1));
 
   // ----- Cap geometry -----
   const startV = spine[0]!;
@@ -567,7 +580,17 @@ export function triangulateStrokeRibbon(
     triangles.push([l0, r1, r0]);
   }
 
-  return { polygon, triangles };
+  // Anchor positions in the final polygon: one entry per anchor on each
+  // border. `leftIdx[k]` and `rightIdx[k]` map a border index to its
+  // polygon index after the right-side reversal that happened in the cap
+  // assembly above, so we just look them up here.
+  const anchorPolygonIndices: number[] = [];
+  for (const k of anchorBorderIndices) {
+    if (k >= 0 && k < leftIdx.length) anchorPolygonIndices.push(leftIdx[k]!);
+    if (k >= 0 && k < rightIdx.length) anchorPolygonIndices.push(rightIdx[k]!);
+  }
+
+  return { polygon, triangles, anchorPolygonIndices };
 }
 
 // ---------------------------------------------------------------------------
@@ -657,7 +680,7 @@ export function ribbonDebugSpline1(
   const profile = stroke.width ?? style.defaultWidth;
   const world = resolveWorldWidth(style);
   const breakFlags = stroke.vertices.map((v) => v.breakTangent === true);
-  const spine = buildSpine1(
+  const { vertices: spine } = buildSpine1(
     segments,
     stroke.vertices,
     Math.max(0, Math.floor(spineSubdiv)),

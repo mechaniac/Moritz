@@ -21,7 +21,7 @@
  * baseline that StyleSetter and TypeSetter modulate downstream.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { effectiveStyleForGlyph, outlineStroke, redistributePolygonEvenly, resolveWorldWidth, widthAt } from '../../core/stroke.js';
 import {
   closestPointT,
@@ -32,6 +32,7 @@ import {
 } from '../../core/bezier.js';
 import { triangulatePolygon } from '../../core/triangulate.js';
 import { ribbonDebugSpline0, ribbonDebugSpline1, triangulateStrokeRibbon } from '../../core/ribbon.js';
+import { relaxCurves, relaxSliderToParams, relaxTangents } from '../../core/relax.js';
 import { makeWidthMod } from '../../core/widthEffects.js';
 import { transformGlyph } from '../../core/transform.js';
 import {
@@ -48,15 +49,20 @@ import { measureFontMetrics, measureGlyphMetrics, measurePairAdvance } from './f
 import {
   addStroke,
   clearNormalOverride,
+  cloneStroke,
   deleteAnchor,
   deleteStroke,
+  flipStrokeHorizontal,
+  flipStrokeVertical,
   insertAnchor,
   makeCorner,
   makeSmooth,
   moveAnchor,
   moveHandle,
+  pasteStrokes,
   setBreakTangent,
   setNormalOverride,
+  strokeAnchorBBox,
   translateStroke,
 } from '../../core/glyphOps.js';
 import {
@@ -75,6 +81,22 @@ import { StyleControls } from '../stylesetter/StyleControls.js';
 import { builtInFonts } from '../../data/builtInFonts.js';
 
 const PADDING = 20;
+
+// Module-level clipboard for copied strokes. Persists across glyph switches
+// (the GlyphEditor remounts when `selectedGlyph` changes) and even module
+// switches, so the user can copy from one glyph and paste into another.
+// Held as already-cloned strokes so a future edit of the source doesn't
+// mutate the clipboard contents. `sourceCenter` is the box-center of the
+// glyph the strokes were copied from, in font units; on paste we shift
+// each stroke by (target.center - source.center) so the artwork keeps the
+// SAME position relative to the box centre regardless of differing widths.
+let strokeClipboard:
+  | { strokes: readonly Stroke[]; sourceCenter: { x: number; y: number } }
+  | null = null;
+
+// Editor zoom range used by both the slider and the wheel/pinch handlers.
+const MIN_EDITOR_SCALE = 1;
+const MAX_EDITOR_SCALE = 30;
 
 // Reference frame inside the glyph editor — a fixed square the user can
 // always see, so adjustments to a glyph's own box read as deviations from
@@ -172,13 +194,16 @@ function extractKerningFromReference(
 type Selection =
   | { kind: 'none' }
   | { kind: 'stroke'; strokeIdx: number }
-  | { kind: 'anchor'; strokeIdx: number; vIdx: number };
+  | { kind: 'anchor'; strokeIdx: number; vIdx: number }
+  | { kind: 'multi'; strokeIdxs: readonly number[] };
 
 type Drag =
   | { kind: 'anchor'; strokeIdx: number; vIdx: number }
   | { kind: 'handle'; strokeIdx: number; vIdx: number; side: 'in' | 'out' }
   | { kind: 'normal'; strokeIdx: number; vIdx: number }
-  | { kind: 'stroke'; strokeIdx: number; lastX: number; lastY: number; moved: boolean };
+  | { kind: 'stroke'; strokeIdx: number; lastX: number; lastY: number; moved: boolean }
+  | { kind: 'multi'; strokeIdxs: readonly number[]; lastX: number; lastY: number }
+  | { kind: 'marquee'; startX: number; startY: number; curX: number; curY: number };
 
 export function GlyphSetter(): JSX.Element {
   const font = useAppStore((s) => s.font);
@@ -193,7 +218,10 @@ export function GlyphSetter(): JSX.Element {
 
   const glyph = font.glyphs[selectedChar];
 
-  const [leftTab, setLeftTab] = useState<'glyphs' | 'kerning'>('glyphs');
+  // Lifted into the store so the StyleSetter "Add kerning with next"
+  // overlay can switch us to the kerning tab on click.
+  const leftTab = useAppStore((s) => s.glyphsetterTab);
+  const setLeftTab = useAppStore((s) => s.setGlyphsetterTab);
 
   return (
     <div
@@ -430,6 +458,12 @@ function GlyphEditor(props: {
 }): JSX.Element {
   const { char, glyph, onChange, view, font } = props;
   const [selection, setSelection] = useState<Selection>({ kind: 'none' });
+  // Live marquee rectangle while the user drags from empty canvas. In
+  // glyph-coord units; null when not marqueeing. Kept in React state so
+  // the visualization re-renders each frame.
+  const [marquee, setMarquee] = useState<
+    { x1: number; y1: number; x2: number; y2: number } | null
+  >(null);
   const SCALE = view.editorScale;
   const dragRef = useRef<Drag | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -491,6 +525,20 @@ function GlyphEditor(props: {
       onChange((g) => moveHandle(g, drag.strokeIdx, drag.vIdx, drag.side, p));
     } else if (drag.kind === 'normal') {
       onChange((g) => setNormalOverride(g, drag.strokeIdx, drag.vIdx, p));
+    } else if (drag.kind === 'marquee') {
+      drag.curX = p.x;
+      drag.curY = p.y;
+      setMarquee({ x1: drag.startX, y1: drag.startY, x2: p.x, y2: p.y });
+    } else if (drag.kind === 'multi') {
+      const dx = p.x - drag.lastX;
+      const dy = p.y - drag.lastY;
+      if (dx === 0 && dy === 0) return;
+      drag.lastX = p.x;
+      drag.lastY = p.y;
+      const idxs = drag.strokeIdxs;
+      onChange((g) =>
+        idxs.reduce((acc, i) => translateStroke(acc, i, dx, dy), g),
+      );
     } else {
       const dx = p.x - drag.lastX;
       const dy = p.y - drag.lastY;
@@ -502,10 +550,38 @@ function GlyphEditor(props: {
     }
   };
   const onPointerUp = (e: React.PointerEvent) => {
-    if (dragRef.current) {
-      (e.target as Element).releasePointerCapture?.(e.pointerId);
-      dragRef.current = null;
+    const drag = dragRef.current;
+    if (!drag) return;
+    (e.target as Element).releasePointerCapture?.(e.pointerId);
+    if (drag.kind === 'marquee') {
+      const minX = Math.min(drag.startX, drag.curX);
+      const maxX = Math.max(drag.startX, drag.curX);
+      const minY = Math.min(drag.startY, drag.curY);
+      const maxY = Math.max(drag.startY, drag.curY);
+      // Treat tiny zero-area drags as a plain background click → deselect.
+      const TINY = 1; // glyph units
+      if (maxX - minX < TINY && maxY - minY < TINY) {
+        setSelection({ kind: 'none' });
+      } else {
+        const hits: number[] = [];
+        for (let i = 0; i < glyph.strokes.length; i++) {
+          const bb = strokeAnchorBBox(glyph.strokes[i]!);
+          // AABB intersection (inclusive) — pick a stroke if its anchor
+          // bbox overlaps the marquee at all.
+          if (
+            bb.maxX >= minX && bb.minX <= maxX &&
+            bb.maxY >= minY && bb.minY <= maxY
+          ) {
+            hits.push(i);
+          }
+        }
+        if (hits.length === 0) setSelection({ kind: 'none' });
+        else if (hits.length === 1) setSelection({ kind: 'stroke', strokeIdx: hits[0]! });
+        else setSelection({ kind: 'multi', strokeIdxs: hits });
+      }
+      setMarquee(null);
     }
+    dragRef.current = null;
   };
 
   const startAnchorDrag = (
@@ -562,14 +638,40 @@ function GlyphEditor(props: {
   };
 
   const onAddStroke = () => onChange((g) => addStroke(g));
+  // Indices of all currently-selected strokes (for actions that act on the
+  // selection: copy, delete, flip). Includes the stroke under an anchor
+  // selection and every stroke in a multi-selection.
+  const selectedStrokeIdxs: readonly number[] = (() => {
+    if (selection.kind === 'stroke') return [selection.strokeIdx];
+    if (selection.kind === 'anchor') return [selection.strokeIdx];
+    if (selection.kind === 'multi') return selection.strokeIdxs;
+    return [];
+  })();
   const onDeleteSelected = () => {
     if (selection.kind === 'anchor') {
       onChange((g) => deleteAnchor(g, selection.strokeIdx, selection.vIdx));
       setSelection({ kind: 'none' });
-    } else if (selection.kind === 'stroke') {
-      onChange((g) => deleteStroke(g, selection.strokeIdx));
-      setSelection({ kind: 'none' });
+      return;
     }
+    if (selectedStrokeIdxs.length === 0) return;
+    // Delete from highest index downward so earlier indices stay valid.
+    const idxs = [...selectedStrokeIdxs].sort((a, b) => b - a);
+    onChange((g) => idxs.reduce((acc, i) => deleteStroke(acc, i), g));
+    setSelection({ kind: 'none' });
+  };
+  const onFlipH = () => {
+    if (selectedStrokeIdxs.length === 0) return;
+    const idxs = selectedStrokeIdxs;
+    onChange((g) =>
+      idxs.reduce((acc, i) => flipStrokeHorizontal(acc, i, g.box.w / 2), g),
+    );
+  };
+  const onFlipV = () => {
+    if (selectedStrokeIdxs.length === 0) return;
+    const idxs = selectedStrokeIdxs;
+    onChange((g) =>
+      idxs.reduce((acc, i) => flipStrokeVertical(acc, i, g.box.h / 2), g),
+    );
   };
 
   // Pointer-down on a stroke path:
@@ -594,6 +696,38 @@ function GlyphEditor(props: {
     }
     const p = toGlyph(e.clientX, e.clientY);
     if (!p) return;
+    // Shift-click toggles the stroke in/out of the multi-selection.
+    if (e.shiftKey) {
+      const cur =
+        selection.kind === 'multi'
+          ? selection.strokeIdxs
+          : selection.kind === 'stroke'
+            ? [selection.strokeIdx]
+            : selection.kind === 'anchor'
+              ? [selection.strokeIdx]
+              : [];
+      const set = new Set(cur);
+      if (set.has(strokeIdx)) set.delete(strokeIdx);
+      else set.add(strokeIdx);
+      const next = Array.from(set).sort((a, b) => a - b);
+      if (next.length === 0) setSelection({ kind: 'none' });
+      else if (next.length === 1) setSelection({ kind: 'stroke', strokeIdx: next[0]! });
+      else setSelection({ kind: 'multi', strokeIdxs: next });
+      (e.target as Element).setPointerCapture(e.pointerId);
+      return;
+    }
+    // If clicked stroke is part of an existing multi-selection, drag the
+    // whole group as one. Otherwise replace the selection.
+    if (selection.kind === 'multi' && selection.strokeIdxs.includes(strokeIdx)) {
+      dragRef.current = {
+        kind: 'multi',
+        strokeIdxs: selection.strokeIdxs,
+        lastX: p.x,
+        lastY: p.y,
+      };
+      (e.target as Element).setPointerCapture(e.pointerId);
+      return;
+    }
     setSelection({ kind: 'stroke', strokeIdx });
     dragRef.current = {
       kind: 'stroke',
@@ -609,6 +743,160 @@ function GlyphEditor(props: {
     selection.kind === 'anchor'
       ? glyph.strokes[selection.strokeIdx]?.vertices[selection.vIdx]
       : undefined;
+
+  // ---------- Copy / paste of strokes ---------------------------------------
+  // Ctrl/Cmd+C copies the currently selected stroke (or the stroke containing
+  // the selected anchor) into the module-level clipboard. Ctrl/Cmd+V appends
+  // clones of the clipboard's strokes to the current glyph and selects the
+  // first newly-pasted stroke. The clipboard outlives glyph switches so
+  // cross-glyph paste works.
+  const stateRef = useRef<{
+    selection: Selection;
+    glyph: Glyph;
+    onChange: (fn: (g: Glyph) => Glyph) => void;
+  }>({ selection, glyph, onChange });
+  useEffect(() => {
+    stateRef.current = { selection, glyph, onChange };
+  });
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      // Don't hijack copy/paste while the user is typing in a form field.
+      const t = e.target as HTMLElement | null;
+      if (t) {
+        const tag = t.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) {
+          return;
+        }
+      }
+      const k = e.key.toLowerCase();
+      if (k === 'c') {
+        const { selection: sel, glyph: g } = stateRef.current;
+        let idxs: number[] = [];
+        if (sel.kind === 'stroke') idxs = [sel.strokeIdx];
+        else if (sel.kind === 'anchor') idxs = [sel.strokeIdx];
+        else if (sel.kind === 'multi') idxs = [...sel.strokeIdxs];
+        const srcs = idxs
+          .map((i) => g.strokes[i])
+          .filter((s): s is Stroke => !!s);
+        if (srcs.length === 0) return;
+        // Clone now so a later edit of `src` doesn't mutate the clipboard.
+        strokeClipboard = {
+          strokes: srcs.map((s) => cloneStroke(s)),
+          sourceCenter: { x: g.box.w / 2, y: g.box.h / 2 },
+        };
+        e.preventDefault();
+      } else if (k === 'v') {
+        if (!strokeClipboard || strokeClipboard.strokes.length === 0) return;
+        const { onChange: oc, glyph: g } = stateRef.current;
+        const startIdx = g.strokes.length;
+        const count = strokeClipboard.strokes.length;
+        // Preserve position relative to the box centre: shift by the
+        // difference between target and source centres so the pasted
+        // artwork sits at the same offset from the centre.
+        const offset = {
+          x: g.box.w / 2 - strokeClipboard.sourceCenter.x,
+          y: g.box.h / 2 - strokeClipboard.sourceCenter.y,
+        };
+        const pasted = strokeClipboard.strokes;
+        oc((cur) => pasteStrokes(cur, pasted, offset));
+        if (count === 1) {
+          setSelection({ kind: 'stroke', strokeIdx: startIdx });
+        } else {
+          setSelection({
+            kind: 'multi',
+            strokeIdxs: Array.from({ length: count }, (_, i) => startIdx + i),
+          });
+        }
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // ---------- Wheel + pinch zoom -------------------------------------------
+  // Both bound natively (with passive:false) so we can preventDefault and
+  // suppress page-scroll / browser pinch-zoom while the pointer is over the
+  // canvas. The new scale is committed back into the store so the header
+  // slider reflects it.
+  const setView = props.setView;
+  const setViewRef = useRef(setView);
+  setViewRef.current = setView;
+  const scaleRef = useRef(SCALE);
+  scaleRef.current = SCALE;
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const clamp = (s: number): number =>
+      Math.min(MAX_EDITOR_SCALE, Math.max(MIN_EDITOR_SCALE, s));
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      // Exponential so a constant wheel speed feels like constant zoom rate.
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      const next = clamp(scaleRef.current * factor);
+      if (next === scaleRef.current) return;
+      setViewRef.current({ editorScale: next });
+    };
+    svg.addEventListener('wheel', onWheel, { passive: false });
+
+    // Pinch (touchscreen): track active pointers; while exactly two are
+    // down, scale by the ratio of current vs. initial finger distance.
+    const pts = new Map<number, { x: number; y: number }>();
+    let pinchStartDist = 0;
+    let pinchStartScale = 0;
+    const dist = (): number => {
+      const arr = Array.from(pts.values());
+      if (arr.length < 2) return 0;
+      const dx = arr[0]!.x - arr[1]!.x;
+      const dy = arr[0]!.y - arr[1]!.y;
+      return Math.hypot(dx, dy);
+    };
+    const onPDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2) {
+        pinchStartDist = dist();
+        pinchStartScale = scaleRef.current;
+        // Cancel any single-finger drag that may have started a frame ago.
+        dragRef.current = null;
+      }
+    };
+    const onPMove = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size >= 2 && pinchStartDist > 0) {
+        e.preventDefault();
+        const d = dist();
+        const next = clamp(pinchStartScale * (d / pinchStartDist));
+        if (next !== scaleRef.current) {
+          setViewRef.current({ editorScale: next });
+        }
+      }
+    };
+    const onPEnd = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      pts.delete(e.pointerId);
+      if (pts.size < 2) {
+        pinchStartDist = 0;
+      }
+    };
+    svg.addEventListener('pointerdown', onPDown);
+    svg.addEventListener('pointermove', onPMove, { passive: false });
+    svg.addEventListener('pointerup', onPEnd);
+    svg.addEventListener('pointercancel', onPEnd);
+    svg.addEventListener('pointerleave', onPEnd);
+
+    return () => {
+      svg.removeEventListener('wheel', onWheel);
+      svg.removeEventListener('pointerdown', onPDown);
+      svg.removeEventListener('pointermove', onPMove);
+      svg.removeEventListener('pointerup', onPEnd);
+      svg.removeEventListener('pointercancel', onPEnd);
+      svg.removeEventListener('pointerleave', onPEnd);
+    };
+  }, []);
 
   return (
     <>
@@ -681,13 +969,27 @@ function GlyphEditor(props: {
               // Newly inserted anchor lands at segIdx + 1; select it.
               setSelection({ kind: 'anchor', strokeIdx, vIdx: segIdx + 1 });
             }}
-            disabled={selection.kind === 'none'}
+            disabled={selection.kind !== 'anchor' && selection.kind !== 'stroke'}
             title="Insert a new anchor at the midpoint of the segment after the selected anchor (or in the middle of the selected stroke). Tip: alt-click a stroke to insert at the click point."
           >
             + Anchor
           </button>
-          <button onClick={onDeleteSelected} disabled={selection.kind === 'none'}>
+          <button onClick={onDeleteSelected} disabled={selectedStrokeIdxs.length === 0 && selection.kind !== 'anchor'}>
             − Delete selected
+          </button>
+          <button
+            onClick={onFlipH}
+            disabled={selectedStrokeIdxs.length === 0}
+            title="Mirror the selected stroke(s) around the glyph box's vertical centre line"
+          >
+            Flip H
+          </button>
+          <button
+            onClick={onFlipV}
+            disabled={selectedStrokeIdxs.length === 0}
+            title="Mirror the selected stroke(s) around the glyph box's horizontal centre line"
+          >
+            Flip V
           </button>
           {/* Reserved slot for the per-anchor 'Break tangent' control so
               the bar layout doesn't shift when an anchor is selected. */}
@@ -736,14 +1038,28 @@ function GlyphEditor(props: {
           onPointerUp={onPointerUp}
           onPointerLeave={onPointerUp}
         >
-          {/* background — clicking empty space deselects */}
+          {/* background — pointer-down starts a marquee selection. A
+              zero-area release (i.e. a plain click) just deselects. */}
           <rect
             x={0}
             y={0}
             width={viewW}
             height={viewH}
             fill="#ffffff"
-            onPointerDown={() => setSelection({ kind: 'none' })}
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              const p = toGlyph(e.clientX, e.clientY);
+              if (!p) return;
+              dragRef.current = {
+                kind: 'marquee',
+                startX: p.x,
+                startY: p.y,
+                curX: p.x,
+                curY: p.y,
+              };
+              setMarquee({ x1: p.x, y1: p.y, x2: p.x, y2: p.y });
+              (e.target as Element).setPointerCapture(e.pointerId);
+            }}
           />
           {/* default box — a fixed square reference frame so adjustments
               to the current glyph box read as deviations from default */}
@@ -1202,6 +1518,27 @@ function GlyphEditor(props: {
               })}
             </g>
           )}
+          {marquee && (() => {
+            // Marquee in screen coords: scale + translate from glyph coords.
+            const x = Math.min(marquee.x1, marquee.x2) * SCALE + originX;
+            const y = Math.min(marquee.y1, marquee.y2) * SCALE + originY;
+            const w = Math.abs(marquee.x2 - marquee.x1) * SCALE;
+            const h = Math.abs(marquee.y2 - marquee.y1) * SCALE;
+            return (
+              <rect
+                className="mz-marquee"
+                x={x}
+                y={y}
+                width={w}
+                height={h}
+                fill="rgba(29,111,230,0.10)"
+                stroke="#1d6fe6"
+                strokeDasharray="4 3"
+                strokeWidth={1}
+                pointerEvents="none"
+              />
+            );
+          })()}
         </svg>
       </div>
     </>
@@ -1832,6 +2169,30 @@ function KerningList(props: {
 }): JSX.Element {
   const { font, pairs, onChange, refFontFamily } = props;
   const [draft, setDraft] = useState('');
+  const focusPair = useAppStore((s) => s.kerningFocusPair);
+  const setFocusPair = useAppStore((s) => s.setKerningFocusPair);
+  const focusRef = useRef<HTMLDivElement | null>(null);
+  // Scroll the focused pair into view once it's mounted, then clear the
+  // focus signal so the highlight only fires for the explicit jump.
+  // Wrapped in two rAFs so the entry's DOM node is fully laid out before
+  // we scroll \u2014 KerningList may have just been mounted by the click
+  // that set `focusPair`, in which case the first paint hasn't happened.
+  useEffect(() => {
+    if (!focusPair) return;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        const node = focusRef.current;
+        if (node) node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      });
+    });
+    const timer = window.setTimeout(() => setFocusPair(undefined), 2500);
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+      window.clearTimeout(timer);
+    };
+  }, [focusPair, setFocusPair]);
 
   const entries = Object.entries(pairs).sort(([a], [b]) => a.localeCompare(b));
 
@@ -1968,14 +2329,30 @@ function KerningList(props: {
           </p>
         )}
         {entries.map(([pair, value]) => (
-          <KerningEntry
+          <div
             key={pair}
-            pair={pair}
-            value={value}
-            font={font}
-            onChange={(v) => setValue(pair, v)}
-            onRemove={() => remove(pair)}
-          />
+            ref={pair === focusPair ? focusRef : undefined}
+            className={pair === focusPair ? 'mz-kern-focus' : undefined}
+            style={
+              pair === focusPair
+                ? {
+                    outline: '3px solid #f0a020',
+                    outlineOffset: 2,
+                    borderRadius: 4,
+                    background: 'rgba(240,160,32,0.18)',
+                    animation: 'mzKernPulse 0.6s ease-out 3',
+                  }
+                : undefined
+            }
+          >
+            <KerningEntry
+              pair={pair}
+              value={value}
+              font={font}
+              onChange={(v) => setValue(pair, v)}
+              onRemove={() => remove(pair)}
+            />
+          </div>
         ))}
       </div>
     </div>
@@ -2331,7 +2708,8 @@ function StrokeOverlay(props: {
   const segs = strokeToSegments(stroke);
   const isStrokeSelected =
     (selection.kind === 'stroke' && selection.strokeIdx === strokeIdx) ||
-    (selection.kind === 'anchor' && selection.strokeIdx === strokeIdx);
+    (selection.kind === 'anchor' && selection.strokeIdx === strokeIdx) ||
+    (selection.kind === 'multi' && selection.strokeIdxs.includes(strokeIdx));
 
   const d = useMemo(() => {
     if (segs.length === 0) return '';
@@ -2550,6 +2928,7 @@ function triangulateForStyle(
   const mode = style.triMode ?? 'earcut';
   let polygon: readonly Vec2[];
   let triangles: readonly (readonly [number, number, number])[];
+  let pinned: ReadonlySet<number> = new Set();
   if (mode === 'ribbon-fixed' || mode === 'ribbon-density') {
     const r = triangulateStrokeRibbon(stroke, style, {
       spineSubdiv: ribbonSpineSubdivOf(style),
@@ -2561,12 +2940,23 @@ function triangulateForStyle(
     }, widthMod);
     polygon = r.polygon;
     triangles = r.triangles;
+    pinned = new Set(r.anchorPolygonIndices);
   } else {
     polygon = outlineStroke(stroke, style, widthMod);
     if (evenness > 0 && polygon.length >= 3) {
       polygon = redistributePolygonEvenly(polygon, evenness);
     }
     triangles = triangulatePolygon(polygon);
+  }
+  // Relax passes mirror svg.ts so the editor and the export show the
+  // same shape. Index list stays valid (vertex count + order preserved).
+  const rc = relaxSliderToParams(style.relaxCurves ?? 0);
+  if (rc.iterations > 0 && polygon.length >= 3) {
+    polygon = relaxCurves(polygon, pinned, rc.strength, rc.iterations);
+  }
+  const rt = relaxSliderToParams(style.relaxTangents ?? 0);
+  if (rt.iterations > 0 && polygon.length >= 3) {
+    polygon = relaxTangents(polygon, pinned, rt.strength, rt.iterations);
   }
   // Vertex evenness only runs in earcut mode; ribbon modes have their own
   // arc-length-uniform control (`ribbonSpread`) and resampling would break

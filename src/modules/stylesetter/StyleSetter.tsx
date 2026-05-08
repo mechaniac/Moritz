@@ -23,6 +23,10 @@ export function StyleSetter(): JSX.Element {
   const setStyle = useAppStore((s) => s.setStyleOverride);
   const setText = useAppStore((s) => s.setText);
   const setTextScale = useAppStore((s) => s.setTextScale);
+  const setKerning = useAppStore((s) => s.setKerning);
+  const setModule = useAppStore((s) => s.setModule);
+  const setGlyphsetterTab = useAppStore((s) => s.setGlyphsetterTab);
+  const setKerningFocusPair = useAppStore((s) => s.setKerningFocusPair);
 
   // Glyph-box / kerning debug overlay. Local to the StyleSetter view —
   // it's a viewing aid, not a style property, and never affects exports.
@@ -35,6 +39,34 @@ export function StyleSetter(): JSX.Element {
     () => effectiveStyle(font, styleOverrides),
     [font, styleOverrides],
   );
+
+  // Click delegation for the "+K" badges injected by `renderLayoutToSvg`.
+  // The SVG is rendered via `dangerouslySetInnerHTML`, so we listen on
+  // the wrapping React element and walk up to find the `data-pair`
+  // marker. On hit: write a zero-delta kerning entry, switch to the
+  // GlyphSetter, and ask the kerning panel to scroll/highlight it.
+  const handleSvgClick = (e: React.MouseEvent<HTMLDivElement>): void => {
+    const target = e.target as Element | null;
+    if (!target) return;
+    const editHit = target.closest('[data-action="edit-kern"]');
+    if (editHit) {
+      const pair = editHit.getAttribute('data-pair');
+      if (!pair) return;
+      setModule('glyphsetter');
+      setGlyphsetterTab('kerning');
+      setKerningFocusPair(pair);
+      return;
+    }
+    const hit = target.closest('[data-action="add-kern"]');
+    if (!hit) return;
+    const pair = hit.getAttribute('data-pair');
+    if (!pair || pair.length === 0) return;
+    if (font.kerning?.[pair] !== undefined) return;
+    setKerning({ ...(font.kerning ?? {}), [pair]: 0 });
+    setModule('glyphsetter');
+    setGlyphsetterTab('kerning');
+    setKerningFocusPair(pair);
+  };
 
   const svg = useMemo(() => {
     const merged = fontWithOverrides(font, styleOverrides);
@@ -129,6 +161,7 @@ export function StyleSetter(): JSX.Element {
           overflow: 'auto',
           padding: 16,
         }}
+        onClick={handleSvgClick}
         dangerouslySetInnerHTML={{ __html: svg }}
       />
     </div>

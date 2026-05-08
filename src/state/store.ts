@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import { defaultFont } from '../data/defaultFont.js';
+import { defaultFont, withCommonGlyphFallback } from '../data/defaultFont.js';
 import type { Font, Glyph, StyleSettings } from '../core/types.js';
 import { defaultGuides, type GuideSettings } from '../modules/glyphsetter/guides.js';
 
@@ -43,6 +43,13 @@ type AppState = {
   textScale: number;
   module: ModuleId;
   selectedGlyph: string;
+  /** Which left-column tab is active in the GlyphSetter. Lifted into the
+   *  store so other modules (e.g. StyleSetter) can switch to the kerning
+   *  panel programmatically. */
+  glyphsetterTab: 'glyphs' | 'kerning';
+  /** Optional pair (e.g. "AV") for the KerningList to scroll to and
+   *  visually highlight on next render. Single-shot: consumers clear it. */
+  kerningFocusPair: string | undefined;
   glyphView: GlyphViewOptions;
   setStyle: (patch: Partial<StyleSettings>) => void;
   /** Patch the StyleSetter overlay. Pass `undefined` for a key to clear it. */
@@ -52,6 +59,8 @@ type AppState = {
   setText: (text: string) => void;
   setTextScale: (s: number) => void;
   setModule: (module: ModuleId) => void;
+  setGlyphsetterTab: (tab: 'glyphs' | 'kerning') => void;
+  setKerningFocusPair: (pair: string | undefined) => void;
   selectGlyph: (char: string) => void;
   setGlyph: (char: string, glyph: Glyph) => void;
   updateSelectedGlyph: (fn: (g: Glyph) => Glyph) => void;
@@ -75,6 +84,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   textScale: 1,
   module: 'glyphsetter',
   selectedGlyph: firstGlyph,
+  glyphsetterTab: 'glyphs',
+  kerningFocusPair: undefined,
   glyphView: {
     showAnchors: true,
     showFillPreview: true,
@@ -106,6 +117,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setText: (text) => set({ text }),
   setTextScale: (textScale) => set({ textScale }),
   setModule: (module) => set({ module }),
+  setGlyphsetterTab: (glyphsetterTab) => set({ glyphsetterTab }),
+  setKerningFocusPair: (kerningFocusPair) => set({ kerningFocusPair }),
   selectGlyph: (char) => set({ selectedGlyph: char }),
   setGlyph: (char, glyph) =>
     set((s) => ({
@@ -136,7 +149,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     })),
   loadFont: (font, view) =>
     set((s) => ({
-      font,
+      font: withCommonGlyphFallback(font),
       // Loading a different font invalidates the StyleSetter overlay —
       // overrides are tied to the previous font's baseline.
       styleOverrides: {},

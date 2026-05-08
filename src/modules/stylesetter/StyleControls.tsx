@@ -115,6 +115,10 @@ function makeSectionPatch(
         p.ribbonSpineLengthAware = o.ribbonSpineLengthAware;
       if ((c.vertexEvenness ?? 0) !== (o.vertexEvenness ?? 0))
         p.vertexEvenness = o.vertexEvenness;
+      if ((c.relaxCurves ?? 0) !== (o.relaxCurves ?? 0))
+        p.relaxCurves = o.relaxCurves;
+      if ((c.relaxTangents ?? 0) !== (o.relaxTangents ?? 0))
+        p.relaxTangents = o.relaxTangents;
       return has(p);
     }
     case 'spacing': {
@@ -500,6 +504,26 @@ export function StyleControls(props: StyleControlsProps): JSX.Element {
             onChange={(v) => setStyle({ vertexEvenness: v })}
             defaultValue={original?.vertexEvenness ?? 0}
             tooltip="Earcut only: re-distribute outline polygon vertices uniformly along the perimeter before triangulating. (Ribbon modes are uniform by construction — use Spine/Shape subdiv instead.)"
+          />
+          <Slider
+            label="Relax curves"
+            min={0}
+            max={1}
+            step={0.01}
+            value={style.relaxCurves ?? 0}
+            onChange={(v) => setStyle({ relaxCurves: v })}
+            defaultValue={original?.relaxCurves ?? 0}
+            tooltip="Laplacian smoothing pass over the rendered shape polygon. Each non-anchor vertex moves toward the midpoint of its two neighbors. Anchor positions are pinned. Aggressive at high values — collapses the polygon toward a polygon connecting the anchors."
+          />
+          <Slider
+            label="Relax tangents"
+            min={0}
+            max={1}
+            step={0.01}
+            value={style.relaxTangents ?? 0}
+            onChange={(v) => setStyle({ relaxTangents: v })}
+            defaultValue={original?.relaxTangents ?? 0}
+            tooltip="Equalizes edge lengths between consecutive non-anchor vertices by sliding each one toward the chord midpoint of its two neighbors. Removes perpendicular wobble and uneven tangent jumps caused by extreme width / world settings. Anchor positions stay pinned."
           />
         </Section>
       )}

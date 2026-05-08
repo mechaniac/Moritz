@@ -150,6 +150,115 @@ export function addStroke(g: Glyph): Glyph {
   return { ...g, strokes: [...g.strokes, s] };
 }
 
+/** Deep-immutable clone of a stroke with a fresh id. Used by copy/paste so
+ *  the pasted stroke is independent of the source and never collides on id. */
+export function cloneStroke(s: Stroke, offset: Vec2 = ZERO): Stroke {
+  return {
+    ...s,
+    id: newStrokeId(),
+    vertices: s.vertices.map((v) => ({
+      p: { x: v.p.x + offset.x, y: v.p.y + offset.y },
+      inHandle: { x: v.inHandle.x, y: v.inHandle.y },
+      outHandle: { x: v.outHandle.x, y: v.outHandle.y },
+      ...(v.breakTangent ? { breakTangent: true as const } : {}),
+      ...(v.normalOverride
+        ? { normalOverride: { x: v.normalOverride.x, y: v.normalOverride.y } }
+        : {}),
+    })),
+  };
+}
+
+/** Append clones of `strokes` to `g`. Each clone gets a fresh id. */
+export function pasteStrokes(
+  g: Glyph,
+  strokes: readonly Stroke[],
+  offset: Vec2 = ZERO,
+): Glyph {
+  if (strokes.length === 0) return g;
+  return {
+    ...g,
+    strokes: [...g.strokes, ...strokes.map((s) => cloneStroke(s, offset))],
+  };
+}
+
+/** Mirror a stroke across an axis through `cx`/`cy`. Vertex positions are
+ *  reflected around the axis; handles (regular displacement vectors) get
+ *  the mirror's negated component. `normalOverride` is a *pseudo-vector*
+ *  (a normal direction): under a 2D reflection its effective angle
+ *  reflects across the mirror axis, which corresponds to negating the
+ *  *other* component from the one we negate on the handles — otherwise
+ *  the override's frame angle (relative to the new default normal)
+ *  becomes the supplement of the original, and the renderer twists the
+ *  ribbon along the segment. `breakTangent` and the stroke id are
+ *  preserved. */
+export function flipStrokeHorizontal(
+  g: Glyph,
+  strokeIdx: number,
+  cx: number,
+): Glyph {
+  const s = g.strokes[strokeIdx];
+  if (!s) return g;
+  const next: Stroke = {
+    ...s,
+    vertices: s.vertices.map((v) => ({
+      ...v,
+      p: { x: 2 * cx - v.p.x, y: v.p.y },
+      inHandle: { x: -v.inHandle.x, y: v.inHandle.y },
+      outHandle: { x: -v.outHandle.x, y: v.outHandle.y },
+      ...(v.normalOverride
+        ? { normalOverride: { x: v.normalOverride.x, y: -v.normalOverride.y } }
+        : {}),
+    })),
+  };
+  return replaceStroke(g, strokeIdx, next);
+}
+
+export function flipStrokeVertical(
+  g: Glyph,
+  strokeIdx: number,
+  cy: number,
+): Glyph {
+  const s = g.strokes[strokeIdx];
+  if (!s) return g;
+  const next: Stroke = {
+    ...s,
+    vertices: s.vertices.map((v) => ({
+      ...v,
+      p: { x: v.p.x, y: 2 * cy - v.p.y },
+      inHandle: { x: v.inHandle.x, y: -v.inHandle.y },
+      outHandle: { x: v.outHandle.x, y: -v.outHandle.y },
+      ...(v.normalOverride
+        ? { normalOverride: { x: -v.normalOverride.x, y: v.normalOverride.y } }
+        : {}),
+    })),
+  };
+  return replaceStroke(g, strokeIdx, next);
+}
+
+/** Conservative anchor-based bbox of a stroke: tight enough for marquee
+ *  hit-testing, cheap to compute. Ignores handle protrusions (a Bézier may
+ *  bow slightly outside the convex hull of its anchors), which keeps the
+ *  test predictable for users dragging a tiny lasso around an anchor. */
+export function strokeAnchorBBox(s: Stroke): {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+} {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const v of s.vertices) {
+    if (v.p.x < minX) minX = v.p.x;
+    if (v.p.y < minY) minY = v.p.y;
+    if (v.p.x > maxX) maxX = v.p.x;
+    if (v.p.y > maxY) maxY = v.p.y;
+  }
+  if (!isFinite(minX)) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+  return { minX, minY, maxX, maxY };
+}
+
 /** Symmetric handle drag: when one handle moves, mirror the other. */
 export function setSymmetricHandle(
   g: Glyph,

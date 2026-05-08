@@ -833,6 +833,293 @@ const SEMICOLON: Glyph = glyph(
   { w: 50, h: BOX_H },
 );
 
+// ---------- Common comic-book punctuation & symbols ------------------------
+//
+// A wider set typical for English-language comic lettering: quotes, dashes,
+// brackets, math/currency, and the assorted ASCII symbols that show up in
+// SFX, captions, and contractions ("YOU'LL", "—WHAT?!", "@#$&!"). Designed
+// in the same 100×140 box as the letters; widths kept tight.
+//
+// These also serve as the "fallback pack" merged into every font that ships
+// without them (see `commonGlyphFallback` in builtInFonts.ts).
+
+// Short horizontal stroke at a given y (used for dashes, equals, +).
+const hStroke = (x1: number, x2: number, y: number): Stroke =>
+  stroke([corner(x1, y), corner(x2, y)]);
+
+// Quote/apostrophe shapes: a tiny tick descending from the cap line.
+const apostropheStroke = (cx: number): Stroke =>
+  stroke([corner(cx + 4, CAP), corner(cx - 3, CAP + 18)]);
+const backtickStroke = (cx: number): Stroke =>
+  stroke([corner(cx - 4, CAP), corner(cx + 3, CAP + 18)]);
+
+const APOSTROPHE: Glyph = glyph("'", [apostropheStroke(28)], { w: 45, h: BOX_H });
+const BACKTICK: Glyph = glyph('`', [backtickStroke(25)], { w: 45, h: BOX_H });
+const RSQUO: Glyph = glyph('\u2019', [apostropheStroke(28)], { w: 45, h: BOX_H });
+const LSQUO: Glyph = glyph('\u2018', [backtickStroke(25)], { w: 45, h: BOX_H });
+const DQUOTE: Glyph = glyph(
+  '"',
+  [apostropheStroke(20), apostropheStroke(45)],
+  { w: 70, h: BOX_H },
+);
+const RDQUO: Glyph = glyph(
+  '\u201d',
+  [apostropheStroke(20), apostropheStroke(45)],
+  { w: 70, h: BOX_H },
+);
+const LDQUO: Glyph = glyph(
+  '\u201c',
+  [backtickStroke(20), backtickStroke(45)],
+  { w: 70, h: BOX_H },
+);
+
+const HYPHEN: Glyph = glyph('-', [hStroke(15, 45, BASELINE - 35)], { w: 60, h: BOX_H });
+const ENDASH: Glyph = glyph('\u2013', [hStroke(10, 60, BASELINE - 35)], { w: 75, h: BOX_H });
+const EMDASH: Glyph = glyph('\u2014', [hStroke(5, 80, BASELINE - 35)], { w: 90, h: BOX_H });
+const UNDERSCORE: Glyph = glyph('_', [hStroke(5, 75, BASELINE + 10)], { w: 85, h: BOX_H });
+
+const LPAREN: Glyph = glyph(
+  '(',
+  [stroke([corner(40, CAP - 5), corner(15, BASELINE / 2 + CAP / 2), corner(40, BASELINE + 10)])],
+  { w: 50, h: BOX_H },
+);
+const RPAREN: Glyph = glyph(
+  ')',
+  [stroke([corner(15, CAP - 5), corner(40, BASELINE / 2 + CAP / 2), corner(15, BASELINE + 10)])],
+  { w: 50, h: BOX_H },
+);
+const LBRACKET: Glyph = glyph(
+  '[',
+  [
+    stroke([
+      corner(40, CAP - 5),
+      corner(15, CAP - 5),
+      corner(15, BASELINE + 10),
+      corner(40, BASELINE + 10),
+    ]),
+  ],
+  { w: 50, h: BOX_H },
+);
+const RBRACKET: Glyph = glyph(
+  ']',
+  [
+    stroke([
+      corner(10, CAP - 5),
+      corner(35, CAP - 5),
+      corner(35, BASELINE + 10),
+      corner(10, BASELINE + 10),
+    ]),
+  ],
+  { w: 50, h: BOX_H },
+);
+const LBRACE: Glyph = glyph(
+  '{',
+  [
+    stroke([
+      corner(45, CAP - 5),
+      corner(28, CAP - 5),
+      corner(28, BASELINE / 2 + CAP / 2 - 5),
+      corner(15, BASELINE / 2 + CAP / 2),
+      corner(28, BASELINE / 2 + CAP / 2 + 5),
+      corner(28, BASELINE + 10),
+      corner(45, BASELINE + 10),
+    ]),
+  ],
+  { w: 55, h: BOX_H },
+);
+const RBRACE: Glyph = glyph(
+  '}',
+  [
+    stroke([
+      corner(10, CAP - 5),
+      corner(27, CAP - 5),
+      corner(27, BASELINE / 2 + CAP / 2 - 5),
+      corner(40, BASELINE / 2 + CAP / 2),
+      corner(27, BASELINE / 2 + CAP / 2 + 5),
+      corner(27, BASELINE + 10),
+      corner(10, BASELINE + 10),
+    ]),
+  ],
+  { w: 55, h: BOX_H },
+);
+
+const SLASH: Glyph = glyph(
+  '/',
+  [stroke([corner(15, BASELINE + 5), corner(55, CAP - 5)])],
+  { w: 70, h: BOX_H },
+);
+const BACKSLASH: Glyph = glyph(
+  '\\',
+  [stroke([corner(15, CAP - 5), corner(55, BASELINE + 5)])],
+  { w: 70, h: BOX_H },
+);
+const PIPE: Glyph = glyph(
+  '|',
+  [stroke([corner(25, CAP - 5), corner(25, BASELINE + 5)])],
+  { w: 50, h: BOX_H },
+);
+
+// Asterisk: 6-pointed star centred near cap height (typical comic position).
+const ASTERISK: Glyph = glyph(
+  '*',
+  [
+    stroke([corner(40, CAP), corner(40, CAP + 30)]),
+    stroke([corner(15, CAP + 7), corner(65, CAP + 23)]),
+    stroke([corner(15, CAP + 23), corner(65, CAP + 7)]),
+  ],
+  { w: 80, h: BOX_H },
+);
+
+// Ampersand: simplified two-loop skeleton.
+const AMPERSAND: Glyph = glyph(
+  '&',
+  [
+    stroke([
+      corner(70, BASELINE - 30),
+      corner(35, CAP),
+      corner(20, CAP + 22),
+      corner(50, BASELINE / 2 + CAP / 2),
+      corner(20, BASELINE - 22),
+      corner(45, BASELINE),
+      corner(75, BASELINE - 28),
+    ]),
+  ],
+  { w: 85, h: BOX_H },
+);
+
+// At-sign: outer hook around an inner 'a' pocket.
+const AT: Glyph = glyph(
+  '@',
+  [
+    stroke([
+      corner(65, CAP + 8),
+      corner(20, CAP + 15),
+      corner(15, BASELINE - 15),
+      corner(55, BASELINE - 5),
+      corner(65, BASELINE - 18),
+      corner(58, BASELINE / 2 + CAP / 2 - 5),
+      corner(40, BASELINE / 2 + CAP / 2 - 10),
+      corner(32, BASELINE / 2 + CAP / 2 + 8),
+      corner(55, BASELINE / 2 + CAP / 2 + 5),
+    ]),
+  ],
+  { w: 85, h: BOX_H },
+);
+
+// Hash: 4 slanted strokes.
+const HASH: Glyph = glyph(
+  '#',
+  [
+    stroke([corner(25, CAP + 5), corner(15, BASELINE - 5)]),
+    stroke([corner(55, CAP + 5), corner(45, BASELINE - 5)]),
+    hStroke(8, 60, CAP + 25),
+    hStroke(6, 58, CAP + 50),
+  ],
+  { w: 75, h: BOX_H },
+);
+
+// Dollar: S-curve with vertical bar through it.
+const DOLLAR: Glyph = glyph(
+  '$',
+  [
+    stroke([
+      corner(60, CAP + 5),
+      corner(15, CAP),
+      corner(15, BASELINE / 2 + CAP / 2 - 5),
+      corner(60, BASELINE / 2 + CAP / 2 + 5),
+      corner(60, BASELINE - 5),
+      corner(15, BASELINE - 10),
+    ]),
+    stroke([corner(40, CAP - 8), corner(40, BASELINE + 8)]),
+  ],
+  { w: 75, h: BOX_H },
+);
+
+// Percent: small circle, slash, small circle.
+const PERCENT: Glyph = glyph(
+  '%',
+  [
+    dotStroke(22, CAP + 15, 12),
+    dotStroke(62, BASELINE - 15, 12),
+    stroke([corner(70, CAP + 5), corner(15, BASELINE - 5)]),
+  ],
+  { w: 85, h: BOX_H },
+);
+
+const PLUS: Glyph = glyph(
+  '+',
+  [
+    hStroke(15, 55, BASELINE / 2 + CAP / 2),
+    stroke([corner(35, BASELINE / 2 + CAP / 2 - 20), corner(35, BASELINE / 2 + CAP / 2 + 20)]),
+  ],
+  { w: 70, h: BOX_H },
+);
+const EQUALS: Glyph = glyph(
+  '=',
+  [hStroke(15, 55, BASELINE / 2 + CAP / 2 - 10), hStroke(15, 55, BASELINE / 2 + CAP / 2 + 10)],
+  { w: 70, h: BOX_H },
+);
+const LESS: Glyph = glyph(
+  '<',
+  [
+    stroke([
+      corner(55, BASELINE / 2 + CAP / 2 - 22),
+      corner(15, BASELINE / 2 + CAP / 2),
+      corner(55, BASELINE / 2 + CAP / 2 + 22),
+    ]),
+  ],
+  { w: 70, h: BOX_H },
+);
+const GREATER: Glyph = glyph(
+  '>',
+  [
+    stroke([
+      corner(15, BASELINE / 2 + CAP / 2 - 22),
+      corner(55, BASELINE / 2 + CAP / 2),
+      corner(15, BASELINE / 2 + CAP / 2 + 22),
+    ]),
+  ],
+  { w: 70, h: BOX_H },
+);
+const TILDE: Glyph = glyph(
+  '~',
+  [
+    stroke([
+      corner(10, BASELINE / 2 + CAP / 2 + 5),
+      corner(25, BASELINE / 2 + CAP / 2 - 8),
+      corner(45, BASELINE / 2 + CAP / 2 + 8),
+      corner(60, BASELINE / 2 + CAP / 2 - 5),
+    ]),
+  ],
+  { w: 70, h: BOX_H },
+);
+const CARET: Glyph = glyph(
+  '^',
+  [stroke([corner(15, CAP + 18), corner(35, CAP), corner(55, CAP + 18)])],
+  { w: 70, h: BOX_H },
+);
+
+// Ellipsis: three baseline dots, identical spacing to a period triple.
+const ELLIPSIS: Glyph = glyph(
+  '\u2026',
+  [
+    dotStroke(15, BASELINE - 2, 5),
+    dotStroke(45, BASELINE - 2, 5),
+    dotStroke(75, BASELINE - 2, 5),
+  ],
+  { w: 95, h: BOX_H },
+);
+
+const commonPunctuation: Glyph[] = [
+  APOSTROPHE, BACKTICK, RSQUO, LSQUO, DQUOTE, RDQUO, LDQUO,
+  HYPHEN, ENDASH, EMDASH, UNDERSCORE,
+  LPAREN, RPAREN, LBRACKET, RBRACKET, LBRACE, RBRACE,
+  SLASH, BACKSLASH, PIPE,
+  ASTERISK, AMPERSAND, AT, HASH, DOLLAR, PERCENT,
+  PLUS, EQUALS, LESS, GREATER, TILDE, CARET,
+  ELLIPSIS,
+];
+
 // ---------- Font ------------------------------------------------------------
 
 const allGlyphs: Glyph[] = [
@@ -840,6 +1127,7 @@ const allGlyphs: Glyph[] = [
   ...lowercase,
   ...digits,
   PERIOD, COMMA, COLON, SEMICOLON, QUESTION, EXCLAIM,
+  ...commonPunctuation,
 ];
 
 const glyphsRecord: Record<string, Glyph> = {};
@@ -876,3 +1164,31 @@ export const defaultFont: Font = {
   glyphs: glyphsRecord,
   kerning: KERNING,
 };
+
+// ---------- Common-glyph fallback ------------------------------------------
+
+/** The set of glyph chars that every font should expose. Drawn from the base
+ *  font so any imported/legacy font automatically inherits a sane shape. */
+export const commonGlyphChars: readonly string[] = Object.freeze(
+  commonPunctuation.map((g) => g.char),
+);
+
+/**
+ * Return a `Font` whose `glyphs` map contains every char from
+ * `defaultFont.glyphs` that the input was missing. The font's own glyphs
+ * always win — this only fills holes, it never overwrites. Used so that
+ * fonts predating the common-punctuation pack (or imported from older
+ * `.moritz.json` files) still letter contractions like "YOU'LL" without
+ * a manual edit pass.
+ */
+export function withCommonGlyphFallback(font: Font): Font {
+  let added = false;
+  const merged: Record<string, Glyph> = { ...font.glyphs };
+  for (const ch of Object.keys(defaultFont.glyphs)) {
+    if (merged[ch] === undefined) {
+      merged[ch] = defaultFont.glyphs[ch]!;
+      added = true;
+    }
+  }
+  return added ? { ...font, glyphs: merged } : font;
+}
