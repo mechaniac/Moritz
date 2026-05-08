@@ -24,9 +24,10 @@ export type SvgRenderOptions = {
    *   - each glyph's advance box (translucent stroked rect)
    *   - the glyph character drawn small in the corner of its box
    *   - left/right side-bearing markers (vertical ticks at the box edges)
-   *   - kerning offsets between adjacent glyphs (a labeled colored bar
-   *     spanning the [previous-cursor, applied-kern] range; positive
-   *     kerns are blue, negative kerns are red)
+   *   - kerning offsets between adjacent glyphs (a labeled red bar
+   *     spanning the [previous-cursor, applied-kern] range)
+   *   - each overlay element carries a <title> child so hovering it in
+   *     a browser surfaces the underlying values as a native tooltip
    * Useful in StyleSetter to inspect spacing without polluting exports.
    */
   readonly debugOverlay?: boolean;
@@ -196,16 +197,15 @@ function buildDebugOverlay(
   const wrap = scale === 1 ? null : `scale(${fmt(scale)})`;
   parts.push(
     wrap
-      ? `<g transform="${wrap}" fill="none" pointer-events="none" font-family="monospace">`
-      : `<g fill="none" pointer-events="none" font-family="monospace">`,
+      ? `<g transform="${wrap}" fill="none" font-family="monospace">`
+      : `<g fill="none" font-family="monospace">`,
   );
 
   const boxStroke = '#888';
   const boxFill = 'rgba(140,140,140,0.04)';
   const labelFill = '#888';
   const sbStroke = '#bbb';
-  const kernPos = '#1d6fe6';
-  const kernNeg = '#e0457b';
+  const kernColor = '#e0457b';
 
   // Pick a label size that scales with the average glyph; cap so it stays
   // readable but unobtrusive.
@@ -218,17 +218,25 @@ function buildDebugOverlay(
   const tickPx = Math.max(0.5, avgBoxH * 0.005);
 
   // 1) Per-glyph: advance box + side-bearing ticks + char label.
+  // Each glyph wrapped in its own <g> with a <title> so hovering anywhere
+  // on the box/ticks/label in a browser shows a native tooltip.
   for (const pg of layoutResult.glyphs) {
     const x = pg.origin.x + padding;
     const y = pg.origin.y + padding;
     const w = pg.glyph.box.w;
     const h = pg.glyph.box.h;
+    const lsb = pg.glyph.sidebearings?.left ?? 0;
+    const rsb = pg.glyph.sidebearings?.right ?? 0;
+    const tip =
+      `'${pg.char}' #${pg.instanceIndex}\n` +
+      `box: ${fmt(w)} \u00d7 ${fmt(h)}\n` +
+      `origin: (${fmt(pg.origin.x)}, ${fmt(pg.origin.y)})\n` +
+      `sidebearings: L ${fmt(lsb)}  R ${fmt(rsb)}`;
+    parts.push(`<g pointer-events="all"><title>${escapeXml(tip)}</title>`);
     parts.push(
       `<rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(w)}" height="${fmt(h)}" ` +
         `fill="${boxFill}" stroke="${boxStroke}" stroke-width="${fmt(tickPx)}" />`,
     );
-    const lsb = pg.glyph.sidebearings?.left ?? 0;
-    const rsb = pg.glyph.sidebearings?.right ?? 0;
     if (lsb !== 0) {
       parts.push(
         `<line x1="${fmt(x - lsb)}" y1="${fmt(y)}" x2="${fmt(x - lsb)}" y2="${fmt(y + h)}" ` +
@@ -246,6 +254,7 @@ function buildDebugOverlay(
       `<text x="${fmt(x + labelPx * 0.3)}" y="${fmt(y + labelPx * 1.05)}" ` +
         `font-size="${fmt(labelPx)}" fill="${labelFill}">${escapeXml(pg.char)}</text>`,
     );
+    parts.push('</g>');
   }
 
   // 2) Kerning between adjacent glyphs on the same baseline (same y).
@@ -260,7 +269,6 @@ function buildDebugOverlay(
       const k = kerning[prev.char + cur.char];
       if (k === undefined || k === 0) continue;
       const dx = k * scaleX;
-      const color = k > 0 ? kernPos : kernNeg;
       // Draw a horizontal bar at mid-height between the two boxes,
       // spanning the kern delta. Anchor at the right edge of the prev
       // glyph's advance box (= where the cursor was BEFORE the kern).
@@ -269,15 +277,20 @@ function buildDebugOverlay(
       const x1 = x0 + dx;
       const xa = Math.min(x0, x1);
       const xb = Math.max(x0, x1);
+      const tip =
+        `kerning '${prev.char}${cur.char}': ${k > 0 ? '+' : ''}${fmt(k)} font units\n` +
+        `applied dx: ${k > 0 ? '+' : ''}${fmt(dx)} (\u00d7 scaleX ${fmt(scaleX)})`;
+      parts.push(`<g pointer-events="all"><title>${escapeXml(tip)}</title>`);
       parts.push(
         `<rect x="${fmt(xa)}" y="${fmt(yMid - tickPx * 2)}" width="${fmt(xb - xa)}" height="${fmt(tickPx * 4)}" ` +
-          `fill="${color}" fill-opacity="0.35" stroke="${color}" stroke-width="${fmt(tickPx)}" />`,
+          `fill="${kernColor}" fill-opacity="0.35" stroke="${kernColor}" stroke-width="${fmt(tickPx)}" />`,
       );
       parts.push(
         `<text x="${fmt((xa + xb) / 2)}" y="${fmt(yMid - tickPx * 4)}" ` +
-          `text-anchor="middle" font-size="${fmt(labelPx * 0.85)}" fill="${color}">` +
+          `text-anchor="middle" font-size="${fmt(labelPx * 0.85)}" fill="${kernColor}">` +
           `${k > 0 ? '+' : ''}${fmt(k)}</text>`,
       );
+      parts.push('</g>');
     }
   }
 
