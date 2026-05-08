@@ -89,8 +89,10 @@ export function deleteFont(id: string): void {
  * Dev-only: PUT the JSON to the dev plugin so it gets written to
  * `src/data/fonts/<id>.json`. Failures are logged but never thrown — the
  * UI keeps working from localStorage if the plugin isn't reachable.
+ * Exported so callers (e.g. Export button) can mirror downloads into
+ * the repo's tracked font folder during development.
  */
-async function writeFontFile(id: string, body: string): Promise<void> {
+export async function writeFontFile(id: string, body: string): Promise<void> {
   try {
     const res = await fetch(`/__moritz/fonts/${encodeURIComponent(id)}`, {
       method: 'PUT',
