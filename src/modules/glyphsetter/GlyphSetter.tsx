@@ -1624,6 +1624,20 @@ function Inspector(props: {
               Import (all glyphs)
             </button>
           </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (!confirm('Set left and right side bearings to 0 for ALL glyphs in this font?')) return;
+              updateAllGlyphs((g) => ({
+                ...g,
+                sidebearings: { left: 0, right: 0 },
+              }));
+            }}
+            title="Zero out the left and right side bearings on every glyph. Useful when you want spacing to come purely from box width / tracking / kerning."
+            style={{ width: '100%', fontSize: 11, padding: '2px 6px', marginBottom: 4 }}
+          >
+            Zero all bearings
+          </button>
           <NumSlider
             label="Box width"
             min={20}

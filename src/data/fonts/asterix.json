@@ -107,8 +107,8 @@
           }
         ],
         "sidebearings": {
-          "left": 8,
-          "right": 8
+          "left": 0,
+          "right": 0
         }
       },
       "1": {
@@ -182,8 +182,8 @@
           }
         ],
         "sidebearings": {
-          "left": 16,
-          "right": 12
+          "left": 0,
+          "right": 0
         }
       },
       "2": {
@@ -257,8 +257,8 @@
           }
         ],
         "sidebearings": {
-          "left": 9,
-          "right": 7
+          "left": 0,
+          "right": 0
         }
       },
       "3": {
@@ -348,8 +348,8 @@
           }
         ],
         "sidebearings": {
-          "left": 9,
-          "right": 9
+          "left": 0,
+          "right": 0
         }
       },
       "4": {
@@ -442,8 +442,8 @@
           }
         ],
         "sidebearings": {
-          "left": 4,
-          "right": 6
+          "left": 0,
+          "right": 0
         }
       },
       "5": {
@@ -532,8 +532,8 @@
           }
         ],
         "sidebearings": {
-          "left": 11,
-          "right": 8
+          "left": 0,
+          "right": 0
         }
       },
       "6": {
@@ -607,8 +607,8 @@
           }
         ],
         "sidebearings": {
-          "left": 8,
-          "right": 6
+          "left": 0,
+          "right": 0
         }
       },
       "7": {
@@ -668,8 +668,8 @@
           }
         ],
         "sidebearings": {
-          "left": 9,
-          "right": 7
+          "left": 0,
+          "right": 0
         }
       },
       "8": {
@@ -770,8 +770,8 @@
           }
         ],
         "sidebearings": {
-          "left": 7,
-          "right": 7
+          "left": 0,
+          "right": 0
         }
       },
       "9": {
@@ -845,8 +845,8 @@
           }
         ],
         "sidebearings": {
-          "left": 6,
-          "right": 8
+          "left": 0,
+          "right": 0
         }
       },
       "A": {
@@ -970,8 +970,8 @@
           }
         ],
         "sidebearings": {
-          "left": 1,
-          "right": 1
+          "left": 0,
+          "right": 0
         }
       },
       "B": {
@@ -1142,8 +1142,8 @@
           }
         ],
         "sidebearings": {
-          "left": 11,
-          "right": 5
+          "left": 0,
+          "right": 0
         }
       },
       "C": {
@@ -1234,8 +1234,8 @@
           }
         ],
         "sidebearings": {
-          "left": 6,
-          "right": 5
+          "left": 0,
+          "right": 0
         }
       },
       "D": {
@@ -1349,8 +1349,8 @@
           }
         ],
         "sidebearings": {
-          "left": 11,
-          "right": 7
+          "left": 0,
+          "right": 0
         }
       },
       "E": {
@@ -1518,8 +1518,8 @@
           }
         ],
         "sidebearings": {
-          "left": 11,
-          "right": 6
+          "left": 0,
+          "right": 0
         },
         "baselineOffset": -2
       },
@@ -1655,8 +1655,8 @@
           }
         ],
         "sidebearings": {
-          "left": 11,
-          "right": 1
+          "left": 0,
+          "right": 0
         }
       },
       "G": {
@@ -1761,8 +1761,8 @@
           }
         ],
         "sidebearings": {
-          "left": 6,
-          "right": 8
+          "left": 0,
+          "right": 0
         }
       },
       "H": {
@@ -1885,8 +1885,8 @@
           }
         ],
         "sidebearings": {
-          "left": 11,
-          "right": 11
+          "left": 0,
+          "right": 0
         }
       },
       "I": {
@@ -1953,8 +1953,8 @@
           }
         ],
         "sidebearings": {
-          "left": 8,
-          "right": 8
+          "left": 0,
+          "right": 0
         }
       },
       "J": {
@@ -2077,8 +2077,8 @@
           }
         ],
         "sidebearings": {
-          "left": 2,
-          "right": 10
+          "left": 0,
+          "right": 0
         }
       },
       "K": {
@@ -2210,8 +2210,8 @@
           }
         ],
         "sidebearings": {
-          "left": 12,
-          "right": 1
+          "left": 0,
+          "right": 0
         }
       },
       "L": {
@@ -2305,7 +2305,7 @@
           }
         ],
         "sidebearings": {
-          "left": 11,
+          "left": 0,
           "right": 0
         }
       },
@@ -2485,8 +2485,8 @@
           }
         ],
         "sidebearings": {
-          "left": 11,
-          "right": 11
+          "left": 0,
+          "right": 0
         }
       },
       "N": {
@@ -2617,8 +2617,8 @@
           }
         ],
         "sidebearings": {
-          "left": 11,
-          "right": 11
+          "left": 0,
+          "right": 0
         }
       },
       "O": {
@@ -2721,8 +2721,8 @@
           }
         ],
         "sidebearings": {
-          "left": 6,
-          "right": 6
+          "left": 0,
+          "right": 0
         }
       },
       "P": {
@@ -2836,8 +2836,8 @@
           }
         ],
         "sidebearings": {
-          "left": 11,
-          "right": 3
+          "left": 0,
+          "right": 0
         }
       },
       "Q": {
@@ -2981,8 +2981,8 @@
           }
         ],
         "sidebearings": {
-          "left": 6,
-          "right": 5
+          "left": 0,
+          "right": 0
         }
       },
       "R": {
@@ -3132,7 +3132,7 @@
           }
         ],
         "sidebearings": {
-          "left": 11,
+          "left": 0,
           "right": 0
         }
       },
@@ -3259,8 +3259,8 @@
           }
         ],
         "sidebearings": {
-          "left": 8,
-          "right": 7
+          "left": 0,
+          "right": 0
         }
       },
       "T": {
@@ -3456,8 +3456,8 @@
           }
         ],
         "sidebearings": {
-          "left": 10,
-          "right": 10
+          "left": 0,
+          "right": 0
         }
       },
       "V": {
@@ -3517,8 +3517,8 @@
           }
         ],
         "sidebearings": {
-          "left": 1,
-          "right": 1
+          "left": 0,
+          "right": 0
         }
       },
       "W": {
@@ -3608,8 +3608,8 @@
           }
         ],
         "sidebearings": {
-          "left": 5,
-          "right": 5
+          "left": 0,
+          "right": 0
         }
       },
       "X": {
@@ -3687,8 +3687,8 @@
           }
         ],
         "sidebearings": {
-          "left": 4,
-          "right": 4
+          "left": 0,
+          "right": 0
         }
       },
       "Y": {
@@ -3842,8 +3842,8 @@
           }
         ],
         "sidebearings": {
-          "left": 7,
-          "right": 6
+          "left": 0,
+          "right": 0
         }
       },
       "a": {
@@ -3935,8 +3935,8 @@
           }
         ],
         "sidebearings": {
-          "left": 6,
-          "right": 10
+          "left": 0,
+          "right": 0
         }
       },
       "b": {
@@ -4028,8 +4028,8 @@
           }
         ],
         "sidebearings": {
-          "left": 10,
-          "right": 6
+          "left": 0,
+          "right": 0
         }
       },
       "c": {
@@ -4088,8 +4088,8 @@
           }
         ],
         "sidebearings": {
-          "left": 6,
-          "right": 3
+          "left": 0,
+          "right": 0
         }
       },
       "d": {
@@ -4181,8 +4181,8 @@
           }
         ],
         "sidebearings": {
-          "left": 6,
-          "right": 10
+          "left": 0,
+          "right": 0
         }
       },
       "e": {
@@ -4255,8 +4255,8 @@
           }
         ],
         "sidebearings": {
-          "left": 6,
-          "right": 6
+          "left": 0,
+          "right": 0
         }
       },
       "f": {
@@ -4348,8 +4348,8 @@
           }
         ],
         "sidebearings": {
-          "left": 4,
-          "right": -4
+          "left": 0,
+          "right": 0
         }
       },
       "g": {
@@ -4441,8 +4441,8 @@
           }
         ],
         "sidebearings": {
-          "left": 6,
-          "right": 10
+          "left": 0,
+          "right": 0
         }
       },
       "h": {
@@ -4534,8 +4534,8 @@
           }
         ],
         "sidebearings": {
-          "left": 10,
-          "right": 10
+          "left": 0,
+          "right": 0
         }
       },
       "i": {
@@ -4613,8 +4613,8 @@
           }
         ],
         "sidebearings": {
-          "left": 10,
-          "right": 10
+          "left": 0,
+          "right": 0
         }
       },
       "j": {
@@ -4692,8 +4692,8 @@
           }
         ],
         "sidebearings": {
-          "left": -3,
-          "right": 10
+          "left": 0,
+          "right": 0
         }
       },
       "k": {
@@ -4786,8 +4786,8 @@
           }
         ],
         "sidebearings": {
-          "left": 11,
-          "right": 1
+          "left": 0,
+          "right": 0
         }
       },
       "l": {
@@ -4846,8 +4846,8 @@
           }
         ],
         "sidebearings": {
-          "left": 11,
-          "right": 11
+          "left": 0,
+          "right": 0
         }
       },
       "m": {
@@ -4958,8 +4958,8 @@
           }
         ],
         "sidebearings": {
-          "left": 10,
-          "right": 10
+          "left": 0,
+          "right": 0
         }
       },
       "n": {
@@ -5051,8 +5051,8 @@
           }
         ],
         "sidebearings": {
-          "left": 10,
-          "right": 10
+          "left": 0,
+          "right": 0
         }
       },
       "o": {
@@ -5125,8 +5125,8 @@
           }
         ],
         "sidebearings": {
-          "left": 6,
-          "right": 6
+          "left": 0,
+          "right": 0
         }
       },
       "p": {
@@ -5218,8 +5218,8 @@
           }
         ],
         "sidebearings": {
-          "left": 10,
-          "right": 6
+          "left": 0,
+          "right": 0
         }
       },
       "q": {
@@ -5311,8 +5311,8 @@
           }
         ],
         "sidebearings": {
-          "left": 6,
-          "right": 10
+          "left": 0,
+          "right": 0
         }
       },
       "r": {
@@ -5390,7 +5390,7 @@
           }
         ],
         "sidebearings": {
-          "left": 10,
+          "left": 0,
           "right": 0
         }
       },
@@ -5450,8 +5450,8 @@
           }
         ],
         "sidebearings": {
-          "left": 6,
-          "right": 5
+          "left": 0,
+          "right": 0
         }
       },
       "t": {
@@ -5543,8 +5543,8 @@
           }
         ],
         "sidebearings": {
-          "left": 3,
-          "right": 2
+          "left": 0,
+          "right": 0
         }
       },
       "u": {
@@ -5636,8 +5636,8 @@
           }
         ],
         "sidebearings": {
-          "left": 10,
-          "right": 10
+          "left": 0,
+          "right": 0
         }
       },
       "v": {
@@ -5697,8 +5697,8 @@
           }
         ],
         "sidebearings": {
-          "left": 3,
-          "right": 3
+          "left": 0,
+          "right": 0
         }
       },
       "w": {
@@ -5786,8 +5786,8 @@
           }
         ],
         "sidebearings": {
-          "left": 5,
-          "right": 5
+          "left": 0,
+          "right": 0
         }
       },
       "x": {
@@ -5865,8 +5865,8 @@
           }
         ],
         "sidebearings": {
-          "left": 3,
-          "right": 3
+          "left": 0,
+          "right": 0
         }
       },
       "y": {
@@ -5944,8 +5944,8 @@
           }
         ],
         "sidebearings": {
-          "left": 3,
-          "right": 3
+          "left": 0,
+          "right": 0
         }
       },
       "z": {
@@ -6020,8 +6020,8 @@
           }
         ],
         "sidebearings": {
-          "left": 5,
-          "right": 5
+          "left": 0,
+          "right": 0
         }
       },
       ".": {
@@ -6108,8 +6108,8 @@
           }
         ],
         "sidebearings": {
-          "left": 14,
-          "right": 14
+          "left": 0,
+          "right": 0
         }
       },
       "?": {
@@ -6216,8 +6216,8 @@
           }
         ],
         "sidebearings": {
-          "left": 9,
-          "right": 6
+          "left": 0,
+          "right": 0
         }
       },
       "!": {
@@ -6337,8 +6337,8 @@
           }
         ],
         "sidebearings": {
-          "left": 16,
-          "right": 16
+          "left": 0,
+          "right": 0
         }
       }
     },
