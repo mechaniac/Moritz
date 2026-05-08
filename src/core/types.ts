@@ -309,3 +309,26 @@ export const constantWidth = (w: number): WidthProfile => ({
     { t: 1, width: w },
   ],
 });
+
+// ---------- Ribbon-mode defaults --------------------------------------------
+// These are the values used when a StyleSettings leaves the corresponding
+// field undefined. Keep them in one place so UI fallbacks, the rendering
+// pipeline (svg/png export, GlyphSetter previews) and the StyleSetter
+// "reset to default" indicator all agree.
+
+export const DEFAULT_RIBBON_SPINE_SUBDIV = 9;
+export const DEFAULT_RIBBON_CAP_SUBDIV = 6;
+/** Length-aware spine defaults to ON: a missing field reads as `true`. */
+export const DEFAULT_RIBBON_SPINE_LENGTH_AWARE = true;
+
+export function ribbonSpineSubdivOf(s: StyleSettings): number {
+  return s.ribbonSpineSubdiv ?? s.ribbonSamples ?? DEFAULT_RIBBON_SPINE_SUBDIV;
+}
+
+export function ribbonCapSubdivOf(s: StyleSettings): number {
+  return s.ribbonCapSubdiv ?? DEFAULT_RIBBON_CAP_SUBDIV;
+}
+
+export function ribbonSpineLengthAwareOf(s: StyleSettings): boolean {
+  return s.ribbonSpineLengthAware ?? DEFAULT_RIBBON_SPINE_LENGTH_AWARE;
+}

@@ -12,7 +12,7 @@ import { triangulateStrokeRibbon } from '../ribbon.js';
 import { jitterActive, jitterPolygon, resolveJitterSeed } from '../effects.js';
 import { makeWidthMod, type WidthMod } from '../widthEffects.js';
 import { segmentLength, strokeToSegments } from '../bezier.js';
-import type { Font, Stroke, StyleSettings, Vec2 } from '../types.js';
+import { ribbonCapSubdivOf, ribbonSpineLengthAwareOf, ribbonSpineSubdivOf, type Font, type Stroke, type StyleSettings, type Vec2 } from '../types.js';
 
 export type SvgRenderOptions = {
   readonly fill?: string; // CSS color for glyph polygons. Default 'black'.
@@ -57,11 +57,11 @@ function triangulateForStyle(
   let triangles: readonly (readonly [number, number, number])[];
   if (mode === 'ribbon-fixed' || mode === 'ribbon-density') {
     const r = triangulateStrokeRibbon(stroke, style, {
-      spineSubdiv: style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4,
+      spineSubdiv: ribbonSpineSubdivOf(style),
       borderSubdiv: style.ribbonBorderSubdiv ?? 0,
-      capSubdiv: style.ribbonCapSubdiv,
+      capSubdiv: ribbonCapSubdivOf(style),
       brokenAnchorSubdiv: style.ribbonBrokenAnchorSubdiv ?? 0,
-      spineLengthAware: style.ribbonSpineLengthAware === true,
+      spineLengthAware: ribbonSpineLengthAwareOf(style),
       referenceLength,
     }, widthMod);
     polygon = r.polygon;

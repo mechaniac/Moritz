@@ -59,13 +59,16 @@ import {
   setNormalOverride,
   translateStroke,
 } from '../../core/glyphOps.js';
-import type {
-  Font,
-  Glyph,
-  Stroke,
-  StyleSettings,
-  Vec2,
-  WidthProfile,
+import {
+  ribbonCapSubdivOf,
+  ribbonSpineLengthAwareOf,
+  ribbonSpineSubdivOf,
+  type Font,
+  type Glyph,
+  type Stroke,
+  type StyleSettings,
+  type Vec2,
+  type WidthProfile,
 } from '../../core/types.js';
 import { useAppStore } from '../../state/store.js';
 import { StyleControls } from '../stylesetter/StyleControls.js';
@@ -1137,9 +1140,9 @@ function GlyphEditor(props: {
           {view.showSpline1 && (
             <g transform={xform} pointerEvents="none">
               {displayGlyph.strokes.map((s, i) => {
-                const spineSubdiv = font.style.ribbonSpineSubdiv ?? font.style.ribbonSamples ?? 4;
+                const spineSubdiv = ribbonSpineSubdivOf(font.style);
                 const brokenAnchorSubdiv = font.style.ribbonBrokenAnchorSubdiv ?? 0;
-                const spineLengthAware = font.style.ribbonSpineLengthAware === true;
+                const spineLengthAware = ribbonSpineLengthAwareOf(font.style);
                 const data = ribbonDebugSpline1(s, gStyle, spineSubdiv, null, brokenAnchorSubdiv, spineLengthAware, displayGlyph.box.h);
                 if (data.length === 0) return null;
                 const r = 2.5 / SCALE;
@@ -1292,11 +1295,11 @@ function Inspector(props: {
           disabled={!glyph}
           onClick={() => {
             if (!glyph) return;
-            const spineSubdiv = style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4;
+            const spineSubdiv = ribbonSpineSubdivOf(style);
             const borderSubdiv = style.ribbonBorderSubdiv ?? 0;
-            const capSubdiv = style.ribbonCapSubdiv;
+            const capSubdiv = ribbonCapSubdivOf(style);
             const brokenAnchorSubdiv = style.ribbonBrokenAnchorSubdiv ?? 0;
-            const spineLengthAware = style.ribbonSpineLengthAware === true;
+            const spineLengthAware = ribbonSpineLengthAwareOf(style);
             const dump = {
               char: glyph.char,
               box: glyph.box,
@@ -1395,8 +1398,8 @@ function Inspector(props: {
           disabled={!glyph}
           onClick={() => {
             if (!glyph) return;
-            const spineSubdiv = style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4;
-            const spineLengthAware = style.ribbonSpineLengthAware === true;
+            const spineSubdiv = ribbonSpineSubdivOf(style);
+            const spineLengthAware = ribbonSpineLengthAwareOf(style);
             const referenceLength = glyph.box.h;
             // eslint-disable-next-line no-console
             console.log(
@@ -1453,9 +1456,9 @@ function Inspector(props: {
             // producing a visual fold whose amplitude scales with `blend`.
             // Rows where `wnSign` differs from the previous sample mark
             // exactly where that fold lives.
-            const spineSubdiv = style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4;
+            const spineSubdiv = ribbonSpineSubdivOf(style);
             const brokenAnchorSubdiv = style.ribbonBrokenAnchorSubdiv ?? 0;
-            const spineLengthAware = style.ribbonSpineLengthAware === true;
+            const spineLengthAware = ribbonSpineLengthAwareOf(style);
             const world = resolveWorldWidth(style);
             // eslint-disable-next-line no-console
             console.log(
@@ -1532,9 +1535,9 @@ function Inspector(props: {
             // each setting. A column whose `maxJumpDeg` grows steeply with
             // blend pinpoints the stroke whose normals snap; rising values
             // typically mean the stroke crosses the world-axis boundary.
-            const spineSubdiv = style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4;
+            const spineSubdiv = ribbonSpineSubdivOf(style);
             const brokenAnchorSubdiv = style.ribbonBrokenAnchorSubdiv ?? 0;
-            const spineLengthAware = style.ribbonSpineLengthAware === true;
+            const spineLengthAware = ribbonSpineLengthAwareOf(style);
             const blends = [0, 0.25, 0.5, 0.75, 1];
             // eslint-disable-next-line no-console
             console.log(
@@ -2505,11 +2508,11 @@ function triangulateForStyle(
   let triangles: readonly (readonly [number, number, number])[];
   if (mode === 'ribbon-fixed' || mode === 'ribbon-density') {
     const r = triangulateStrokeRibbon(stroke, style, {
-      spineSubdiv: style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4,
+      spineSubdiv: ribbonSpineSubdivOf(style),
       borderSubdiv: style.ribbonBorderSubdiv ?? 0,
-      capSubdiv: style.ribbonCapSubdiv,
+      capSubdiv: ribbonCapSubdivOf(style),
       brokenAnchorSubdiv: style.ribbonBrokenAnchorSubdiv ?? 0,
-      spineLengthAware: style.ribbonSpineLengthAware === true,
+      spineLengthAware: ribbonSpineLengthAwareOf(style),
       referenceLength,
     }, widthMod);
     polygon = r.polygon;

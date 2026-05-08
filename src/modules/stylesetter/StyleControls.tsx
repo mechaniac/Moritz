@@ -8,11 +8,14 @@
  */
 
 import { useState, type ReactNode } from 'react';
-import type {
-  CapShape,
-  EffectScope,
-  StyleSettings,
-  TriMode,
+import {
+  ribbonCapSubdivOf,
+  ribbonSpineLengthAwareOf,
+  ribbonSpineSubdivOf,
+  type CapShape,
+  type EffectScope,
+  type StyleSettings,
+  type TriMode,
 } from '../../core/types.js';
 import { defaultFont } from '../../data/defaultFont.js';
 
@@ -100,15 +103,15 @@ function makeSectionPatch(
       const p: P = {};
       if ((c.triMode ?? 'earcut') !== (o.triMode ?? 'earcut'))
         p.triMode = o.triMode;
-      if ((c.ribbonSpineSubdiv ?? c.ribbonSamples ?? 4) !== (o.ribbonSpineSubdiv ?? o.ribbonSamples ?? 4))
+      if (ribbonSpineSubdivOf(c) !== ribbonSpineSubdivOf(o))
         p.ribbonSpineSubdiv = o.ribbonSpineSubdiv;
       if ((c.ribbonBorderSubdiv ?? 0) !== (o.ribbonBorderSubdiv ?? 0))
         p.ribbonBorderSubdiv = o.ribbonBorderSubdiv;
-      if ((c.ribbonCapSubdiv ?? 0) !== (o.ribbonCapSubdiv ?? 0))
+      if (ribbonCapSubdivOf(c) !== ribbonCapSubdivOf(o))
         p.ribbonCapSubdiv = o.ribbonCapSubdiv;
       if ((c.ribbonBrokenAnchorSubdiv ?? 0) !== (o.ribbonBrokenAnchorSubdiv ?? 0))
         p.ribbonBrokenAnchorSubdiv = o.ribbonBrokenAnchorSubdiv;
-      if ((c.ribbonSpineLengthAware === true) !== (o.ribbonSpineLengthAware === true))
+      if (ribbonSpineLengthAwareOf(c) !== ribbonSpineLengthAwareOf(o))
         p.ribbonSpineLengthAware = o.ribbonSpineLengthAware;
       if ((c.vertexEvenness ?? 0) !== (o.vertexEvenness ?? 0))
         p.vertexEvenness = o.vertexEvenness;
@@ -440,18 +443,18 @@ export function StyleControls(props: StyleControlsProps): JSX.Element {
                 min={0}
                 max={32}
                 step={1}
-                value={style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4}
+                value={ribbonSpineSubdivOf(style)}
                 onChange={(v) => setStyle({ ribbonSpineSubdiv: Math.round(v) })}
-                defaultValue={original?.ribbonSpineSubdiv ?? original?.ribbonSamples ?? 4}
+                defaultValue={original ? ribbonSpineSubdivOf(original) : ribbonSpineSubdivOf(style)}
                 tooltip="Vertices added BETWEEN each pair of spline0 anchors when building the spine (spline1). 0 = anchors only, 1 = one extra in the middle, etc. Distribution is arc-length-uniform within each Bezier segment."
               />
               <label
-                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#ddd' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'inherit' }}
                 title="When on, distribute spine subdivisions across segments according to each segment's arc length (longer = more interior vertices). Step size derived from `Spine subdiv` applied to the average segment. Each segment still gets an integer count and uniform spacing within itself."
               >
                 <input
                   type="checkbox"
-                  checked={style.ribbonSpineLengthAware === true}
+                  checked={ribbonSpineLengthAwareOf(style)}
                   onChange={(e) => setStyle({ ribbonSpineLengthAware: e.target.checked })}
                 />
                 Length-aware spine
@@ -471,9 +474,9 @@ export function StyleControls(props: StyleControlsProps): JSX.Element {
                 min={1}
                 max={32}
                 step={1}
-                value={style.ribbonCapSubdiv ?? (style.ribbonSpineSubdiv ?? style.ribbonSamples ?? 4) + 2}
+                value={ribbonCapSubdivOf(style)}
                 onChange={(v) => setStyle({ ribbonCapSubdiv: Math.round(v) })}
-                defaultValue={original?.ribbonCapSubdiv ?? (original?.ribbonSpineSubdiv ?? original?.ribbonSamples ?? 4) + 2}
+                defaultValue={original ? ribbonCapSubdivOf(original) : ribbonCapSubdivOf(style)}
                 tooltip="Round-cap fan steps per cap. Higher = smoother cap arc."
               />
               <Slider
