@@ -796,13 +796,49 @@ const EXCLAIM: Glyph = glyph(
   { w: 70, h: BOX_H },
 );
 
+const COMMA: Glyph = glyph(
+  ',',
+  [
+    dotStroke(30, BASELINE - 4, 4),
+    stroke([
+      c(30, BASELINE + 0),
+      c(28, BASELINE + 8),
+      c(22, BASELINE + 16),
+    ]),
+  ],
+  { w: 50, h: BOX_H },
+);
+
+const COLON: Glyph = glyph(
+  ':',
+  [
+    dotStroke(30, BASELINE - 35, 4),
+    dotStroke(30, BASELINE - 4, 4),
+  ],
+  { w: 50, h: BOX_H },
+);
+
+const SEMICOLON: Glyph = glyph(
+  ';',
+  [
+    dotStroke(30, BASELINE - 35, 4),
+    dotStroke(30, BASELINE - 4, 4),
+    stroke([
+      c(30, BASELINE + 0),
+      c(28, BASELINE + 8),
+      c(22, BASELINE + 16),
+    ]),
+  ],
+  { w: 50, h: BOX_H },
+);
+
 // ---------- Font ------------------------------------------------------------
 
 const allGlyphs: Glyph[] = [
   A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
   ...lowercase,
   ...digits,
-  PERIOD, QUESTION, EXCLAIM,
+  PERIOD, COMMA, COLON, SEMICOLON, QUESTION, EXCLAIM,
 ];
 
 const glyphsRecord: Record<string, Glyph> = {};

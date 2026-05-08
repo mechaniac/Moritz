@@ -792,13 +792,54 @@ const EXCLAIM: Glyph = glyph(
   { w: 70, h: BOX_H },
 );
 
+// Comma: small dot at baseline + a short tail curving down-left
+// (descender). Same horizontal footprint as a period.
+const COMMA: Glyph = glyph(
+  ',',
+  [
+    dotStroke(30, BASELINE - 2, 5),
+    stroke([
+      corner(30, BASELINE + 2),
+      corner(28, BASELINE + 8),
+      corner(22, BASELINE + 16),
+    ]),
+  ],
+  { w: 50, h: BOX_H },
+);
+
+// Colon: two dots stacked vertically — upper near x-height mid, lower at
+// baseline. Same footprint as a period.
+const COLON: Glyph = glyph(
+  ':',
+  [
+    dotStroke(30, BASELINE - 35, 5),
+    dotStroke(30, BASELINE - 2, 5),
+  ],
+  { w: 50, h: BOX_H },
+);
+
+// Semicolon: upper dot like a colon, lower glyph like a comma.
+const SEMICOLON: Glyph = glyph(
+  ';',
+  [
+    dotStroke(30, BASELINE - 35, 5),
+    dotStroke(30, BASELINE - 2, 5),
+    stroke([
+      corner(30, BASELINE + 2),
+      corner(28, BASELINE + 8),
+      corner(22, BASELINE + 16),
+    ]),
+  ],
+  { w: 50, h: BOX_H },
+);
+
 // ---------- Font ------------------------------------------------------------
 
 const allGlyphs: Glyph[] = [
   A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
   ...lowercase,
   ...digits,
-  PERIOD, QUESTION, EXCLAIM,
+  PERIOD, COMMA, COLON, SEMICOLON, QUESTION, EXCLAIM,
 ];
 
 const glyphsRecord: Record<string, Glyph> = {};
