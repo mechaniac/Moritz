@@ -1874,80 +1874,110 @@ function KerningList(props: {
       style={{
         position: 'absolute',
         inset: 0,
-        overflowY: 'auto',
         padding: 8,
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
         gap: 6,
+        // Outer container no longer scrolls — only the entries list does,
+        // so the "+ Pair" input stays pinned at the top.
+        overflow: 'hidden',
       }}
     >
       <div
-        className="mz-kerning-list__add"
-        title="Type a two-character pair and click +Pair to add a new entry."
+        className="mz-kerning-list__sticky"
         style={{
+          // Sticky header: stays at the top while entries below scroll.
+          // Background prevents entries from showing through during scroll.
+          flex: '0 0 auto',
           display: 'flex',
-          gap: 4,
-          alignItems: 'center',
-          fontSize: 12,
-          color: '#ddd',
+          flexDirection: 'column',
+          gap: 6,
+          paddingBottom: 6,
+          borderBottom: '1px solid #2a2a2a',
+          background: 'inherit',
         }}
       >
-        <input
-          type="text"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value.slice(0, 2))}
-          placeholder="AV"
-          maxLength={2}
-          title="Two-character pair (e.g. AV). Both characters must exist in the font."
+        <div
+          className="mz-kerning-list__add"
+          title="Type a two-character pair and click +Pair to add a new entry."
           style={{
-            width: 50,
-            padding: '2px 4px',
-            fontFamily: 'monospace',
-            fontSize: 13,
+            display: 'flex',
+            gap: 4,
+            alignItems: 'center',
+            fontSize: 12,
+            color: '#ddd',
           }}
-        />
+        >
+          <input
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value.slice(0, 2))}
+            placeholder="AV"
+            maxLength={2}
+            title="Two-character pair (e.g. AV). Both characters must exist in the font."
+            style={{
+              width: 50,
+              padding: '2px 4px',
+              fontFamily: 'monospace',
+              fontSize: 13,
+            }}
+          />
+          <button
+            type="button"
+            onClick={add}
+            disabled={!canAdd}
+            title="Add this pair with delta 0."
+            style={{ padding: '2px 8px' }}
+          >
+            + Pair
+          </button>
+          <span style={{ color: '#888', marginLeft: 'auto' }}>
+            {entries.length} pair{entries.length === 1 ? '' : 's'}
+          </span>
+        </div>
         <button
           type="button"
-          onClick={add}
-          disabled={!canAdd}
-          title="Add this pair with delta 0."
-          style={{ padding: '2px 8px' }}
+          onClick={importFromRef}
+          disabled={!refFontFamily}
+          title={
+            refFontFamily
+              ? `Measure every pair of glyphs in your font with "${refFontFamily}" and write the kerning differences. Existing pairs are overwritten when the reference font has a non-zero kern for them.`
+              : 'Set a reference font in the View panel first.'
+          }
+          style={{ padding: '4px 8px', fontSize: 12 }}
         >
-          + Pair
+          Import kerning from reference font
         </button>
-        <span style={{ color: '#888', marginLeft: 'auto' }}>
-          {entries.length} pair{entries.length === 1 ? '' : 's'}
-        </span>
       </div>
-      <button
-        type="button"
-        onClick={importFromRef}
-        disabled={!refFontFamily}
-        title={
-          refFontFamily
-            ? `Measure every pair of glyphs in your font with "${refFontFamily}" and write the kerning differences. Existing pairs are overwritten when the reference font has a non-zero kern for them.`
-            : 'Set a reference font in the View panel first.'
-        }
-        style={{ padding: '4px 8px', fontSize: 12 }}
+      <div
+        className="mz-kerning-list__entries"
+        style={{
+          flex: '1 1 auto',
+          minHeight: 0,
+          overflowY: 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 6,
+          paddingTop: 6,
+        }}
       >
-        Import kerning from reference font
-      </button>
-      {entries.length === 0 && (
-        <p style={{ fontSize: 11, color: '#999', margin: '4px 0' }}>
-          No kerning pairs. Type two characters above and click + Pair.
-        </p>
-      )}
-      {entries.map(([pair, value]) => (
-        <KerningEntry
-          key={pair}
-          pair={pair}
-          value={value}
-          font={font}
-          onChange={(v) => setValue(pair, v)}
-          onRemove={() => remove(pair)}
-        />
-      ))}
+        {entries.length === 0 && (
+          <p style={{ fontSize: 11, color: '#999', margin: '4px 0' }}>
+            No kerning pairs. Type two characters above and click + Pair.
+          </p>
+        )}
+        {entries.map(([pair, value]) => (
+          <KerningEntry
+            key={pair}
+            pair={pair}
+            value={value}
+            font={font}
+            onChange={(v) => setValue(pair, v)}
+            onRemove={() => remove(pair)}
+          />
+        ))}
+      </div>
     </div>
   );
 }
