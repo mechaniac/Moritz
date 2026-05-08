@@ -203,9 +203,13 @@ function buildDebugOverlay(
 
   const boxStroke = '#888';
   const boxFill = 'rgba(140,140,140,0.04)';
-  const labelFill = '#888';
-  const sbStroke = '#bbb';
-  const kernColor = '#e0457b';
+  const labelFill = '#444';
+  // Distinct colors per spacing component so the gap composition is
+  // obvious at a glance (matches the per-element <title> tooltips).
+  const lsbColor = '#1d6fe6';   // left side-bearing  — blue
+  const rsbColor = '#15a36b';   // right side-bearing — green
+  const trackColor = '#f0a020'; // tracking           — orange
+  const kernColor = '#e0457b';  // kerning            — red
 
   // Pick a label size that scales with the average glyph; cap so it stays
   // readable but unobtrusive.
@@ -217,9 +221,9 @@ function buildDebugOverlay(
   const labelPx = Math.max(6, Math.min(14, avgBoxH * 0.12));
   const tickPx = Math.max(0.5, avgBoxH * 0.005);
 
-  // 1) Per-glyph: advance box + side-bearing ticks + char label.
+  // 1) Per-glyph: advance box + side-bearing strips + char label.
   // Each glyph wrapped in its own <g> with a <title> so hovering anywhere
-  // on the box/ticks/label in a browser shows a native tooltip.
+  // on the box/strips/label shows a native tooltip.
   for (const pg of layoutResult.glyphs) {
     const x = pg.origin.x + padding;
     const y = pg.origin.y + padding;
@@ -237,16 +241,42 @@ function buildDebugOverlay(
       `<rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(w)}" height="${fmt(h)}" ` +
         `fill="${boxFill}" stroke="${boxStroke}" stroke-width="${fmt(tickPx)}" />`,
     );
-    if (lsb !== 0) {
+    parts.push('</g>');
+    // Side-bearing strips: shaded full-height bands OUTSIDE the box. These
+    // visualize where the inter-glyph gap is coming from. Drawn as their
+    // own <g> so each strip has its own hover tooltip.
+    if (lsb > 0) {
       parts.push(
-        `<line x1="${fmt(x - lsb)}" y1="${fmt(y)}" x2="${fmt(x - lsb)}" y2="${fmt(y + h)}" ` +
-          `stroke="${sbStroke}" stroke-width="${fmt(tickPx)}" stroke-dasharray="${fmt(tickPx * 4)} ${fmt(tickPx * 4)}" />`,
+        `<g pointer-events="all"><title>${escapeXml(`'${pg.char}' left side-bearing: ${fmt(lsb)}`)}</title>` +
+          `<rect x="${fmt(x - lsb)}" y="${fmt(y)}" width="${fmt(lsb)}" height="${fmt(h)}" ` +
+          `fill="${lsbColor}" fill-opacity="0.18" stroke="${lsbColor}" stroke-opacity="0.6" stroke-width="${fmt(tickPx)}" />` +
+          `</g>`,
       );
     }
-    if (rsb !== 0) {
+    if (rsb > 0) {
       parts.push(
-        `<line x1="${fmt(x + w + rsb)}" y1="${fmt(y)}" x2="${fmt(x + w + rsb)}" y2="${fmt(y + h)}" ` +
-          `stroke="${sbStroke}" stroke-width="${fmt(tickPx)}" stroke-dasharray="${fmt(tickPx * 4)} ${fmt(tickPx * 4)}" />`,
+        `<g pointer-events="all"><title>${escapeXml(`'${pg.char}' right side-bearing: ${fmt(rsb)}`)}</title>` +
+          `<rect x="${fmt(x + w)}" y="${fmt(y)}" width="${fmt(rsb)}" height="${fmt(h)}" ` +
+          `fill="${rsbColor}" fill-opacity="0.18" stroke="${rsbColor}" stroke-opacity="0.6" stroke-width="${fmt(tickPx)}" />` +
+          `</g>`,
+      );
+    }
+    // Negative side-bearings (overhang): same color, dashed outline so the
+    // overhang region is still visible even though it lives inside the box.
+    if (lsb < 0) {
+      parts.push(
+        `<g pointer-events="all"><title>${escapeXml(`'${pg.char}' left side-bearing: ${fmt(lsb)} (overhang)`)}</title>` +
+          `<rect x="${fmt(x)}" y="${fmt(y)}" width="${fmt(-lsb)}" height="${fmt(h)}" ` +
+          `fill="${lsbColor}" fill-opacity="0.12" stroke="${lsbColor}" stroke-dasharray="${fmt(tickPx * 4)} ${fmt(tickPx * 4)}" stroke-width="${fmt(tickPx)}" />` +
+          `</g>`,
+      );
+    }
+    if (rsb < 0) {
+      parts.push(
+        `<g pointer-events="all"><title>${escapeXml(`'${pg.char}' right side-bearing: ${fmt(rsb)} (overhang)`)}</title>` +
+          `<rect x="${fmt(x + w + rsb)}" y="${fmt(y)}" width="${fmt(-rsb)}" height="${fmt(h)}" ` +
+          `fill="${rsbColor}" fill-opacity="0.12" stroke="${rsbColor}" stroke-dasharray="${fmt(tickPx * 4)} ${fmt(tickPx * 4)}" stroke-width="${fmt(tickPx)}" />` +
+          `</g>`,
       );
     }
     // Char label in the top-left of the box.
@@ -254,44 +284,97 @@ function buildDebugOverlay(
       `<text x="${fmt(x + labelPx * 0.3)}" y="${fmt(y + labelPx * 1.05)}" ` +
         `font-size="${fmt(labelPx)}" fill="${labelFill}">${escapeXml(pg.char)}</text>`,
     );
-    parts.push('</g>');
   }
 
-  // 2) Kerning between adjacent glyphs on the same baseline (same y).
+  // 2) Inter-glyph spacing components between adjacent glyphs on the same
+  // baseline: tracking + kerning. (Side-bearings are shown per glyph above.)
+  // The full gap between two consecutive boxes equals
+  //     prev.rsb + tracking + kerning*scaleX + cur.lsb
+  // Drawing tracking and kerning here lets the user see exactly which
+  // contributions made the gap what it is, even when no kerning is set.
+  const tracking = font.style.tracking ?? 0;
   const kerning = font.kerning;
-  if (kerning) {
-    const scaleX = font.style.scaleX;
-    for (let i = 1; i < layoutResult.glyphs.length; i++) {
-      const prev = layoutResult.glyphs[i - 1]!;
-      const cur = layoutResult.glyphs[i]!;
-      // Different lines: skip (origins.y differs in line steps).
-      if (Math.abs(prev.origin.y - cur.origin.y) > 0.5) continue;
-      const k = kerning[prev.char + cur.char];
-      if (k === undefined || k === 0) continue;
-      const dx = k * scaleX;
-      // Draw a horizontal bar at mid-height between the two boxes,
-      // spanning the kern delta. Anchor at the right edge of the prev
-      // glyph's advance box (= where the cursor was BEFORE the kern).
-      const yMid = prev.origin.y + padding + prev.glyph.box.h * 0.5;
-      const x0 = prev.origin.x + prev.glyph.box.w + padding;
-      const x1 = x0 + dx;
-      const xa = Math.min(x0, x1);
-      const xb = Math.max(x0, x1);
+  const scaleX = font.style.scaleX;
+  for (let i = 1; i < layoutResult.glyphs.length; i++) {
+    const prev = layoutResult.glyphs[i - 1]!;
+    const cur = layoutResult.glyphs[i]!;
+    if (Math.abs(prev.origin.y - cur.origin.y) > 0.5) continue;
+    const prevRight = prev.origin.x + prev.glyph.box.w + padding;
+    const curLeft = cur.origin.x + padding;
+    const rsb = prev.glyph.sidebearings?.right ?? 0;
+    const lsb = cur.glyph.sidebearings?.left ?? 0;
+    const k = (kerning && kerning[prev.char + cur.char]) ?? 0;
+    const kdx = k * scaleX;
+    // Strip layout left-to-right, starting at prevRight:
+    //   [rsb] [tracking] [kerning] [lsb]   → ends at curLeft
+    let x = prevRight + Math.max(0, rsb); // skip rsb strip (drawn per-glyph)
+    // Actually rsb already drawn per-glyph; cursor after rsb:
+    const afterRsb = prevRight + rsb;
+    const afterTrack = afterRsb + tracking;
+    const afterKern = afterTrack + kdx;
+    void x; void curLeft;
+
+    // Mid-height band shared by tracking + kerning indicators.
+    const yBase = Math.max(prev.origin.y, cur.origin.y) + padding;
+    const hBand = Math.min(prev.glyph.box.h, cur.glyph.box.h);
+    const yMid = yBase + hBand * 0.5;
+    const bandH = Math.max(tickPx * 6, hBand * 0.06);
+
+    // Tracking (only if non-zero).
+    if (tracking !== 0) {
+      const xa = Math.min(afterRsb, afterTrack);
+      const xb = Math.max(afterRsb, afterTrack);
       const tip =
-        `kerning '${prev.char}${cur.char}': ${k > 0 ? '+' : ''}${fmt(k)} font units\n` +
-        `applied dx: ${k > 0 ? '+' : ''}${fmt(dx)} (\u00d7 scaleX ${fmt(scaleX)})`;
+        `tracking: ${tracking > 0 ? '+' : ''}${fmt(tracking)} (between '${prev.char}' and '${cur.char}')`;
       parts.push(`<g pointer-events="all"><title>${escapeXml(tip)}</title>`);
       parts.push(
-        `<rect x="${fmt(xa)}" y="${fmt(yMid - tickPx * 2)}" width="${fmt(xb - xa)}" height="${fmt(tickPx * 4)}" ` +
+        `<rect x="${fmt(xa)}" y="${fmt(yMid - bandH * 0.5)}" width="${fmt(xb - xa)}" height="${fmt(bandH)}" ` +
+          `fill="${trackColor}" fill-opacity="0.35" stroke="${trackColor}" stroke-width="${fmt(tickPx)}" />`,
+      );
+      parts.push(
+        `<text x="${fmt((xa + xb) / 2)}" y="${fmt(yMid - bandH)}" ` +
+          `text-anchor="middle" font-size="${fmt(labelPx * 0.85)}" fill="${trackColor}">` +
+          `${tracking > 0 ? '+' : ''}${fmt(tracking)}</text>`,
+      );
+      parts.push('</g>');
+    }
+
+    // Kerning (only if non-zero).
+    if (k !== 0) {
+      const xa = Math.min(afterTrack, afterKern);
+      const xb = Math.max(afterTrack, afterKern);
+      const tip =
+        `kerning '${prev.char}${cur.char}': ${k > 0 ? '+' : ''}${fmt(k)} font units\n` +
+        `applied dx: ${k > 0 ? '+' : ''}${fmt(kdx)} (\u00d7 scaleX ${fmt(scaleX)})`;
+      parts.push(`<g pointer-events="all"><title>${escapeXml(tip)}</title>`);
+      parts.push(
+        `<rect x="${fmt(xa)}" y="${fmt(yMid - bandH * 0.75)}" width="${fmt(xb - xa)}" height="${fmt(bandH * 1.5)}" ` +
           `fill="${kernColor}" fill-opacity="0.35" stroke="${kernColor}" stroke-width="${fmt(tickPx)}" />`,
       );
       parts.push(
-        `<text x="${fmt((xa + xb) / 2)}" y="${fmt(yMid - tickPx * 4)}" ` +
+        `<text x="${fmt((xa + xb) / 2)}" y="${fmt(yMid + bandH * 1.4)}" ` +
           `text-anchor="middle" font-size="${fmt(labelPx * 0.85)}" fill="${kernColor}">` +
           `${k > 0 ? '+' : ''}${fmt(k)}</text>`,
       );
       parts.push('</g>');
     }
+
+    // Hover-only band covering the FULL gap, transparent fill, so the user
+    // can hover anywhere in the gap (including the dead zone left between
+    // strips when only side-bearings contribute) and see the breakdown.
+    const totalGap = curLeft - prevRight;
+    const breakdown =
+      `gap '${prev.char}'\u2192'${cur.char}': ${fmt(totalGap)}\n` +
+      `  rsb('${prev.char}'): ${fmt(rsb)}\n` +
+      `  tracking: ${fmt(tracking)}\n` +
+      `  kerning: ${fmt(kdx)} (raw ${fmt(k)} \u00d7 scaleX ${fmt(scaleX)})\n` +
+      `  lsb('${cur.char}'): ${fmt(lsb)}`;
+    parts.push(
+      `<g pointer-events="all"><title>${escapeXml(breakdown)}</title>` +
+        `<rect x="${fmt(prevRight)}" y="${fmt(yBase)}" width="${fmt(Math.max(0, totalGap))}" height="${fmt(hBand)}" ` +
+        `fill="transparent" />` +
+        `</g>`,
+    );
   }
 
   parts.push('</g>');
