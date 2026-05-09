@@ -17,13 +17,19 @@
  *   - Right drawer : standard `<StyleControls>`, same as everywhere.
  */
 
-import { useCallback, useMemo } from 'react';
+import { createContext, useCallback, useContext, useMemo } from 'react';
 import { useAppStore } from '../../state/store.js';
 import { useBubbleStore } from '../../state/bubbleStore.js';
 import { outlineStroke, effectiveStyleForGlyph } from '../../core/stroke.js';
 import { fillLoopsForStrokes, loopsToPath } from '../../core/bubbleFill.js';
 import { GlyphEditor, SettingsPanel } from '../glyphsetter/GlyphSetter.js';
+import { Section } from '../stylesetter/StyleControls.js';
 import { StyleControls } from '../stylesetter/StyleControls.js';
+import { textPresetSets } from '../../data/textPresets.js';
+import {
+  presetKey,
+  useTextPresetsStore,
+} from '../../state/textPresetsStore.js';
 import type {
   Bubble,
   BubbleLayer,
@@ -33,13 +39,91 @@ import type {
   Vec2,
 } from '../../core/types.js';
 
-export function BubbleSetter(): JSX.Element {
-  const font = useBubbleStore((s) => s.font);
-  const selectedId = useBubbleStore((s) => s.selectedBubble);
-  const selectBubble = useBubbleStore((s) => s.selectBubble);
-  const selectedLayerId = useBubbleStore((s) => s.selectedLayer);
-  const selectLayer = useBubbleStore((s) => s.selectLayer);
-  const updateLayer = useBubbleStore((s) => s.updateLayer);
+/**
+ * Editing target consumed by the BubbleSetter editor (LayerList,
+ * PreviewTextPanel, the GlyphEditor wiring). When provided via
+ * `BubbleEditingContext`, it overrides the default bubbleStore-bound
+ * editing target. The TypeSetter wraps the editor in a context value
+ * pointing at a per-block bubble snapshot so the same UI can edit
+ * either the BubbleFont's library presets or a single block's instance.
+ */
+export type BubbleEditingTarget = {
+  bubble: Bubble | null;
+  selectedLayerId: string | null;
+  selectLayer: (id: string | null) => void;
+  updateBubble: (fn: (b: Bubble) => Bubble) => void;
+  updateLayer: (layerId: string, fn: (l: BubbleLayer) => BubbleLayer) => void;
+  removeLayer: (layerId: string) => void;
+  addLayer: (layer: BubbleLayer) => void;
+};
+
+export const BubbleEditingContext = createContext<BubbleEditingTarget | null>(null);
+
+/** Resolves to the provided context, or a bubbleStore-backed fallback. */
+function useBubbleEditing(): BubbleEditingTarget {
+  const ctx = useContext(BubbleEditingContext);
+  const storeBubble = useBubbleStore((s) => s.font.bubbles[s.selectedBubble] ?? null);
+  const storeSelLayer = useBubbleStore((s) => s.selectedLayer);
+  const storeSelectLayer = useBubbleStore((s) => s.selectLayer);
+  const storeUpdateSelected = useBubbleStore((s) => s.updateSelectedBubble);
+  const storeUpdateLayer = useBubbleStore((s) => s.updateLayer);
+  const storeRemoveLayer = useBubbleStore((s) => s.removeLayer);
+  const storeAddLayer = useBubbleStore((s) => s.addLayer);
+  const storeBubbleId = storeBubble?.id ?? null;
+  const fallback = useMemo<BubbleEditingTarget>(
+    () => ({
+      bubble: storeBubble,
+      selectedLayerId: storeSelLayer,
+      selectLayer: storeSelectLayer,
+      updateBubble: storeUpdateSelected,
+      updateLayer: (layerId, fn) => {
+        if (!storeBubbleId) return;
+        storeUpdateLayer(storeBubbleId, layerId, fn);
+      },
+      removeLayer: (layerId) => {
+        if (!storeBubbleId) return;
+        storeRemoveLayer(storeBubbleId, layerId);
+      },
+      addLayer: (layer) => {
+        if (!storeBubbleId) return;
+        storeAddLayer(storeBubbleId, layer);
+      },
+    }),
+    [
+      storeBubble,
+      storeSelLayer,
+      storeSelectLayer,
+      storeUpdateSelected,
+      storeUpdateLayer,
+      storeRemoveLayer,
+      storeAddLayer,
+      storeBubbleId,
+    ],
+  );
+  return ctx ?? fallback;
+}
+
+export function BubbleSetter(props: {
+  /** When true, hides the bubble grid (left drawer) and the bubble-font
+   *  Style Controls drawer (right drawer). Used by the TypeSetter when
+   *  the editor is embedded in-place to edit a single block's bubble. */
+  readonly embedded?: boolean;
+  /** Optional extra UI shown at the bottom of the left drawer (only
+   *  consulted in embedded mode — host adds Save / Save-As / Reset etc). */
+  readonly leftDrawerExtras?: React.ReactNode;
+  /** Optional extra UI shown at the bottom of the right drawer in
+   *  embedded mode. */
+  readonly rightDrawerExtras?: React.ReactNode;
+}): JSX.Element {
+  const editing = useBubbleEditing();
+  const bubble = editing.bubble;
+  const selectedLayerId = editing.selectedLayerId;
+  const selectLayer = editing.selectLayer;
+  const updateLayer = editing.updateLayer;
+  // Standalone-mode store accesses (only used when not embedded).
+  const standaloneFont = useBubbleStore((s) => s.font);
+  const standaloneSelectedId = useBubbleStore((s) => s.selectedBubble);
+  const standaloneSelectBubble = useBubbleStore((s) => s.selectBubble);
 
   // Reuse the global Style + GlyphView so the bubble editor is
   // visually and behaviourally identical to the GlyphSetter.
@@ -63,6 +147,8 @@ export function BubbleSetter(): JSX.Element {
       // Lined-paper grid: ON by default in the bubble editor so the
       // artist can judge where text lines sit inside the bubble.
       showLineGrid: true,
+      fillOpacity: bubbleView.fillOpacity ?? 1,
+      strokeOpacity: bubbleView.strokeOpacity ?? 1,
     }),
     [glyphView, bubbleView],
   );
@@ -71,7 +157,13 @@ export function BubbleSetter(): JSX.Element {
       const bubblePatch: Partial<typeof bubbleView> = {};
       const glyphPatch: Partial<typeof glyphView> = {};
       for (const k of Object.keys(patch) as (keyof typeof patch)[]) {
-        if (k === 'editorScale' || k === 'panX' || k === 'panY') {
+        if (
+          k === 'editorScale' ||
+          k === 'panX' ||
+          k === 'panY' ||
+          k === 'fillOpacity' ||
+          k === 'strokeOpacity'
+        ) {
           (bubblePatch as Record<string, unknown>)[k] = patch[k];
         } else {
           (glyphPatch as Record<string, unknown>)[k] = patch[k];
@@ -83,7 +175,6 @@ export function BubbleSetter(): JSX.Element {
     [setBubbleView, setGlyphView, glyphView, bubbleView],
   );
 
-  const bubble = font.bubbles[selectedId];
   const layer =
     bubble?.layers.find((l) => l.id === selectedLayerId) ?? null;
 
@@ -102,13 +193,11 @@ export function BubbleSetter(): JSX.Element {
   const onGlyphChange = useCallback(
     (fn: (g: Glyph) => Glyph): void => {
       if (!bubble || !layer) return;
-      updateLayer(bubble.id, layer.id, (l) => ({ ...l, glyph: fn(l.glyph) }));
+      updateLayer(layer.id, (l) => ({ ...l, glyph: fn(l.glyph) }));
     },
     [bubble, layer, updateLayer],
   );
-
-  // Underlay: render the entire bubble (box, dummy text, *all* layers
-  // â€” including the currently-edited one) in **bubble (world)
+    // (stray lines removed)
   // coordinates**. Every layer renders identically (same fill, same
   // ink stroke as in the glyph editor); the active layer is identified
   // only by the GlyphEditor's debug overlays drawn on top (anchors,
@@ -121,6 +210,11 @@ export function BubbleSetter(): JSX.Element {
     // Constant pixel weight regardless of zoom: 1 px / worldS units.
     // We don't have worldS here, so derive from the editor scale.
     const lineW = 1 / bubbleView.editorScale;
+    // Render every visible layer in the underlay. For the active
+    // layer we suppress the stroke render (GlyphEditor draws those on
+    // top at full opacity, and double-stroking made it visibly denser
+    // than its siblings). The fill is still drawn here so the active
+    // layer's paper-white interior remains visible.
     const visibleLayers = bubble.layers.filter((l) => l.visible !== false);
     return (
       <g>
@@ -148,6 +242,9 @@ export function BubbleSetter(): JSX.Element {
               layer={ol}
               style={style}
               bubble={bubble}
+              fillOpacity={editorView.fillOpacity}
+              strokeOpacity={editorView.strokeOpacity}
+              hideStrokes={ol.id === layer.id}
               onSelect={ol.id === layer.id ? undefined : () => selectLayer(ol.id)}
             />
           ))}
@@ -162,11 +259,11 @@ export function BubbleSetter(): JSX.Element {
         )}
       </g>
     );
-  }, [bubble, layer, style, bubbleView.editorScale, selectLayer]);
+  }, [bubble, layer, style, bubbleView.editorScale, selectLayer, editorView.fillOpacity, editorView.strokeOpacity]);
 
   const toggleFill = useCallback((): void => {
     if (!bubble || !layer) return;
-    updateLayer(bubble.id, layer.id, (l) => {
+    updateLayer(layer.id, (l) => {
       const current = l.fill?.mode ?? 'none';
       const nextMode = current === 'none' ? 'paper' : 'none';
       return {
@@ -202,13 +299,17 @@ export function BubbleSetter(): JSX.Element {
           className="mz-workbench__drawer-body"
           style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 8 }}
         >
-          <BubbleGrid
-            bubbles={Object.values(font.bubbles)}
-            selected={selectedId}
-            onSelect={selectBubble}
-            style={style}
-          />
+          {!props.embedded && (
+            <BubbleGrid
+              bubbles={Object.values(standaloneFont.bubbles)}
+              selected={standaloneSelectedId}
+              onSelect={standaloneSelectBubble}
+              style={style}
+            />
+          )}
           {bubble && <LayerList bubble={bubble} />}
+          {bubble && <PreviewTextPanel />}
+          {props.leftDrawerExtras}
           {/* Reuse the GlyphSetter's View settings (anchors, fill
               preview, debug overlays, triangulation, splinesâ€¦). The
               glyph-only entries (other glyphs, reference font, guides)
@@ -246,15 +347,24 @@ export function BubbleSetter(): JSX.Element {
           </p>
         )}
       </div>
-      <div className="mz-workbench__drawer mz-workbench__drawer--right mz-mod--stylesetter">
-        <div className="mz-workbench__drawer-body">
-          <StyleControls
-            style={style}
-            setStyle={setStyleOverride}
-            {...(loadedStyleSettings ? { original: loadedStyleSettings } : {})}
-          />
+      {!props.embedded && (
+        <div className="mz-workbench__drawer mz-workbench__drawer--right mz-mod--stylesetter">
+          <div className="mz-workbench__drawer-body">
+            <StyleControls
+              style={style}
+              setStyle={setStyleOverride}
+              {...(loadedStyleSettings ? { original: loadedStyleSettings } : {})}
+            />
+          </div>
         </div>
-      </div>
+      )}
+      {props.embedded && props.rightDrawerExtras && (
+        <div className="mz-workbench__drawer mz-workbench__drawer--right">
+          <div className="mz-workbench__drawer-body">
+            {props.rightDrawerExtras}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -365,7 +475,12 @@ function LayerPolygons(props: {
     [layer.glyph, gStyle],
   );
   const fillPath = useMemo(() => {
-    const loops = fillLoopsForStrokes(layer.glyph.strokes);
+    // Bubble fill follows only the *first* stroke's centerline
+    // ("spline0"): that is the bubble outline. Decorative inner
+    // strokes (tail accents, sparkles, lettering hints) must not
+    // contribute to the filled interior.
+    const first = layer.glyph.strokes[0];
+    const loops = first ? fillLoopsForStrokes([first]) : [];
     return loopsToPath(loops);
   }, [layer.glyph.strokes]);
 
@@ -403,10 +518,11 @@ function BubbleSvg(props: { bubble: Bubble; style: StyleSettings }): JSX.Element
 // ---------- Layer list (left drawer) ---------------------------------------
 
 function LayerList(props: { bubble: Bubble }): JSX.Element {
-  const selectedLayer = useBubbleStore((s) => s.selectedLayer);
-  const selectLayer = useBubbleStore((s) => s.selectLayer);
-  const updateLayer = useBubbleStore((s) => s.updateLayer);
-  const removeLayer = useBubbleStore((s) => s.removeLayer);
+  const editing = useBubbleEditing();
+  const selectedLayer = editing.selectedLayerId;
+  const selectLayer = editing.selectLayer;
+  const updateLayer = editing.updateLayer;
+  const removeLayer = editing.removeLayer;
   const { bubble } = props;
   return (
     <div className="mz-section">
@@ -433,7 +549,7 @@ function LayerList(props: { bubble: Bubble }): JSX.Element {
                 type="checkbox"
                 checked={l.visible !== false}
                 onChange={(e) =>
-                  updateLayer(bubble.id, l.id, (lr) => ({
+                  updateLayer(l.id, (lr) => ({
                     ...lr,
                     visible: e.target.checked,
                   }))
@@ -457,7 +573,7 @@ function LayerList(props: { bubble: Bubble }): JSX.Element {
                 title="Delete layer"
                 onClick={(e) => {
                   e.stopPropagation();
-                  removeLayer(bubble.id, l.id);
+                  removeLayer(l.id);
                 }}
                 className="mz-btn--warn"
                 style={{ padding: '0 4px', fontSize: 10 }}
@@ -489,8 +605,16 @@ function UnderlayLayer(props: {
   style: StyleSettings;
   bubble: Bubble;
   onSelect?: () => void;
+  /** Multiplier on the layer's centerline fill opacity (0-1). */
+  fillOpacity?: number;
+  /** Multiplier on the layer's stroke opacity (0-1). */
+  strokeOpacity?: number;
+  /** When true, draw only the fill, not the variable-width stroke
+   *  outlines. Used for the active layer so GlyphEditor can render
+   *  the strokes on top without double-stacking. */
+  hideStrokes?: boolean;
 }): JSX.Element {
-  const { layer, style, onSelect } = props;
+  const { layer, style, onSelect, fillOpacity = 1, strokeOpacity = 1, hideStrokes = false } = props;
   const { tx, ty, s } = layerTransform(props.bubble, layer);
   const gStyle = useMemo(
     () => effectiveStyleForGlyph(style, layer.glyph),
@@ -501,7 +625,9 @@ function UnderlayLayer(props: {
     [layer.glyph, gStyle],
   );
   const fillPath = useMemo(() => {
-    const loops = fillLoopsForStrokes(layer.glyph.strokes);
+    // Spline0 only — see LayerPolygons for rationale.
+    const first = layer.glyph.strokes[0];
+    const loops = first ? fillLoopsForStrokes([first]) : [];
     return loopsToPath(loops);
   }, [layer.glyph.strokes]);
   const fillColor = fillColorForLayer(layer);
@@ -529,6 +655,7 @@ function UnderlayLayer(props: {
           fill={fillColor}
           fillRule="evenodd"
           stroke="none"
+          opacity={(layer.fill?.opacity ?? 1) * fillOpacity}
           onPointerDown={handlePointerDown}
           {...interactive}
         />
@@ -539,6 +666,8 @@ function UnderlayLayer(props: {
           d={polygonToPath(p)}
           fill="var(--mz-ink)"
           stroke="none"
+          opacity={hideStrokes ? 0 : strokeOpacity}
+          pointerEvents={hideStrokes ? 'none' : undefined}
           onPointerDown={handlePointerDown}
           {...interactive}
         />
@@ -547,9 +676,107 @@ function UnderlayLayer(props: {
   );
 }
 
+// ---------- Preview text panel --------------------------------------------
+
+/**
+ * Editor for the selected bubble's `dummyText` (the placeholder lettering
+ * that floats inside the bubble while the artist is shaping it). Includes
+ * a dropdown to pull in a snippet from the global TextPresets library —
+ * same source the StyleSetter uses — so a 1-click switch between "Just
+ * Kidding", "Noir", etc. is possible without retyping.
+ */
+function PreviewTextPanel(): JSX.Element | null {
+  const editing = useBubbleEditing();
+  const bubble = editing.bubble;
+  const updateBubble = editing.updateBubble;
+  const overrides = useTextPresetsStore((s) => s.overrides);
+  const activeKey = useTextPresetsStore(
+    (s) => s.activeBy.bubblesetter ?? null,
+  );
+  const setActive = useTextPresetsStore((s) => s.setActive);
+  const setOverride = useTextPresetsStore((s) => s.setOverride);
+  if (!bubble) return null;
+  const text = bubble.dummyText ?? '';
+  return (
+    <Section title="Preview text">
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 12 }}>Load snippet</span>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <select
+            value={activeKey ?? ''}
+            onChange={(e) => {
+              const enc = e.target.value;
+              if (!enc) {
+                setActive('bubblesetter', null);
+                return;
+              }
+              const [setId, idxStr] = enc.split('::');
+              const set = textPresetSets.find((s) => s.id === setId);
+              const idx = Number(idxStr);
+              const orig = set?.bubbles[idx]?.text;
+              if (orig === undefined) return;
+              setActive('bubblesetter', enc);
+              const next = overrides[enc] ?? orig;
+              updateBubble((b) => ({ ...b, dummyText: next }));
+            }}
+            style={{ padding: 4, flex: 1 }}
+          >
+            <option value="">— load snippet —</option>
+            {textPresetSets.map((set) => (
+              <optgroup key={set.id} label={set.name}>
+                {set.bubbles.map((b, i) => {
+                  const k = presetKey(set.id, i);
+                  const modified = overrides[k] !== undefined;
+                  return (
+                    <option key={k} value={k}>
+                      {b.label}
+                      {modified ? ' •' : ''}
+                    </option>
+                  );
+                })}
+              </optgroup>
+            ))}
+          </select>
+          <button
+            className="mz-btn--warn"
+            onClick={() => {
+              if (activeKey) setOverride(activeKey, text);
+            }}
+            disabled={!activeKey}
+            title={
+              activeKey
+                ? 'Overwrite this preset with the current preview text'
+                : 'Load a snippet first to overwrite it'
+            }
+            style={{ padding: '2px 8px' }}
+          >
+            Save
+          </button>
+        </div>
+      </label>
+      <textarea
+        value={text}
+        onChange={(e) =>
+          updateBubble((b) => ({ ...b, dummyText: e.target.value }))
+        }
+        rows={3}
+        placeholder="HELLO\nWORLD"
+        style={{
+          width: '100%',
+          fontSize: 12,
+          padding: 6,
+          fontFamily: 'ui-sans-serif, system-ui, sans-serif',
+          boxSizing: 'border-box',
+          resize: 'vertical',
+        }}
+      />
+    </Section>
+  );
+}
+
 /**
  * Placeholder text shown inside the bubble while editing, in **bubble
- * (world) coords**. SVG <text> with a system font â€” it's a sketch,
+ * (world) coords**. SVG <text> with a system font — it's a sketch,
  * not the final lettering. Wrapping is by literal newlines.
  */
 function DummyTextOverlay(props: {

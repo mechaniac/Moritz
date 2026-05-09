@@ -4,24 +4,43 @@
 > diverge, `.github/copilot-instructions.md` wins. This file exists so Claude Code
 > and other agents pick up the same conventions automatically.
 
-Moritz is a **parametric comic-book lettering engine**: a web app that synthesizes a
-handwritten comic typeface from editable stroke-based glyph drawings, then lets the
-user place that lettering onto a comic page and export it as SVG or transparent PNG.
+Moritz is a **font, bubble and page generator** for comic-book lettering: a web app
+that lets the user design every layer — individual glyphs, the typeface-wide style,
+speech-bubble shapes, and the final page — separately and immediately, then export
+the result as SVG or transparent PNG.
 
 ---
 
 ## 1. Product principles
 
-1. **Opinionated, not blank-slate.** Every new font starts as a clone of a built-in
-   base font that already covers all required glyphs. The user edits, swaps, adds,
-   or removes — never starts from zero.
-2. **Single source of truth per typeface.** One base style, manipulated in real time
-   by typeface-wide settings and per-glyph / per-run overrides. We do not ship
-   separate "bold" or "italic" cuts — those are parameter modulations.
-3. **Real-time everywhere.** Every slider/numeric input updates the preview within
-   a frame. Memoize the pipeline; never re-render what hasn't changed.
+1. **Opinionated, not blank-slate.** Every new font / bubble / page starts as a
+   clone of a built-in default that already covers all required parts. The user
+   edits, swaps, adds, or removes — never starts from zero.
+2. **Single source of truth per artefact.** One base style per typeface, one set of
+   layers per bubble, one block list per page — manipulated in real time by
+   workspace-wide settings and per-element overrides. We do not ship separate
+   "bold" or "italic" cuts; those are parameter modulations.
+3. **Real-time everywhere.** Every slider / numeric input / drag updates the
+   preview within a frame. Memoize the pipeline; never re-render what hasn't
+   changed.
 4. **Vector-first.** The canonical render target is SVG. PNG is a rasterization of
    the SVG at user-chosen DPI with alpha.
+5. **One workspace, four lenses.** All four workspaces (GlyphSetter, StyleSetter,
+   BubbleSetter, TypeSetter) are practically identical: an endless vector space
+   with floating elements, the same camera/pan/zoom model, the same selection +
+   handle visuals, the same export pipeline. They differ **only** in which
+   element is in focus, which inspector panels are shown, and which grid /
+   guides are drawn. Whenever a behaviour can be made shared, it must be — any
+   divergence is a bug, not a feature.
+6. **Edit any layer in any context.** A glyph is editable from the GlyphSetter
+   *and* from a TypeSetter block; a bubble is editable from the BubbleSetter
+   *and* from the page; a typeface style is editable from the StyleSetter *and*
+   inline on the page. Selection of an element activates editing for that
+   element directly — no "open in editor" buttons, no modal takeovers.
+7. **Per-element assignment.** Pages contain blocks; blocks contain a bubble and
+   one or more text runs. Each text run carries its own font + style reference,
+   and each bubble carries its own style reference. A page can therefore mix
+   any number of fonts, styles, and bubble designs.
 
 ---
 
@@ -74,7 +93,49 @@ type Font = {
   style: StyleSettings;
   glyphs: Record<string, Glyph>;
 };
+
+// ---- Page hierarchy ------------------------------------------------------
+
+type TextRun = {
+  id: string;
+  text: string;
+  fontId: string;             // one of the fonts in the page library
+  styleId: string;            // one of the styles in the page library
+  boldFactor?: number;        // multiplier on stroke width, default 1
+  slantDelta?: number;        // radians added to style.slant, default 0
+  fontSize: number;           // page units (px)
+  align?: 'left' | 'center' | 'right';
+};
+
+type Block = {
+  id: string;
+  x: number; y: number;
+  w: number; h: number;
+  bubble?: {
+    bubbleId: string;
+    styleId: string;
+    override?: Bubble;        // clone-on-edit per-instance override
+  };
+  texts: TextRun[];
+};
+
+type Page = {
+  id: string;
+  w: number; h: number;
+  background?: string;
+  blocks: Block[];
+  library: {
+    fonts: Record<string, Font>;
+    styles: Record<string, StyleSettings>;
+    bubbles: Record<string, Bubble>;
+  };
+};
 ```
+
+> Status: `Page` / `Block` / `TextRun` above are the **target** shape. The
+> current code still uses a single global font + style and a flat
+> `TextBlock` (see `src/state/typesetterStore.ts`); migrating to per-run
+> font/style references is tracked in § 7.
 
 ### The transform rule (critical)
 
@@ -113,21 +174,33 @@ state is immutable, reference equality is enough.
 
 ## 4. Modules (UI)
 
-Three top-level modules under `src/modules/`:
+All workspaces share **the same canvas shell**: an infinite pannable / zoomable
+vector space, the same selection model, the same handle visuals
+(`StrokeOverlay`), the same export pipeline. They differ only in which floating
+elements are placed, which inspector panels appear, and which grid / guides are
+drawn. New shared behaviour belongs in `src/ui/canvas/` (the shell) or
+`src/core/` (pure logic), **not** copy-pasted into a workspace. Any divergence
+between workspaces is a bug to be removed.
 
-1. **glyphsetter/** — raster grid of all glyphs in the active font, plus a
-   selected-glyph editor (Illustrator-style spline tool: add/remove strokes, add/
-   remove anchors, drag points and tangent handles). Reducers are pure; the editor
-   only emits intents (`ADD_ANCHOR`, `MOVE_HANDLE`, …).
-2. **stylesetter/** — sliders + numeric inputs bound to `StyleSettings`; live
-   preview of the whole alphabet; save/load named typefaces.
-3. **typesetter/** — work area. Load a comic page image as background, place text
-   blocks (rect / speech bubble / thought cloud), input text, per-word overrides
-   (size, bold-multiplier, italic-multiplier). Export selected text or whole page
-   as SVG/PNG with transparency.
+Four top-level modules under `src/modules/`:
 
-UI modules are thin — they translate user input into intents and render the output
-of `core/`. **No domain logic in components.**
+1. **glyphsetter/** — floating elements: every glyph in the active font, laid
+   out as a grid; selection enters Illustrator-style spline editing on that
+   glyph. Reducers are pure; the editor only emits intents (`ADD_ANCHOR`,
+   `MOVE_HANDLE`, …).
+2. **stylesetter/** — floating elements: a live alphabet preview rendered with
+   the active style. Inspector: sliders + numeric inputs bound to
+   `StyleSettings`; save/load named styles.
+3. **bubblesetter/** — floating elements: every bubble in the active bubble
+   library; selection enters in-place layer + spline editing on that bubble.
+4. **typesetter/** — floating elements: the page background and every block.
+   Selecting a block reveals its bubble's spline handles in place (same
+   `StrokeOverlay` as GlyphSetter / BubbleSetter) and its text runs become
+   editable inline. Per-text font / style / size / bold / italic are inspector
+   controls; per-bubble style is an inspector control.
+
+UI modules are thin — they translate user input into intents and render the
+output of `core/`. **No domain logic in components.**
 
 ---
 
@@ -200,6 +273,15 @@ Track in code with `// TODO(decision):` and raise in PRs.
 2. **Bubble / cloud shapes** in TypeSetter — preset set vs free-draw.
 3. **Kerning** — none in v1; add as `Font.kerning?: Record<string, number>` later.
 4. **Multi-character ligatures** — out of scope for v1.
+5. **Per-page library migration** — the current `TypesetterStore.TextBlock`
+   carries a single text + global font/style. Move to `Page → Block → TextRun[]`
+   with per-run `fontId` / `styleId` and a per-page library of fonts /
+   styles / bubbles (§ 2). Until then, treat the global active font/style as
+   an implicit one-entry library.
+6. **Shared canvas shell** — the four workspaces still each own their canvas /
+   selection / pan / zoom plumbing. Extract into `src/ui/canvas/` so every
+   workspace is genuinely the same shell + a different inspector + a different
+   set of floating elements (§ 4, principle 5).
 
 ---
 

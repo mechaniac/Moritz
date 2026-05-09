@@ -22,7 +22,7 @@ import {
 const OVERRIDES_KEY = 'moritz.textPresets.overrides';
 const ACTIVE_KEY = 'moritz.textPresets.activeBy';
 
-export type PresetConsumer = 'stylesetter' | 'typesetter';
+export type PresetConsumer = 'stylesetter' | 'typesetter' | 'bubblesetter';
 
 type State = {
   overrides: Record<string, string>;

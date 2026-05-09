@@ -21,6 +21,10 @@ export type GlyphViewOptions = {
   showAnchors: boolean;
   showFillPreview: boolean;
   fillOpacity: number; // 0..1; opacity of the fill preview
+  /** Opacity multiplier for ink stroke polygons (0..1). Used by the
+   *  BubbleSetter (which reuses the GlyphEditor) so the active layer's
+   *  ink can be faded; in glyph mode it stays at 1. */
+  strokeOpacity: number;
   showOtherGlyphs: boolean; // overlay all other glyphs' fills behind the edited one
   showBorders: boolean; // colorized debug overlay of left/right/caps
   showTriangles: boolean; // overlay of the active triangulation
@@ -126,6 +130,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     showAnchors: true,
     showFillPreview: true,
     fillOpacity: 0.6,
+    strokeOpacity: 1,
     showOtherGlyphs: false,
     showBorders: false,
     showTriangles: false,

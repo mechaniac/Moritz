@@ -21,7 +21,7 @@
  * baseline that StyleSetter and TypeSetter modulate downstream.
  */
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { effectiveStyleForGlyph, outlineStroke, redistributePolygonEvenly, widthAt } from '../../core/stroke.js';
 import {
   closestPointT,
@@ -46,6 +46,8 @@ import type { GlyphViewOptions } from '../../state/store.js';
 import { computeLayerGeometry } from './guides.js';
 import { GuidesPanel } from './GuidesPanel.js';
 import { measureFontMetrics, measureGlyphMetrics, measurePairAdvance } from './fontMetrics.js';
+import { isPanGesture, useCanvasInput } from '../../ui/canvas/useCanvasInput.js';
+import { useCanvasSize } from '../../ui/canvas/useCanvasSize.js';
 import {
   addStroke,
   clearNormalOverride,
@@ -185,7 +187,7 @@ function extractKerningFromReference(
   return out;
 }
 
-type Selection =
+export type Selection =
   | { kind: 'none' }
   | { kind: 'stroke'; strokeIdx: number }
   | { kind: 'anchor'; strokeIdx: number; vIdx: number }
@@ -455,38 +457,6 @@ export function GlyphEditor(props: {
 }): JSX.Element {
   const { char, glyph, onChange, view, font, extraToolbar } = props;
   const [selection, setSelection] = useState<Selection>({ kind: 'none' });
-  // Spacebar held â‡’ left-click on the canvas pans instead of marquee-
-  // selecting (Illustrator/Figma convention). Tracked at window level so
-  // the user doesn't need to focus the SVG first.
-  const [spaceDown, setSpaceDown] = useState(false);
-  useEffect(() => {
-    const isEditing = (t: EventTarget | null): boolean => {
-      const el = t as HTMLElement | null;
-      if (!el) return false;
-      const tag = el.tagName;
-      return (
-        tag === 'INPUT' ||
-        tag === 'TEXTAREA' ||
-        tag === 'SELECT' ||
-        el.isContentEditable === true
-      );
-    };
-    const onKD = (e: KeyboardEvent): void => {
-      if (e.code !== 'Space' || isEditing(e.target)) return;
-      e.preventDefault();
-      setSpaceDown(true);
-    };
-    const onKU = (e: KeyboardEvent): void => {
-      if (e.code !== 'Space') return;
-      setSpaceDown(false);
-    };
-    window.addEventListener('keydown', onKD);
-    window.addEventListener('keyup', onKU);
-    return () => {
-      window.removeEventListener('keydown', onKD);
-      window.removeEventListener('keyup', onKU);
-    };
-  }, []);
   // Live marquee rectangle while the user drags from empty canvas. In
   // glyph-coord units; null when not marqueeing. Kept in React state so
   // the visualization re-renders each frame.
@@ -496,21 +466,10 @@ export function GlyphEditor(props: {
   const dragRef = useRef<Drag | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   // The SVG fills the entire canvas area (Illustrator-style infinite
-  // workspace). We measure the wrapper with ResizeObserver and centre
-  // the glyph inside whatever space the user gave us.
+  // workspace). We measure the wrapper with the shared canvas-shell
+  // hook and centre the glyph inside whatever space the user gave us.
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 800, h: 600 });
-  useLayoutEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const measure = (): void => {
-      setSize({ w: el.clientWidth, h: el.clientHeight });
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const size = useCanvasSize(wrapRef);
 
   // Glyph as it would render in the StyleSetter / TypeSetter, i.e. with the
   // style's affine (slant, scaleX, scaleY) and per-glyph spline jitter
@@ -893,87 +852,35 @@ export function GlyphEditor(props: {
   }, []);
 
   // ---------- Wheel + pinch zoom -------------------------------------------
-  // Both bound natively (with passive:false) so we can preventDefault and
-  // suppress page-scroll / browser pinch-zoom while the pointer is over the
-  // canvas. The new scale is committed back into the store so the header
-  // slider reflects it.
+  // Bound through the shared canvas-input hook so every workspace
+  // gets the same exponential wheel zoom + two-finger pinch behaviour
+  // and the same `spaceDown`-tracking semantics. The hook calls
+  // `setView({ editorScale })` directly via the adapter below; the
+  // header slider reflects the value because it reads the same store.
   const setView = props.setView;
   const setViewRef = useRef(setView);
   setViewRef.current = setView;
-  const scaleRef = useRef(SCALE);
-  scaleRef.current = SCALE;
-  useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const clamp = (s: number): number =>
-      Math.min(MAX_EDITOR_SCALE, Math.max(MIN_EDITOR_SCALE, s));
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      // Exponential so a constant wheel speed feels like constant zoom rate.
-      const factor = Math.exp(-e.deltaY * 0.0015);
-      const next = clamp(scaleRef.current * factor);
-      if (next === scaleRef.current) return;
-      setViewRef.current({ editorScale: next });
-    };
-    svg.addEventListener('wheel', onWheel, { passive: false });
-
-    // Pinch (touchscreen): track active pointers; while exactly two are
-    // down, scale by the ratio of current vs. initial finger distance.
-    const pts = new Map<number, { x: number; y: number }>();
-    let pinchStartDist = 0;
-    let pinchStartScale = 0;
-    const dist = (): number => {
-      const arr = Array.from(pts.values());
-      if (arr.length < 2) return 0;
-      const dx = arr[0]!.x - arr[1]!.x;
-      const dy = arr[0]!.y - arr[1]!.y;
-      return Math.hypot(dx, dy);
-    };
-    const onPDown = (e: PointerEvent) => {
-      if (e.pointerType !== 'touch') return;
-      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pts.size === 2) {
-        pinchStartDist = dist();
-        pinchStartScale = scaleRef.current;
-        // Cancel any single-finger drag that may have started a frame ago.
-        dragRef.current = null;
+  const cameraGetterRef = useRef(view);
+  cameraGetterRef.current = view;
+  const { spaceDown } = useCanvasInput(svgRef, {
+    getCamera: () => ({
+      panX: cameraGetterRef.current.panX ?? 0,
+      panY: cameraGetterRef.current.panY ?? 0,
+      zoom: cameraGetterRef.current.editorScale,
+    }),
+    setCamera: (patch) => {
+      if (patch.zoom !== undefined) setViewRef.current({ editorScale: patch.zoom });
+      if (patch.panX !== undefined || patch.panY !== undefined) {
+        setViewRef.current({
+          ...(patch.panX !== undefined ? { panX: patch.panX } : {}),
+          ...(patch.panY !== undefined ? { panY: patch.panY } : {}),
+        });
       }
-    };
-    const onPMove = (e: PointerEvent) => {
-      if (e.pointerType !== 'touch') return;
-      if (!pts.has(e.pointerId)) return;
-      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pts.size >= 2 && pinchStartDist > 0) {
-        e.preventDefault();
-        const d = dist();
-        const next = clamp(pinchStartScale * (d / pinchStartDist));
-        if (next !== scaleRef.current) {
-          setViewRef.current({ editorScale: next });
-        }
-      }
-    };
-    const onPEnd = (e: PointerEvent) => {
-      if (e.pointerType !== 'touch') return;
-      pts.delete(e.pointerId);
-      if (pts.size < 2) {
-        pinchStartDist = 0;
-      }
-    };
-    svg.addEventListener('pointerdown', onPDown);
-    svg.addEventListener('pointermove', onPMove, { passive: false });
-    svg.addEventListener('pointerup', onPEnd);
-    svg.addEventListener('pointercancel', onPEnd);
-    svg.addEventListener('pointerleave', onPEnd);
-
-    return () => {
-      svg.removeEventListener('wheel', onWheel);
-      svg.removeEventListener('pointerdown', onPDown);
-      svg.removeEventListener('pointermove', onPMove);
-      svg.removeEventListener('pointerup', onPEnd);
-      svg.removeEventListener('pointercancel', onPEnd);
-      svg.removeEventListener('pointerleave', onPEnd);
-    };
-  }, []);
+    },
+    minZoom: MIN_EDITOR_SCALE,
+    maxZoom: MAX_EDITOR_SCALE,
+    pan: 'both',
+  });
 
   return (
     <>
@@ -1132,10 +1039,13 @@ export function GlyphEditor(props: {
             y={0}
             width={viewW}
             height={viewH}
-            fill="var(--mz-paper)"
+            // In world (bubble) mode the workspace is a flat grey so a
+            // bubble's paper-white fill stands out; in glyph mode it's
+            // the standard paper white.
+            fill={props.world ? '#e8e8e8' : 'var(--mz-paper)'}
             style={spaceDown ? { cursor: 'grab' } : undefined}
             onPointerDown={(e) => {
-              const isPan = e.button === 1 || (e.button === 0 && spaceDown);
+              const isPan = isPanGesture(e.button, spaceDown, 'both');
               if (isPan) {
                 e.preventDefault();
                 dragRef.current = {
@@ -1430,11 +1340,15 @@ export function GlyphEditor(props: {
               })}
             </g>
           )}
-          {/* outlined preview (faded) â€” fill comes from the triangulated mesh */}
+          {/* outlined preview (faded) — fill comes from the triangulated mesh */}
           {view.showFillPreview && (
             <g
               transform={xform}
-              fill={`rgba(0,0,0,${view.fillOpacity})`}
+              // In world (bubble) mode this overlay *is* the active
+              // layer's ink stroke, so it follows the Stroke-opacity
+              // slider. In glyph mode it's the standalone fill preview
+              // and follows Fill-opacity.
+              fill={`rgba(0,0,0,${props.world ? view.strokeOpacity : view.fillOpacity})`}
               pointerEvents="none"
             >
               {displayGlyph.strokes.map((s, i) => {
@@ -1769,15 +1683,32 @@ export function SettingsPanel(props: {
           tooltip="Render the triangulated fill of each stroke so the final glyph shape is visible while editing."
         />
         {view.showFillPreview && (
-          <NumSlider
-            label="Fill opacity"
-            min={0}
-            max={1}
-            step={0.01}
-            value={view.fillOpacity}
-            onChange={(v) => setView({ fillOpacity: v })}
-            tooltip="Opacity of the fill preview (0 = invisible, 1 = solid black)."
-          />
+          <>
+            <NumSlider
+              label={bubbleMode ? 'Bubble fill opacity' : 'Fill opacity'}
+              min={0}
+              max={1}
+              step={0.01}
+              value={view.fillOpacity}
+              onChange={(v) => setView({ fillOpacity: v })}
+              tooltip={
+                bubbleMode
+                  ? "Opacity of the bubble's paper-white fill behind the strokes."
+                  : 'Opacity of the fill preview (0 = invisible, 1 = solid black).'
+              }
+            />
+            {bubbleMode && (
+              <NumSlider
+                label="Stroke opacity"
+                min={0}
+                max={1}
+                step={0.01}
+                value={view.strokeOpacity}
+                onChange={(v) => setView({ strokeOpacity: v })}
+                tooltip="Opacity of the ink stroke polygons (0 = invisible, 1 = solid)."
+              />
+            )}
+          </>
         )}
         {!bubbleMode && (
           <Check
@@ -2598,7 +2529,7 @@ function NumSlider(props: {
 
 // ---------- Per-stroke overlay ---------------------------------------------
 
-function StrokeOverlay(props: {
+export function StrokeOverlay(props: {
   stroke: Stroke;
   strokeIdx: number;
   selection: Selection;

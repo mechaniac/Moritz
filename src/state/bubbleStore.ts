@@ -18,6 +18,10 @@ export type BubbleViewOptions = {
   /** Pan offset in screen pixels. (0,0) = artwork centred. */
   panX: number;
   panY: number;
+  /** Opacity multiplier for centerline fill (0-1, default 1). */
+  fillOpacity: number;
+  /** Opacity multiplier for ink stroke (0-1, default 1). */
+  strokeOpacity: number;
 };
 
 type BubbleState = {
@@ -26,7 +30,7 @@ type BubbleState = {
   selectedLayer: string | null;
   view: BubbleViewOptions;
 
-  loadBubbleFont: (font: BubbleFont) => void;
+  loadBubbleFont: (font: BubbleFont, view?: Partial<BubbleViewOptions>) => void;
   selectBubble: (id: string) => void;
   selectLayer: (id: string | null) => void;
   setView: (patch: Partial<BubbleViewOptions>) => void;
@@ -55,15 +59,18 @@ export const useBubbleStore = create<BubbleState>((set) => ({
     editorScale: 1.4,
     panX: 0,
     panY: 0,
+    fillOpacity: 1,
+    strokeOpacity: 1,
   },
 
-  loadBubbleFont: (font) => {
+  loadBubbleFont: (font, view) => {
     const id = Object.keys(font.bubbles)[0] ?? '';
-    set({
+    set((s) => ({
       font,
       selectedBubble: id,
       selectedLayer: font.bubbles[id]?.layers[0]?.id ?? null,
-    });
+      view: view ? { ...s.view, ...view } : s.view,
+    }));
   },
   selectBubble: (selectedBubble) =>
     set((s) => ({

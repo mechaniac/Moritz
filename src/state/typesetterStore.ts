@@ -8,6 +8,7 @@
 
 import { create } from 'zustand';
 import type { BubbleShape } from '../core/bubble.js';
+import type { Bubble, BubbleLayer } from '../core/types.js';
 
 export type TextBlockId = string;
 
@@ -59,6 +60,21 @@ export type TextBlock = {
   readonly tailY: number;
   readonly bubbleStroke: number; // bubble outline width (image px)
   readonly align?: 'left' | 'center' | 'right'; // text alignment, default 'left'
+  /** Per-block font override. When undefined the active global font is
+   *  used (legacy behaviour). When set, must match an id in the page
+   *  library (built-ins + saved). Round-trips through Page.library. */
+  readonly fontId?: string;
+  /** Per-block style override. Same resolution model as `fontId`. */
+  readonly styleId?: string;
+  /** When `shape === 'preset'`, the id of a Bubble inside the active
+   *  BubbleFont (see `useBubbleStore`). Resolved at render time so that
+   *  switching the active BubbleFont updates every block automatically. */
+  readonly bubblePresetId?: string;
+  /** Per-block instance snapshot. When set, this overrides the lookup
+   *  by `bubblePresetId` — the user has begun editing the bubble for
+   *  this block locally. The preset stays untouched until they press
+   *  "Save to preset". Cloned from the preset on first edit. */
+  readonly bubble?: Bubble;
 };
 
 type TypesetterState = {
@@ -69,13 +85,38 @@ type TypesetterState = {
   border: PageBorder;
   blocks: readonly TextBlock[];
   selectedBlockId: TextBlockId | null;
+  /** When non-null, the TypeSetter centre area shows the bubble editor
+   *  (mirror of BubbleSetter) bound to this block's `bubble`. */
+  bubbleEditingBlockId: TextBlockId | null;
+  /** Per-edit-session selection of the currently-active layer inside
+   *  the block's bubble. Mirrors BubbleStore's `selectedLayer`. */
+  bubbleEditingLayerId: string | null;
   setPage: (dataUrl: string | null, w: number, h: number) => void;
   setPageFormat: (id: string) => void;
   setBorder: (patch: Partial<PageBorder>) => void;
   addBlock: (b: Omit<TextBlock, 'id'>) => void;
   updateBlock: (id: TextBlockId, patch: Partial<TextBlock>) => void;
+  /** Apply a functional update to a block's per-instance `bubble`
+   *  snapshot. The caller passes the resolved "current" bubble
+   *  (`block.bubble ?? preset`) so this store doesn't need to know
+   *  about the active BubbleFont. */
+  updateBlockBubble: (id: TextBlockId, current: Bubble, fn: (b: Bubble) => Bubble) => void;
+  /** Functional update for one layer inside a block's bubble. Same
+   *  caller-resolved-current pattern as `updateBlockBubble`. */
+  updateBlockBubbleLayer: (
+    id: TextBlockId,
+    current: Bubble,
+    layerId: string,
+    fn: (l: BubbleLayer) => BubbleLayer,
+  ) => void;
+  /** Replace the per-block bubble outright (used when cloning a preset
+   *  in or resetting back to the preset by clearing it). Pass
+   *  `undefined` to clear the snapshot. */
+  setBlockBubble: (id: TextBlockId, bubble: Bubble | undefined) => void;
   deleteBlock: (id: TextBlockId) => void;
   selectBlock: (id: TextBlockId | null) => void;
+  enterBubbleEdit: (id: TextBlockId | null) => void;
+  selectBubbleEditingLayer: (layerId: string | null) => void;
   /** Replace the entire blocks array. Used when loading a Page file. */
   replaceBlocks: (blocks: ReadonlyArray<Omit<TextBlock, 'id'> & { id?: TextBlockId }>) => void;
 };
@@ -95,6 +136,8 @@ export const useTypesetterStore = create<TypesetterState>((set) => ({
   border: { inset: DEFAULT_FORMAT.inset, stroke: 1 },
   blocks: [],
   selectedBlockId: null,
+  bubbleEditingBlockId: null,
+  bubbleEditingLayerId: null,
   setPage: (dataUrl, w, h) =>
     set({ pageImage: dataUrl && dataUrl.length > 0 ? dataUrl : null, pageW: w, pageH: h }),
   setPageFormat: (id) =>
@@ -118,12 +161,58 @@ export const useTypesetterStore = create<TypesetterState>((set) => ({
     set((s) => ({
       blocks: s.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)),
     })),
+  updateBlockBubble: (id, current, fn) =>
+    set((s) => ({
+      blocks: s.blocks.map((b) =>
+        b.id === id ? { ...b, bubble: fn(b.bubble ?? current) } : b,
+      ),
+    })),
+  updateBlockBubbleLayer: (id, current, layerId, fn) =>
+    set((s) => ({
+      blocks: s.blocks.map((b) => {
+        if (b.id !== id) return b;
+        const base = b.bubble ?? current;
+        const next: Bubble = {
+          ...base,
+          layers: base.layers.map((l) => (l.id === layerId ? fn(l) : l)),
+        };
+        return { ...b, bubble: next };
+      }),
+    })),
+  setBlockBubble: (id, bubble) =>
+    set((s) => ({
+      blocks: s.blocks.map((b) => {
+        if (b.id !== id) return b;
+        // Drop the property when clearing so persistence stays compact.
+        if (bubble === undefined) {
+          const { bubble: _drop, ...rest } = b;
+          return rest as TextBlock;
+        }
+        return { ...b, bubble };
+      }),
+    })),
   deleteBlock: (id) =>
     set((s) => ({
       blocks: s.blocks.filter((b) => b.id !== id),
       selectedBlockId: s.selectedBlockId === id ? null : s.selectedBlockId,
+      bubbleEditingBlockId:
+        s.bubbleEditingBlockId === id ? null : s.bubbleEditingBlockId,
     })),
   selectBlock: (id) => set({ selectedBlockId: id }),
+  enterBubbleEdit: (id) =>
+    set((s) => {
+      if (id === null) {
+        return { bubbleEditingBlockId: null, bubbleEditingLayerId: null };
+      }
+      const b = s.blocks.find((x) => x.id === id) ?? null;
+      const firstLayer = b?.bubble?.layers[0]?.id ?? null;
+      return {
+        bubbleEditingBlockId: id,
+        bubbleEditingLayerId: firstLayer,
+      };
+    }),
+  selectBubbleEditingLayer: (layerId) =>
+    set({ bubbleEditingLayerId: layerId }),
   replaceBlocks: (next) =>
     set({
       blocks: next.map((b) => ({ ...(b as TextBlock), id: b.id ?? newId() })),

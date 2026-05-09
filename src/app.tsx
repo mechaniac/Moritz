@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
 import { GlyphSetter } from './modules/glyphsetter/GlyphSetter.js';
-import { BubbleSetter } from './modules/bubblesetter/BubbleSetter.js';
+import { BubbleSetter } from './modules/bubblesetter/BubbleSetter';
 import { StyleSetter } from './modules/stylesetter/StyleSetter.js';
 import { TypeSetter } from './modules/typesetter/TypeSetter.js';
 import { useAppStore, type ModuleId } from './state/store.js';
 import { useThemeStore } from './state/themeStore.js';
 import { FontBar } from './ui/FontBar.js';
+import { BubbleBar } from './ui/BubbleBar.js';
 import { StyleBar } from './ui/StyleBar.js';
 import { PageBar } from './ui/PageBar.js';
 import { SettingsModal } from './ui/SettingsModal.js';
@@ -73,6 +74,7 @@ export function App(): JSX.Element {
           </label>
         )}
         {module === 'glyphsetter' && <FontBar />}
+        {module === 'bubblesetter' && <BubbleBar />}
         {module === 'stylesetter' && <StyleBar />}
         {module === 'typesetter' && <PageBar />}
         <button

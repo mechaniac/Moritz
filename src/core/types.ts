@@ -340,26 +340,132 @@ export type Style = {
 };
 
 /**
- * Page — a TypeSetter scene that can be saved/loaded as a single file.
- * Carries the page background dimensions plus the placed text blocks.
+ * Page — a TypeSetter scene saved as a single self-contained file.
+ *
+ * Canonical save shape (`PageEnvelope` v2). The page carries everything
+ * needed to render itself: page dimensions, optional background image,
+ * a flat list of blocks, and a `library` snapshot of every Font / Style
+ * / BubbleFont referenced by those blocks. This makes the file
+ * **portable**: opening it on another machine never needs external
+ * assets.
+ *
  * Persistence: one `.page.moritz.json` file per Page.
  */
 export type Page = {
   readonly id: string;
   readonly name: string;
-  readonly pageW: number;
-  readonly pageH: number;
-  /** Optional comic page image as a data URL. May be very large. */
+  readonly w: number;
+  readonly h: number;
+  /** Optional comic page image as a data URL. */
   readonly background?: string;
-  readonly blocks: readonly TextBlockData[];
+  readonly blocks: readonly Block[];
+  readonly library: PageLibrary;
 };
 
 /**
- * Subset of TextBlock that is safe to persist (no DOM-bound runtime ids
- * are required; ids are kept for re-selection but regenerated on load if
- * a collision occurs).
+ * Snapshot of every fontish artefact referenced by the page. Stored
+ * inside the Page so the file is self-contained. Indexed by stable id
+ * so a `TextRun.fontId` / `BlockBubble.styleId` etc. resolves locally.
  */
-export type TextBlockData = {
+export type PageLibrary = {
+  readonly fonts: Readonly<Record<string, Font>>;
+  readonly styles: Readonly<Record<string, Style>>;
+  readonly bubbleFonts: Readonly<Record<string, BubbleFont>>;
+};
+
+/**
+ * One placement on the page: a frame (x, y, w, h), an optional
+ * speech-bubble background, and one or more text runs that share the
+ * frame. The frame is in page units (px), top-left origin.
+ *
+ * When a `bubble` is present the bubble fills the block frame; the
+ * text runs render on top, clipped/aligned by the inspector.
+ */
+export type Block = {
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+  readonly bubble?: BlockBubble;
+  /** At least one run. Multi-run support is reserved for the future
+   *  per-text font/style picker; today every block ships exactly one. */
+  readonly texts: readonly TextRun[];
+};
+
+/**
+ * One styled run of text inside a Block.
+ *
+ * Carries its own `fontId` + `styleId` (resolved against
+ * `Page.library`) so a single page can mix any number of fonts and
+ * styles without per-block overrides. `boldFactor` and `slantDelta`
+ * are parameter modulations on top of the referenced style — we never
+ * ship separate "bold" / "italic" cuts.
+ */
+export type TextRun = {
+  readonly id: string;
+  readonly text: string;
+  readonly fontId: string;     // → Page.library.fonts
+  readonly styleId: string;    // → Page.library.styles
+  /** Page-unit glyph height. */
+  readonly fontSize: number;
+  readonly align?: 'left' | 'center' | 'right';
+  /** Multiplier on stroke width. Default 1. */
+  readonly boldFactor?: number;
+  /** Radians added to the referenced style's slant. Default 0. */
+  readonly slantDelta?: number;
+};
+
+/**
+ * The bubble drawn behind a block. Either references a preset bubble
+ * inside the page library, OR carries one of the legacy programmatic
+ * shapes (`'rect' | 'speech' | 'cloud'`). The discriminated `source`
+ * keeps the two cleanly separated; future versions may convert the
+ * legacy shapes into actual preset bubbles and drop the second arm.
+ */
+export type BlockBubble = {
+  readonly source: BlockBubbleSource;
+  /** Style used to render the bubble's strokes. → Page.library.styles */
+  readonly styleId: string;
+  /** Outline width multiplier in page units. */
+  readonly stroke: number;
+  /** Tail tip in block-local coords (page units, 0,0 = block top-left). */
+  readonly tailX: number;
+  readonly tailY: number;
+};
+
+export type BlockBubbleSource =
+  | {
+      readonly kind: 'preset';
+      readonly bubbleFontId: string;            // → Page.library.bubbleFonts
+      readonly bubbleId: string;                // key inside that BubbleFont
+      /** Per-instance snapshot (clone-on-edit). When present, overrides
+       *  the lookup so the user can edit the bubble locally without
+       *  touching the preset. Cleared to fall back to the preset. */
+      readonly override?: Bubble;
+    }
+  | {
+      readonly kind: 'shape';
+      readonly shape: 'rect' | 'speech' | 'cloud';
+    };
+
+// ---- Legacy shape (envelope v1) -------------------------------------------
+// Kept ONLY for migrating saved files. New code MUST use `Page` (above).
+// The persistence layer converts v1 envelopes to the canonical shape on
+// load via `core/page.ts`.
+
+/** @deprecated Use `Page`. v1 envelope shape only. */
+export type LegacyPage = {
+  readonly id: string;
+  readonly name: string;
+  readonly pageW: number;
+  readonly pageH: number;
+  readonly background?: string;
+  readonly blocks: readonly LegacyTextBlock[];
+};
+
+/** @deprecated Use `Block` + `TextRun`. v1 envelope shape only. */
+export type LegacyTextBlock = {
   readonly id: string;
   readonly x: number;
   readonly y: number;
@@ -374,7 +480,17 @@ export type TextBlockData = {
   readonly tailY: number;
   readonly bubbleStroke: number;
   readonly align?: 'left' | 'center' | 'right';
+  /** Per-block font reference. v1 envelopes never wrote this field; it
+   *  only appears on runtime blocks coming back from a v2 round-trip. */
+  readonly fontId?: string;
+  /** Per-block style reference. Same v1/v2 story as `fontId`. */
+  readonly styleId?: string;
+  readonly bubblePresetId?: string;
+  readonly bubble?: Bubble;
 };
+
+/** @deprecated Use `LegacyTextBlock`. */
+export type TextBlockData = LegacyTextBlock;
 
 /**
  * Forward declaration: the actual `GuideSettings` type lives in

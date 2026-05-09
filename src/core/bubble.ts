@@ -12,7 +12,7 @@
  * 'cloud') is given in the same local space.
  */
 
-export type BubbleShape = 'none' | 'rect' | 'speech' | 'cloud';
+export type BubbleShape = 'none' | 'rect' | 'speech' | 'cloud' | 'preset';
 
 export type BubbleGeometry = {
   /** Main bubble path (filled + stroked). */

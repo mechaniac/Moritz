@@ -6,17 +6,37 @@ import {
   listPageIds,
   loadPage,
   savePage,
+  type MigrationContext,
 } from '../state/pagePersistence.js';
 import { downloadBlob } from '../state/persistence.js';
 import { useTypesetterStore } from '../state/typesetterStore.js';
-import type { Page, TextBlockData } from '../core/types.js';
+import { useAppStore } from '../state/store.js';
+import { useBubbleStore } from '../state/bubbleStore.js';
+import {
+  blockToLegacyBlock,
+  buildPage,
+  singleEntryLibrary,
+} from '../core/page.js';
+import type { Page, Style } from '../core/types.js';
 
 /**
  * Save / load / import / export the active Page (the TypeSetter scene).
- * Mirrors `FontBar` and `StyleBar`. Pages may include a large background
- * image as a data URL; localStorage has a per-origin quota of ~5MB so
- * very large pages may need round-tripping via Export/Import for now.
+ *
+ * Save format: canonical `Page` (envelope v2) — see `core/page.ts`. The
+ * library is snapshotted from the active Font / Style / BubbleFont so
+ * the file is fully self-contained.
+ *
+ * The runtime store still uses the flat `TextBlock` shape; converters
+ * in `core/page.ts` bridge the two at this boundary.
  */
+
+// Synthetic ids assigned to the active globals when snapshotting the
+// page library. Once the per-text font/style picker lands these get
+// replaced by real picker-driven ids and the page can mix multiple.
+const ACTIVE_FONT_ID = 'active-font';
+const ACTIVE_STYLE_ID = 'active-style';
+const ACTIVE_BUBBLE_FONT_ID = 'active-bubble-font';
+
 export function PageBar(): JSX.Element {
   const pageImage = useTypesetterStore((s) => s.pageImage);
   const pageW = useTypesetterStore((s) => s.pageW);
@@ -24,6 +44,9 @@ export function PageBar(): JSX.Element {
   const blocks = useTypesetterStore((s) => s.blocks);
   const setPage = useTypesetterStore((s) => s.setPage);
   const replaceBlocks = useTypesetterStore((s) => s.replaceBlocks);
+  const font = useAppStore((s) => s.font);
+  const styleSettings = useAppStore((s) => s.style);
+  const bubbleFont = useBubbleStore((s) => s.font);
   const [savedIds, setSavedIds] = useState<string[]>(() => listPageIds());
   const [activeId, setActiveId] = useState<string>('untitled');
   const [name, setName] = useState<string>('Untitled');
@@ -33,32 +56,47 @@ export function PageBar(): JSX.Element {
     setSavedIds(listPageIds());
   }, []);
 
-  const buildPage = (): Page => ({
-    id: sanitizeId(name),
-    name,
-    pageW,
-    pageH,
-    ...(pageImage ? { background: pageImage } : {}),
-    blocks: blocks.map((b): TextBlockData => ({
-      id: b.id,
-      x: b.x,
-      y: b.y,
-      fontSize: b.fontSize,
-      text: b.text,
-      bold: b.bold,
-      italic: b.italic,
-      shape: typeof b.shape === 'string' ? b.shape : 'none',
-      bubbleW: b.bubbleW,
-      bubbleH: b.bubbleH,
-      tailX: b.tailX,
-      tailY: b.tailY,
-      bubbleStroke: b.bubbleStroke,
-      ...(b.align ? { align: b.align } : {}),
-    })),
-  });
+  // Build the migration context (used when loading legacy v1 envelopes
+  // and as the library snapshot when saving). Recomputed on every
+  // call site so the snapshot reflects the live globals.
+  const migrationContext = (): MigrationContext => {
+    const style: Style = {
+      id: ACTIVE_STYLE_ID,
+      name: 'Active Style',
+      settings: styleSettings,
+    };
+    const fontSnapshot = { ...font, id: ACTIVE_FONT_ID };
+    const bubbleSnapshot = { ...bubbleFont, id: ACTIVE_BUBBLE_FONT_ID };
+    return {
+      library: singleEntryLibrary({
+        font: fontSnapshot,
+        style,
+        bubbleFont: bubbleSnapshot,
+      }),
+      refs: {
+        fontId: ACTIVE_FONT_ID,
+        styleId: ACTIVE_STYLE_ID,
+        bubbleFontId: ACTIVE_BUBBLE_FONT_ID,
+      },
+    };
+  };
+
+  const buildCurrentPage = (): Page => {
+    const ctx = migrationContext();
+    return buildPage({
+      id: sanitizeId(name),
+      name,
+      w: pageW,
+      h: pageH,
+      ...(pageImage ? { background: pageImage } : {}),
+      blocks,
+      library: ctx.library,
+      refs: ctx.refs,
+    });
+  };
 
   const onSave = () => {
-    const p = buildPage();
+    const p = buildCurrentPage();
     try {
       savePage(p);
       setSavedIds(listPageIds());
@@ -68,21 +106,23 @@ export function PageBar(): JSX.Element {
     }
   };
   const applyPage = (p: Page) => {
-    setPage(p.background ?? '', p.pageW, p.pageH);
+    setPage(p.background ?? '', p.w, p.h);
+    const ctx = migrationContext();
     replaceBlocks(
-      p.blocks.map((b) => ({
-        ...b,
-        // The TextBlock `shape` runtime type is BubbleShape (a string in
-        // practice for built-in shapes); we trust the persisted string.
-        shape: b.shape as unknown as import('../core/bubble.js').BubbleShape,
-      })),
+      p.blocks.map((b) => {
+        const legacy = blockToLegacyBlock(b, ctx.refs);
+        return {
+          ...legacy,
+          shape: legacy.shape as unknown as import('../core/bubble.js').BubbleShape,
+        };
+      }),
     );
     setActiveId(p.id);
     setName(p.name);
   };
   const onLoad = (id: string) => {
     if (!id) return;
-    const p = loadPage(id);
+    const p = loadPage(id, migrationContext());
     if (!p) return;
     applyPage(p);
   };
@@ -93,14 +133,14 @@ export function PageBar(): JSX.Element {
     setSavedIds(listPageIds());
   };
   const onExport = () => {
-    const json = exportPageJson(buildPage());
+    const json = exportPageJson(buildCurrentPage());
     const stamp = new Date().toISOString().slice(0, 10);
     downloadBlob(`${sanitizeId(name)}-${stamp}.page.moritz.json`, json, 'application/json');
   };
   const onImport = async (file: File) => {
     const text = await file.text();
     try {
-      const p = importPageJson(text);
+      const p = importPageJson(text, migrationContext());
       applyPage(p);
       try {
         savePage(p);

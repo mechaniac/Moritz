@@ -6,6 +6,7 @@ import path from 'node:path';
 const FONTS_DIR = path.resolve(__dirname, 'src/data/fonts');
 const STYLES_DIR = path.resolve(__dirname, 'src/data/styles');
 const PAGES_DIR = path.resolve(__dirname, 'src/data/pages');
+const BUBBLES_DIR = path.resolve(__dirname, 'src/data/bubbles');
 
 const safeId = (raw: string): string | null => {
   // Same character class our UI's sanitizeId produces.
@@ -30,12 +31,13 @@ function moritzFiles(): Plugin {
     fonts: FONTS_DIR,
     styles: STYLES_DIR,
     pages: PAGES_DIR,
+    bubbles: BUBBLES_DIR,
   };
   const handler: Connect.NextHandleFunction = async (req, res, next) => {
     if (!req.url) return next();
-    const m = /^\/__moritz\/(fonts|styles|pages)\/(.+)$/.exec(req.url);
+    const m = /^\/__moritz\/(fonts|styles|pages|bubbles)\/(.+)$/.exec(req.url);
     if (!m) return next();
-    const kind = m[1] as 'fonts' | 'styles' | 'pages';
+    const kind = m[1] as 'fonts' | 'styles' | 'pages' | 'bubbles';
     const dir = dirs[kind];
     const id = safeId(decodeURIComponent(m[2]));
     if (!id) {
@@ -96,6 +98,7 @@ export default defineConfig({
         '**/src/data/fonts/**',
         '**/src/data/styles/**',
         '**/src/data/pages/**',
+        '**/src/data/bubbles/**',
       ],
     },
   },
