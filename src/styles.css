@@ -1,38 +1,411 @@
 /* ---------------------------------------------------------------------------
    Moritz UI — global styles.
 
-   Goals: slim, dark, low-contrast neutral palette. No corporate blue;
-   accent is the same charcoal as text. Slimmer slider thumbs/tracks. A
-   single class (.mz-modified) marks any control whose value differs from
-   the bundled default — applied as a red label colour and tint.
+   Three named colour schemes (pastel / dusk / kraft) live below as
+   `:root[data-theme="<id>"]` blocks. Each scheme defines a per-module
+   palette (glyph / style / type) using two close shades per module to
+   avoid sharp contrast and keep things printable / legible.
+
+   The trick that makes it composable: any element wrapped in
+   `.mz-mod--glyphsetter` (or stylesetter / typesetter) inherits a local
+   alias `--mz-bg / --mz-panel / --mz-line / --mz-accent` mapped to that
+   module's colours. Style controls embedded inside the GlyphSetter UI
+   can therefore be tagged `.mz-mod--stylesetter` and they will render
+   in the orange palette regardless of where they live in the tree.
    --------------------------------------------------------------------------- */
 
-:root {
-  --mz-bg: #d6d6d6;
-  --mz-bg-soft: #e6e6e6;
-  --mz-bg-soft-2: #efefef;
-  --mz-panel: #f4f4f4;
-  --mz-line: #999;
-  --mz-line-soft: #bbb;
-  --mz-text: #1a1a1a;
-  --mz-text-mute: #555;
-  --mz-text-faint: #777;
-  --mz-accent: #222;
-  --mz-accent-soft: #444;
-  --mz-modified: #c2371d;
-  --mz-modified-soft: #e0a497;
+/* ---------- Default (Pastel) palette + shared tokens ---------------------- */
+
+/* Selectors use a bare `[data-theme=...]` (not `:root[data-theme=...]`) so
+   any element can locally re-declare the palette by setting `data-theme`.
+   The settings modal relies on this to render per-scheme preview swatches
+   without applying the scheme globally. */
+
+:root,
+[data-theme='pastel'] {
+  --mz-glyph-bg:     #e7eef6;
+  --mz-glyph-panel:  #d2dfeb;
+  --mz-glyph-line:   #7d97b0;
+  --mz-glyph-accent: #355979;
+
+  /* Bubble module — a duller, slightly desaturated steel-blue so it reads
+     as adjacent-but-distinct from the brighter glyph blue. */
+  --mz-bubble-bg:     #d8dfe5;
+  --mz-bubble-panel:  #bcc6cf;
+  --mz-bubble-line:   #6b7c8c;
+  --mz-bubble-accent: #2e4253;
+
+  /* `glyphfont` = per-font glyph defaults (calligraphy lines, sidebearings,
+     metrics) — stored once per font, applied to every glyph. Visually a
+     deeper, denser blue so it reads as a separate "chassis" from the per-
+     glyph blue above. */
+  --mz-glyphfont-bg:     #c6d4e2;
+  --mz-glyphfont-panel:  #a9bccd;
+  --mz-glyphfont-line:   #3d5a78;
+  --mz-glyphfont-accent: #15304a;
+
+  --mz-style-bg:     #f7e8d6;
+  --mz-style-panel:  #ecd0b1;
+  --mz-style-line:   #b4885a;
+  --mz-style-accent: #6f4520;
+
+  --mz-type-bg:      #f5edcf;
+  --mz-type-panel:   #e6daa1;
+  --mz-type-line:    #a59140;
+  --mz-type-accent:  #5a4d12;
+
+  --mz-text:         #2a2a2a;
+  --mz-text-mute:    #555;
+  --mz-text-faint:   #777;
+
+  --mz-modified:      var(--mz-warn);
+  --mz-modified-soft: var(--mz-warn-soft);
+
+  /* The actual rendered glyphs are always real ink on real paper.
+     These tokens are constant across all themes — the chrome can be coloured,
+     but every surface where glyphs appear (editor canvas, thumbnails, kerning
+     preview, typesetter page) is pure white, and the glyphs themselves are
+     pure black. That gives the rendered lettering the highest contrast on the
+     page and keeps it the only true black/white in the UI. */
+  --mz-paper:        #ffffff;
+  --mz-ink:          #000000;
 }
+
+/* Universal-across-themes tokens. Identical in pastel / dusk / kraft so the
+   user can scan one colour to find every reversible change.
+     - paper / ink  — the glyph rendering surface (white & black).
+     - warn / warn-soft — the single "undoable / destructive / drifted-from-
+       default" colour. Any slider moved off its loaded preset, every
+       Reset / Undo / Save button, and every destructive action all use
+       this red. `--mz-modified*` aliases `--mz-warn*` so existing
+       modified-state styling remains a one-token concept. */
+:root {
+  --mz-warn:        #c8351b;
+  --mz-warn-strong: #9a2410;
+  --mz-warn-soft:   #f1b8ae;
+}
+
+[data-theme='dusk'] {
+  --mz-glyph-bg:     #3c4a5d;
+  --mz-glyph-panel:  #4f6378;
+  --mz-glyph-line:   #6e88a4;
+  --mz-glyph-accent: #cbe0f4;
+
+  --mz-bubble-bg:     #344050;
+  --mz-bubble-panel:  #475667;
+  --mz-bubble-line:   #607890;
+  --mz-bubble-accent: #b8cee0;
+
+  --mz-glyphfont-bg:     #2a3648;
+  --mz-glyphfont-panel:  #364660;
+  --mz-glyphfont-line:   #88a8c8;
+  --mz-glyphfont-accent: #e9f2fc;
+
+  --mz-style-bg:     #5a3f2a;
+  --mz-style-panel:  #765437;
+  --mz-style-line:   #a07c57;
+  --mz-style-accent: #f1d4b3;
+
+  --mz-type-bg:      #4f4828;
+  --mz-type-panel:   #6a623a;
+  --mz-type-line:    #9a8e57;
+  --mz-type-accent:  #ece2b4;
+
+  --mz-text:         #ececec;
+  --mz-text-mute:    #c8c8c8;
+  --mz-text-faint:   #a8a8a8;
+}
+
+[data-theme='kraft'] {
+  --mz-glyph-bg:     #b8c4d0;
+  --mz-glyph-panel:  #9aa9b9;
+  --mz-glyph-line:   #5b6c7d;
+  --mz-glyph-accent: #2c3a4b;
+
+  --mz-bubble-bg:     #a6b1bd;
+  --mz-bubble-panel:  #8b97a3;
+  --mz-bubble-line:   #4f5d6c;
+  --mz-bubble-accent: #1f2a36;
+
+  --mz-glyphfont-bg:     #92a3b6;
+  --mz-glyphfont-panel:  #6f829a;
+  --mz-glyphfont-line:   #283242;
+  --mz-glyphfont-accent: #0d1626;
+
+  --mz-style-bg:     #d6b896;
+  --mz-style-panel:  #b99971;
+  --mz-style-line:   #6f5234;
+  --mz-style-accent: #392a18;
+
+  --mz-type-bg:      #d3c87f;
+  --mz-type-panel:   #b6a857;
+  --mz-type-line:    #6b5d1f;
+  --mz-type-accent:  #392f08;
+
+  --mz-text:         #1d1d1d;
+  --mz-text-mute:    #4a4a4a;
+  --mz-text-faint:   #6a6a6a;
+}
+
+/* ---------- Experimental themes ------------------------------------------ *
+ * Each follows the same per-module palette contract: glyph (cool), bubble
+ * (cool, slightly off), style (warm), type (warm, slightly off). The
+ * `text*` tokens determine ink-on-chrome contrast. Keep `--mz-paper` and
+ * `--mz-ink` constant — those are universal across themes (real ink on
+ * real paper for the rendered lettering). */
+
+/* Noir — high-contrast B&W with a single hot accent per module. */
+[data-theme='noir'] {
+  --mz-glyph-bg:     #1a1a1a;
+  --mz-glyph-panel:  #262626;
+  --mz-glyph-line:   #444;
+  --mz-glyph-accent: #5fb6ff;
+
+  --mz-bubble-bg:     #141414;
+  --mz-bubble-panel:  #1f1f1f;
+  --mz-bubble-line:   #3a3a3a;
+  --mz-bubble-accent: #7fb1d8;
+
+  --mz-glyphfont-bg:     #0d0d0d;
+  --mz-glyphfont-panel:  #1a1a1a;
+  --mz-glyphfont-line:   #555;
+  --mz-glyphfont-accent: #cfe6ff;
+
+  --mz-style-bg:     #1d1612;
+  --mz-style-panel:  #2a1f17;
+  --mz-style-line:   #5a3f2a;
+  --mz-style-accent: #f0a060;
+
+  --mz-type-bg:      #1d1c12;
+  --mz-type-panel:   #29281a;
+  --mz-type-line:    #5b5430;
+  --mz-type-accent:  #ecd06b;
+
+  --mz-text:         #ececec;
+  --mz-text-mute:    #b0b0b0;
+  --mz-text-faint:   #888;
+}
+
+/* Neon — saturated cyberpunk on near-black. Loud on purpose. */
+[data-theme='neon'] {
+  --mz-glyph-bg:     #0e0a1f;
+  --mz-glyph-panel:  #1a1338;
+  --mz-glyph-line:   #4a3aa6;
+  --mz-glyph-accent: #00e5ff;
+
+  --mz-bubble-bg:     #0d0a1a;
+  --mz-bubble-panel:  #161030;
+  --mz-bubble-line:   #3d2f8a;
+  --mz-bubble-accent: #5fa9ff;
+
+  --mz-glyphfont-bg:     #07051a;
+  --mz-glyphfont-panel:  #110a2a;
+  --mz-glyphfont-line:   #6b54e0;
+  --mz-glyphfont-accent: #a8f0ff;
+
+  --mz-style-bg:     #1f0a1a;
+  --mz-style-panel:  #2e0f24;
+  --mz-style-line:   #a035a0;
+  --mz-style-accent: #ff3fa9;
+
+  --mz-type-bg:      #0a1a13;
+  --mz-type-panel:   #0f2a1f;
+  --mz-type-line:    #2f8a55;
+  --mz-type-accent:  #5cff9b;
+
+  --mz-text:         #f0eaff;
+  --mz-text-mute:    #b9b0d8;
+  --mz-text-faint:   #8c84a8;
+}
+
+/* Sepia — vintage newspaper. Warm cream paper, ink-brown chrome. */
+[data-theme='sepia'] {
+  --mz-glyph-bg:     #ece2c8;
+  --mz-glyph-panel:  #d8c8a3;
+  --mz-glyph-line:   #886d3e;
+  --mz-glyph-accent: #463213;
+
+  --mz-bubble-bg:     #e3d6b8;
+  --mz-bubble-panel:  #ccb98e;
+  --mz-bubble-line:   #7a5f30;
+  --mz-bubble-accent: #3c2a0f;
+
+  --mz-glyphfont-bg:     #d4c198;
+  --mz-glyphfont-panel:  #b8a273;
+  --mz-glyphfont-line:   #5e4720;
+  --mz-glyphfont-accent: #2a1a06;
+
+  --mz-style-bg:     #efd9b5;
+  --mz-style-panel:  #d8b683;
+  --mz-style-line:   #8c5d28;
+  --mz-style-accent: #3f230a;
+
+  --mz-type-bg:      #efe2af;
+  --mz-type-panel:   #d6c477;
+  --mz-type-line:    #7e6a1e;
+  --mz-type-accent:  #382d05;
+
+  --mz-text:         #2a1f0c;
+  --mz-text-mute:    #574125;
+  --mz-text-faint:   #80633a;
+}
+
+/* Risograph — a punchy two-and-a-half-tone print look. Pinks + blues +
+   mustards on warm white, calibrated to feel screen-printed. */
+[data-theme='riso'] {
+  --mz-glyph-bg:     #eaf1f8;
+  --mz-glyph-panel:  #c9dcf0;
+  --mz-glyph-line:   #4571a4;
+  --mz-glyph-accent: #1d3a6e;
+
+  --mz-bubble-bg:     #e6e9f0;
+  --mz-bubble-panel:  #c2c9da;
+  --mz-bubble-line:   #4a5a86;
+  --mz-bubble-accent: #1c2848;
+
+  --mz-glyphfont-bg:     #d6e3f3;
+  --mz-glyphfont-panel:  #aec3df;
+  --mz-glyphfont-line:   #2c4d80;
+  --mz-glyphfont-accent: #0a1f44;
+
+  --mz-style-bg:     #fde2eb;
+  --mz-style-panel:  #f6b8cd;
+  --mz-style-line:   #c83d75;
+  --mz-style-accent: #7a1640;
+
+  --mz-type-bg:      #fff4cf;
+  --mz-type-panel:   #ffd97a;
+  --mz-type-line:    #b88416;
+  --mz-type-accent:  #6a4a05;
+
+  --mz-text:         #1f1f24;
+  --mz-text-mute:    #4f4f58;
+  --mz-text-faint:   #76767f;
+}
+
+/* Forest — moss greens / bark browns / lichen yellows on cream. */
+[data-theme='forest'] {
+  --mz-glyph-bg:     #dde8d9;
+  --mz-glyph-panel:  #b9cdb1;
+  --mz-glyph-line:   #4f7549;
+  --mz-glyph-accent: #1f3d1d;
+
+  --mz-bubble-bg:     #cfdbcb;
+  --mz-bubble-panel:  #abbea3;
+  --mz-bubble-line:   #4a6745;
+  --mz-bubble-accent: #1a3018;
+
+  --mz-glyphfont-bg:     #b9c9b4;
+  --mz-glyphfont-panel:  #94aa8e;
+  --mz-glyphfont-line:   #2f4d2c;
+  --mz-glyphfont-accent: #102414;
+
+  --mz-style-bg:     #e6d6c2;
+  --mz-style-panel:  #c9aa84;
+  --mz-style-line:   #6f4a26;
+  --mz-style-accent: #3a2210;
+
+  --mz-type-bg:      #ece2b3;
+  --mz-type-panel:   #d2c372;
+  --mz-type-line:    #807317;
+  --mz-type-accent:  #3a3406;
+
+  --mz-text:         #1d2418;
+  --mz-text-mute:    #4a523f;
+  --mz-text-faint:   #707860;
+}
+
+/* Inkwash — desaturated cool greys with a single steel-blue accent per
+   module. Pretends to be greyscale but each module still has its own
+   identity through subtle hue shifts. */
+[data-theme='inkwash'] {
+  --mz-glyph-bg:     #e6e8ec;
+  --mz-glyph-panel:  #c8ccd4;
+  --mz-glyph-line:   #6b7280;
+  --mz-glyph-accent: #2b3a4d;
+
+  --mz-bubble-bg:     #dde0e5;
+  --mz-bubble-panel:  #bcc1ca;
+  --mz-bubble-line:   #5e6573;
+  --mz-bubble-accent: #1f2a3a;
+
+  --mz-glyphfont-bg:     #ccd0d8;
+  --mz-glyphfont-panel:  #a8aeb9;
+  --mz-glyphfont-line:   #424b5b;
+  --mz-glyphfont-accent: #11192a;
+
+  --mz-style-bg:     #e9e3dc;
+  --mz-style-panel:  #c8bdaf;
+  --mz-style-line:   #74614b;
+  --mz-style-accent: #3b2c19;
+
+  --mz-type-bg:      #e7e4d4;
+  --mz-type-panel:   #c4be9f;
+  --mz-type-line:    #6e6539;
+  --mz-type-accent:  #322d0d;
+
+  --mz-text:         #1f2227;
+  --mz-text-mute:    #4a4f59;
+  --mz-text-faint:   #717783;
+}
+
+
+/* ---------- Module-scope mixins ------------------------------------------ */
+
+.mz-mod--glyphsetter {
+  --mz-bg:     var(--mz-glyph-bg);
+  --mz-panel:  var(--mz-glyph-panel);
+  --mz-line:   var(--mz-glyph-line);
+  --mz-accent: var(--mz-glyph-accent);
+}
+.mz-mod--bubblesetter {
+  --mz-bg:     var(--mz-bubble-bg);
+  --mz-panel:  var(--mz-bubble-panel);
+  --mz-line:   var(--mz-bubble-line);
+  --mz-accent: var(--mz-bubble-accent);
+}
+.mz-mod--stylesetter {
+  --mz-bg:     var(--mz-style-bg);
+  --mz-panel:  var(--mz-style-panel);
+  --mz-line:   var(--mz-style-line);
+  --mz-accent: var(--mz-style-accent);
+}
+.mz-mod--typesetter {
+  --mz-bg:     var(--mz-type-bg);
+  --mz-panel:  var(--mz-type-panel);
+  --mz-line:   var(--mz-type-line);
+  --mz-accent: var(--mz-type-accent);
+}
+/* Per-font glyph defaults (calligraphy lines, sidebearings) — deeper blue,
+   reads as a separate chassis from per-glyph blue. Wrap any panel that
+   edits font-wide glyph settings in `.mz-mod--glyphfont` to inherit it. */
+.mz-mod--glyphfont {
+  --mz-bg:     var(--mz-glyphfont-bg);
+  --mz-panel:  var(--mz-glyphfont-panel);
+  --mz-line:   var(--mz-glyphfont-line);
+  --mz-accent: var(--mz-glyphfont-accent);
+}
+
+/* Generic-name fallback so things outside any module-scope still resolve. */
+:root {
+  --mz-bg:     var(--mz-glyph-bg);
+  --mz-panel:  var(--mz-glyph-panel);
+  --mz-line:   var(--mz-glyph-line);
+  --mz-accent: var(--mz-glyph-accent);
+}
+
+/* ---------- Body / global form controls ---------------------------------- */
 
 html,
 body {
+  margin: 0;
+  padding: 0;
   background: var(--mz-bg);
   color: var(--mz-text);
   font-family: system-ui, -apple-system, Segoe UI, sans-serif;
   font-size: 13px;
 }
 
-/* Make every native control sit on the dark accent (replaces the
-   browser-default blue on checkboxes, sliders, focus rings, etc). */
 input,
 select,
 button,
@@ -46,14 +419,14 @@ button {
   font: inherit;
   padding: 3px 8px;
   border: 1px solid var(--mz-line);
-  background: var(--mz-bg-soft);
+  background: var(--mz-panel);
   color: var(--mz-text);
   border-radius: 3px;
   cursor: pointer;
   line-height: 1.2;
 }
 button:hover:not(:disabled) {
-  background: var(--mz-bg-soft-2);
+  background: var(--mz-bg);
   border-color: var(--mz-accent);
 }
 button:disabled {
@@ -68,15 +441,12 @@ textarea {
   font: inherit;
   padding: 3px 6px;
   border: 1px solid var(--mz-line);
-  background: #fff;
+  background: var(--mz-bg);
   color: var(--mz-text);
   border-radius: 3px;
 }
-select {
-  padding: 2px 4px;
-}
+select { padding: 2px 4px; }
 
-/* Compact numeric inputs sitting next to range sliders. */
 input[type='number'] {
   -moz-appearance: textfield;
   appearance: textfield;
@@ -95,7 +465,7 @@ textarea:focus {
   outline-offset: -1px;
 }
 
-/* ---------- Range sliders ------------------------------------------------- */
+/* ---------- Range sliders ------------------------------------------------ */
 
 input[type='range'] {
   -webkit-appearance: none;
@@ -135,44 +505,51 @@ input[type='range']::-moz-range-thumb {
   cursor: pointer;
 }
 
-/* ---------- Modified-from-default marker ---------------------------------- */
+/* ---------- Modified-from-default marker --------------------------------- */
 
-.mz-modified {
-  color: var(--mz-modified);
-}
-.mz-modified input[type='range'] {
-  accent-color: var(--mz-modified);
-}
-.mz-modified input[type='range']::-webkit-slider-thumb {
-  background: var(--mz-modified);
-}
-.mz-modified input[type='range']::-moz-range-thumb {
-  background: var(--mz-modified);
-}
-.mz-modified input[type='range']::-webkit-slider-runnable-track {
-  background: var(--mz-modified-soft);
-}
-.mz-modified input[type='range']::-moz-range-track {
-  background: var(--mz-modified-soft);
-}
+.mz-modified { color: var(--mz-modified); }
+.mz-modified input[type='range'] { accent-color: var(--mz-modified); }
+.mz-modified input[type='range']::-webkit-slider-thumb { background: var(--mz-modified); }
+.mz-modified input[type='range']::-moz-range-thumb { background: var(--mz-modified); }
+.mz-modified input[type='range']::-webkit-slider-runnable-track { background: var(--mz-modified-soft); }
+.mz-modified input[type='range']::-moz-range-track { background: var(--mz-modified-soft); }
 
-/* Mark the FontBar name field red when its value drifts from the saved/
-   built-in original. */
 .mz-modified-input {
   border-color: var(--mz-modified) !important;
   color: var(--mz-modified);
 }
 
-/* ---------- Section card (StyleSetter sidebar) ---------------------------- */
+/* ---------- Warn / undo buttons ------------------------------------------ *
+ * `mz-btn--warn` paints any reset / undo / save / destructive control in
+ * the universal red so they are unmistakable across every theme. Apply on
+ * top of normal `<button>` styling. */
+.mz-btn--warn {
+  border-color: var(--mz-warn) !important;
+  color: var(--mz-warn) !important;
+  background: transparent;
+}
+.mz-btn--warn:hover:not(:disabled) {
+  background: var(--mz-warn);
+  color: var(--mz-paper) !important;
+  border-color: var(--mz-warn-strong) !important;
+}
+.mz-btn--warn:disabled {
+  border-color: var(--mz-line) !important;
+  color: var(--mz-text-faint) !important;
+  background: transparent;
+  cursor: default;
+}
+
+/* ---------- Section card ------------------------------------------------- */
 
 .mz-section {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 8px 10px 10px;
-  border: 1px solid #cfcfcf;
+  border: 1px solid var(--mz-line);
   border-radius: 6px;
-  background: #f6f6f6;
+  background: var(--mz-panel);
 }
 .mz-section__title {
   margin: 0 0 2px;
@@ -180,7 +557,283 @@ input[type='range']::-moz-range-thumb {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #555;
+  color: var(--mz-text-mute);
 }
 
-@keyframes mzKernPulse { 0% { box-shadow: 0 0 0 0 rgba(240,160,32,0.7); } 70% { box-shadow: 0 0 0 12px rgba(240,160,32,0); } 100% { box-shadow: 0 0 0 0 rgba(240,160,32,0); } }
+/* ---------- App chrome --------------------------------------------------- */
+
+.mz-app__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--mz-line);
+  background: var(--mz-panel);
+  color: var(--mz-text);
+}
+
+.mz-app__main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--mz-bg);
+  color: var(--mz-text);
+}
+
+/* ---------- Workbench shell --------------------------------------------- *
+ * The three modules share this layout so switching tabs feels like turning
+ * to a different set of tools on the same desk: a fixed-width left drawer,
+ * a paper-white work surface in the centre, a fixed-width right drawer.
+ * Each module fills the drawers with its own contents but the proportions
+ * stay constant.                                                            */
+:root {
+  --mz-drawer-w: 340px;
+  --mz-bench-pad: 0;
+}
+
+.mz-workbench {
+  display: grid;
+  grid-template-columns: var(--mz-drawer-w) 1fr var(--mz-drawer-w);
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  background: var(--mz-bg);
+}
+
+.mz-workbench__drawer {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--mz-panel);
+  color: var(--mz-text);
+}
+.mz-workbench__drawer--left  { border-right: 1px solid var(--mz-line); }
+.mz-workbench__drawer--right { border-left:  1px solid var(--mz-line); }
+
+/* Standard drawer header — slim strip mirroring the editor toolbar so all
+   three modules share the same vertical rhythm. Houses tabs / titles. */
+.mz-workbench__drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  min-height: 32px;
+  border-bottom: 1px solid var(--mz-line);
+  background: var(--mz-bg);
+  color: var(--mz-text);
+  font-size: 12px;
+}
+
+.mz-workbench__drawer-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mz-workbench__drawer-body--flush {
+  padding: 0;
+  gap: 0;
+}
+
+.mz-workbench__bench {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--mz-paper);
+}
+
+/* Bench toolbar — same height/feel as the drawer header so the three
+   columns line up across the top. */
+.mz-workbench__toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  min-height: 32px;
+  border-bottom: 1px solid var(--mz-line);
+  background: var(--mz-bg);
+  color: var(--mz-text);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+/* The actual paper-white surface where work happens. Always white,
+   regardless of theme. */
+.mz-workbench__surface {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  background: var(--mz-paper);
+  color: var(--mz-ink);
+  padding: var(--mz-bench-pad);
+}
+.mz-workbench__surface--flush {
+  padding: 0;
+}
+
+/* ---------- Universal canvas (Illustrator-like infinite workspace) -------- *
+ * Every module's work area uses `.mz-canvas`: a paper-white scrollable
+ * surface with a subtle dot raster, content centred via CSS grid. The
+ * raster is in screen-space (constant 24px regardless of artwork zoom)
+ * because it's a workspace texture, not a content guide. Modules render
+ * their actual subject (glyph SVG, bubble SVG, page rect) as the single
+ * grid child — no nested frames, no drop-shadowed sub-pages. */
+.mz-canvas {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  position: relative;
+  background-color: var(--mz-paper);
+  /* Subtle radial vignette + the dot raster on top. The vignette is
+     darker at the edges than in the centre so a paper-white fill (e.g.
+     a bubble's interior) reads as brighter than the surrounding
+     workspace. Both layers are screen-space — they don't follow
+     content zoom. */
+  background-image:
+    radial-gradient(circle, rgba(0, 0, 0, 0.07) 1px, transparent 1.6px),
+    radial-gradient(
+      ellipse at center,
+      rgba(255, 255, 255, 0) 0%,
+      rgba(0, 0, 0, 0.04) 55%,
+      rgba(0, 0, 0, 0.09) 100%
+    );
+  background-size: 24px 24px, 100% 100%;
+  background-position: 0 0, center center;
+  background-repeat: repeat, no-repeat;
+  display: grid;
+  place-items: center;
+  /* Slight inner padding so content never butts up against the drawer
+     borders even when the work area is very small. */
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+/* `--free` variant: no auto-centring grid, no padding. The module's own
+   SVG fills the canvas (Illustrator-style infinite workspace) and is
+   responsible for centring its artwork itself. Used by BubbleSetter
+   where pointer events must hit anywhere in the work area. */
+.mz-canvas--free {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* `--world` variant: world-space editor canvas (BubbleSetter). The
+   workspace is a faint, flat grey \u2014 no dot raster, no paper vignette \u2014
+   so the bubble's white paper-fill stands out against it. Combined
+   with `--free` for an infinite Illustrator-style workspace. */
+.mz-canvas--world {
+  background-color: #e8e8e8;
+  background-image: none;
+}
+
+/* TypeSetter page rect — sits on the canvas, no drop shadow. The page
+   itself is the only "framed" thing on screen and its frame is just a
+   thin line (one pixel of canvas line colour). The dashed inner rectangle
+   marks the safe area / live area (settable per page-format preset). */
+.mz-page {
+  position: relative;
+  background: var(--mz-paper);
+  outline: 1px solid var(--mz-line);
+}
+
+/* Tabs — each carries its module's accent colour even when inactive. */
+.mz-tab {
+  padding: 6px 12px;
+  border: 1px solid var(--mz-line);
+  border-radius: 4px;
+  background: var(--mz-bg);
+  color: var(--mz-text);
+  cursor: pointer;
+}
+.mz-tab--glyphsetter        { color: var(--mz-glyph-accent); border-color: var(--mz-glyph-line); }
+.mz-tab--bubblesetter       { color: var(--mz-bubble-accent); border-color: var(--mz-bubble-line); }
+.mz-tab--stylesetter        { color: var(--mz-style-accent); border-color: var(--mz-style-line); }
+.mz-tab--typesetter         { color: var(--mz-type-accent);  border-color: var(--mz-type-line); }
+.mz-tab--glyphsetter.mz-tab--active { background: var(--mz-glyph-panel); border-color: var(--mz-glyph-accent); }
+.mz-tab--bubblesetter.mz-tab--active { background: var(--mz-bubble-panel); border-color: var(--mz-bubble-accent); }
+.mz-tab--stylesetter.mz-tab--active { background: var(--mz-style-panel); border-color: var(--mz-style-accent); }
+.mz-tab--typesetter.mz-tab--active  { background: var(--mz-type-panel);  border-color: var(--mz-type-accent); }
+
+/* Each tab also re-declares the local module palette so child styles
+   tied to `--mz-bg / --mz-accent` (e.g. button hovers, focus rings)
+   read as that module's colour even before the tab becomes active. */
+.mz-tab--glyphsetter  { --mz-bg: var(--mz-glyph-bg);  --mz-panel: var(--mz-glyph-panel);  --mz-line: var(--mz-glyph-line);  --mz-accent: var(--mz-glyph-accent); }
+.mz-tab--bubblesetter { --mz-bg: var(--mz-bubble-bg); --mz-panel: var(--mz-bubble-panel); --mz-line: var(--mz-bubble-line); --mz-accent: var(--mz-bubble-accent); }
+.mz-tab--stylesetter  { --mz-bg: var(--mz-style-bg);  --mz-panel: var(--mz-style-panel);  --mz-line: var(--mz-style-line);  --mz-accent: var(--mz-style-accent); }
+.mz-tab--typesetter   { --mz-bg: var(--mz-type-bg);   --mz-panel: var(--mz-type-panel);   --mz-line: var(--mz-type-line);   --mz-accent: var(--mz-type-accent); }
+
+/* ---------- Settings modal ----------------------------------------------- */
+
+.mz-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 20, 30, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.mz-modal {
+  background: var(--mz-panel);
+  color: var(--mz-text);
+  border: 1px solid var(--mz-line);
+  border-radius: 8px;
+  padding: 16px 20px;
+  min-width: 320px;
+  max-width: 480px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+}
+.mz-modal h2 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--mz-text-mute);
+}
+.mz-theme-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--mz-line);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  background: var(--mz-bg);
+}
+.mz-theme-option--active {
+  border-color: var(--mz-accent);
+  outline: 1px solid var(--mz-accent);
+}
+.mz-theme-option__swatches {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.mz-theme-option__swatch {
+  width: 14px;
+  height: 22px;
+  border-radius: 3px;
+  border: 1px solid var(--mz-line);
+}
+.mz-theme-option__name { font-weight: 600; }
+.mz-theme-option__blurb { color: var(--mz-text-mute); font-size: 11px; }
+.mz-theme-option__text { display: flex; flex-direction: column; gap: 2px; }
+
+@keyframes mzKernPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(240, 160, 32, 0.7); }
+  70%  { box-shadow: 0 0 0 12px rgba(240, 160, 32, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(240, 160, 32, 0); }
+}

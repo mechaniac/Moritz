@@ -301,6 +301,14 @@ export type WidthTaper = {
 export type Font = {
   readonly id: string;
   readonly name: string;
+  /**
+   * The font's bundled default style. Always present in-memory (load
+   * supplies `defaultStyleSettings` if a saved envelope omitted it). On
+   * disk this field is optional in the envelope: the canonical style is
+   * now a separate `Style` save file (see below) and new font envelopes
+   * may skip the field entirely. Treated as the boot-time style only;
+   * once a `Style` is loaded the store's `style` slice takes over.
+   */
   readonly style: StyleSettings;
   /** Keyed by single-character string. */
   readonly glyphs: Readonly<Record<string, Glyph>>;
@@ -311,6 +319,164 @@ export type Font = {
    * Negative tightens, positive opens up.
    */
   readonly kerning?: Readonly<Record<string, number>>;
+  /**
+   * Per-font glyph defaults (applied to every glyph, not per-glyph).
+   * Currently just the editing/preview guides; future per-font glyph-wide
+   * settings (default sidebearings, baseline, em-grid, …) live here too.
+   */
+  readonly guides?: GuideSettings;
+};
+
+/**
+ * Style — universal, font-agnostic save file. A `Style` is a complete
+ * `StyleSettings` plus identity. It can be loaded onto any font: the
+ * settings describe the *shape/material/shader*, never the per-glyph
+ * geometry. Persistence: one `.style.moritz.json` file per Style.
+ */
+export type Style = {
+  readonly id: string;
+  readonly name: string;
+  readonly settings: StyleSettings;
+};
+
+/**
+ * Page — a TypeSetter scene that can be saved/loaded as a single file.
+ * Carries the page background dimensions plus the placed text blocks.
+ * Persistence: one `.page.moritz.json` file per Page.
+ */
+export type Page = {
+  readonly id: string;
+  readonly name: string;
+  readonly pageW: number;
+  readonly pageH: number;
+  /** Optional comic page image as a data URL. May be very large. */
+  readonly background?: string;
+  readonly blocks: readonly TextBlockData[];
+};
+
+/**
+ * Subset of TextBlock that is safe to persist (no DOM-bound runtime ids
+ * are required; ids are kept for re-selection but regenerated on load if
+ * a collision occurs).
+ */
+export type TextBlockData = {
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+  readonly fontSize: number;
+  readonly text: string;
+  readonly bold: number;
+  readonly italic: number;
+  readonly shape: string;
+  readonly bubbleW: number;
+  readonly bubbleH: number;
+  readonly tailX: number;
+  readonly tailY: number;
+  readonly bubbleStroke: number;
+  readonly align?: 'left' | 'center' | 'right';
+};
+
+/**
+ * Forward declaration: the actual `GuideSettings` type lives in
+ * `modules/glyphsetter/guides.ts` (it is UI-shaped data, not part of the
+ * core renderer). We intentionally type it as `unknown` here to avoid an
+ * import cycle from `core/` into `modules/`. Consumers cast on read.
+ */
+export type GuideSettings = Readonly<Record<string, unknown>>;
+
+// ---------- Bubbles ---------------------------------------------------------
+//
+// A Bubble is a multi-layer composition that lives on a "page-relative"
+// reference grid. Every layer carries its OWN glyph-shaped artwork
+// (strokes, vertices) so the same editor used for letters can be reused
+// to draw a bubble's frame, tail, droplets, etc. — only the surrounding
+// metadata differs.
+//
+// Layout model:
+//   - A Bubble has a unit `box` (e.g. 200×140). Each layer is placed by
+//     (anchorX, anchorY) ∈ [0,1]² inside the box (gridded for snapping)
+//     plus an `offset` in box units, plus a `scale` so a layer can be
+//     scaled independently of its sibling.
+//   - At render time on the page the layers are scaled together to the
+//     placed bubble size (pageW × pageH); per-layer (offset, scale) lets
+//     the user live-adjust e.g. the "tail" alone while leaving the
+//     "frame" untouched.
+//
+// Persistence: one `.bubble.moritz.json` envelope per BubbleFont (a
+// preset library), keeping the same shape as a Font.
+
+/** Optional fill for a bubble layer. `none` = stroked outline only. */
+export type FillSettings = {
+  readonly mode: 'none' | 'paper' | 'ink' | 'custom';
+  /** Hex color, used only when `mode === 'custom'`. */
+  readonly color?: string;
+  /** 0..1, default 1. */
+  readonly opacity?: number;
+};
+
+/**
+ * One layer in a Bubble. Conceptually a Glyph drawn at a specific
+ * position/scale on the bubble's grid, plus paint settings.
+ */
+export type BubbleLayer = {
+  readonly id: string;
+  readonly name: string;
+  /** Drawing data — same shape as a glyph so the spline editor reuses. */
+  readonly glyph: Glyph;
+  /** Anchor on the bubble's reference grid, both axes in [0,1]. */
+  readonly anchorX: number;
+  readonly anchorY: number;
+  /** Extra translation in bubble-box units, on top of the anchor. */
+  readonly offsetX: number;
+  readonly offsetY: number;
+  /** Per-layer uniform scale (1 = native). */
+  readonly scale: number;
+  /** Optional rotation in radians. */
+  readonly rotate?: number;
+  /** Fill settings for this layer's outline. */
+  readonly fill?: FillSettings;
+  /** Visible? Lets the user temporarily hide a layer in the editor. */
+  readonly visible?: boolean;
+  /**
+   * Tag identifying this layer's role on the page so per-instance
+   * adjustments in TypeSetter can target it (e.g. `'frame'`, `'tail'`).
+   * Free-form string.
+   */
+  readonly role?: string;
+};
+
+/** A single bubble preset, multi-layered. */
+export type Bubble = {
+  /** Stable identifier inside a BubbleFont (the dictionary key). */
+  readonly id: string;
+  /** Human-friendly label shown in the picker. */
+  readonly name: string;
+  /** Reference box in bubble units. Layers are positioned within this. */
+  readonly box: { readonly w: number; readonly h: number };
+  /** Grid divisions for snapping in the editor (>=1). */
+  readonly grid?: { readonly cols: number; readonly rows: number };
+  readonly layers: readonly BubbleLayer[];
+  /**
+   * Placeholder text shown inside the bubble in the editor / preview so
+   * the artist can judge the bubble's interior whitespace against real
+   * lettering. Not rendered when the bubble is placed on a page (the
+   * page's own text takes its place).
+   */
+  readonly dummyText?: string;
+};
+
+/**
+ * BubbleFont — a library of bubble presets, mirrors the Font shape so
+ * the same persistence machinery (envelopes, dev-folder writer, etc.)
+ * can be reused with minimal special-casing. The contained `style` is
+ * the bubble-library's default rendering style; per-bubble it can be
+ * overridden later (out of scope for v1).
+ */
+export type BubbleFont = {
+  readonly id: string;
+  readonly name: string;
+  readonly style: StyleSettings;
+  readonly bubbles: Readonly<Record<string, Bubble>>;
 };
 
 // ---------- Trivial constructors / constants (pure) ---------------------------

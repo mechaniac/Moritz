@@ -1,4 +1,4 @@
-/**
+﻿/**
  * SVG-based glyph editor.
  *
  * Layout is a fixed 3-column shell (grid | canvas | inspector) so first-level
@@ -15,14 +15,14 @@
  * here. Everything else (caps, triangulation, ribbon density, etc.) lives in
  * `font.style` and is the typeface's intrinsic baseline.
  *
- * Pipeline order is glyphsetter → stylesetter → typesetter. The GlyphSetter
+ * Pipeline order is glyphsetter â†’ stylesetter â†’ typesetter. The GlyphSetter
  * always renders from `font.style` directly; it deliberately ignores the
  * StyleSetter's overlay (`styleOverrides`). Edits made here are the new
  * baseline that StyleSetter and TypeSetter modulate downstream.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { effectiveStyleForGlyph, outlineStroke, redistributePolygonEvenly, resolveWorldWidth, widthAt } from '../../core/stroke.js';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { effectiveStyleForGlyph, outlineStroke, redistributePolygonEvenly, widthAt } from '../../core/stroke.js';
 import {
   closestPointT,
   segmentLength,
@@ -76,11 +76,9 @@ import {
   type Vec2,
   type WidthProfile,
 } from '../../core/types.js';
+import type { GuideSettings } from './guides.js';
 import { useAppStore } from '../../state/store.js';
 import { StyleControls } from '../stylesetter/StyleControls.js';
-import { builtInFonts } from '../../data/builtInFonts.js';
-
-const PADDING = 20;
 
 // Module-level clipboard for copied strokes. Persists across glyph switches
 // (the GlyphEditor remounts when `selectedGlyph` changes) and even module
@@ -98,15 +96,11 @@ let strokeClipboard:
 const MIN_EDITOR_SCALE = 1;
 const MAX_EDITOR_SCALE = 30;
 
-// Reference frame inside the glyph editor — a fixed square the user can
+// Reference frame inside the glyph editor â€” a fixed square the user can
 // always see, so adjustments to a glyph's own box read as deviations from
 // this default. Picked to match defaultFont's BOX_H (140) so most glyphs
 // fit naturally inside it.
 const DEFAULT_BOX = 140;
-
-// Fixed widths for the outer columns. Center canvas takes the rest.
-const GRID_W = 360;
-const INSPECTOR_W = 360;
 
 /**
  * Apply reference-font metrics (advance + side bearings) to a glyph.
@@ -148,12 +142,12 @@ function importGlyphMetrics(g: Glyph, char: string, family: string): Glyph {
  * glyphs the Moritz font already has. For each (a, b) we measure the
  * pair advance and subtract the sum of single advances; the leftover is
  * the kerning the reference font applies, converted to Moritz font units
- * via the same em→units scale `importGlyphMetrics` uses (driven by the
+ * via the same emâ†’units scale `importGlyphMetrics` uses (driven by the
  * target glyph's `box.h`).
  *
  * Returns a flat `Record<a+b, delta-in-units>`. Pairs whose absolute
  * delta falls below `threshold` (in font units) are omitted to keep
- * the table sparse — most Latin pairs have zero kerning in most fonts.
+ * the table sparse â€” most Latin pairs have zero kerning in most fonts.
  */
 function extractKerningFromReference(
   font: Font,
@@ -178,7 +172,7 @@ function extractKerningFromReference(
       const pair = measurePairAdvance(family, a, b);
       if (pair == null) continue;
       const deltaEm = pair - (ma.advance + mb.advance);
-      // Use the average of both glyphs' box heights as the em→units scale,
+      // Use the average of both glyphs' box heights as the emâ†’units scale,
       // so a kerning delta written here will be applied at the same visual
       // size as the imported per-glyph advances.
       const emToUnits = ((ga.box.h + gb.box.h) / 2) / emDen;
@@ -203,7 +197,8 @@ type Drag =
   | { kind: 'normal'; strokeIdx: number; vIdx: number }
   | { kind: 'stroke'; strokeIdx: number; lastX: number; lastY: number; moved: boolean }
   | { kind: 'multi'; strokeIdxs: readonly number[]; lastX: number; lastY: number }
-  | { kind: 'marquee'; startX: number; startY: number; curX: number; curY: number };
+  | { kind: 'marquee'; startX: number; startY: number; curX: number; curY: number }
+  | { kind: 'pan'; startClientX: number; startClientY: number; startPanX: number; startPanY: number };
 
 export function GlyphSetter(): JSX.Element {
   const font = useAppStore((s) => s.font);
@@ -213,7 +208,10 @@ export function GlyphSetter(): JSX.Element {
   const updateAllGlyphs = useAppStore((s) => s.updateAllGlyphs);
   const view = useAppStore((s) => s.glyphView);
   const setGlyphView = useAppStore((s) => s.setGlyphView);
-  const setStyle = useAppStore((s) => s.setStyle);
+  const setStyleOverride = useAppStore((s) => s.setStyleOverride);
+  const style = useAppStore((s) => s.style);
+  const loadedStyleSettings = useAppStore((s) => s.loadedStyleSettings);
+  const setFontGuides = useAppStore((s) => s.setFontGuides);
   const setKerning = useAppStore((s) => s.setKerning);
 
   const glyph = font.glyphs[selectedChar];
@@ -224,63 +222,45 @@ export function GlyphSetter(): JSX.Element {
   const setLeftTab = useAppStore((s) => s.setGlyphsetterTab);
 
   return (
-    <div
-      className="mz-glyphsetter"
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100%',
-        overflow: 'hidden',
-      }}
-    >
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          bottom: 0,
-          left: 0,
-          width: GRID_W,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          background: '#2a2a2a',
-        }}
-      >
+    <div className="mz-workbench mz-glyphsetter">
+      <div className="mz-workbench__drawer mz-workbench__drawer--left">
         <LeftTabBar value={leftTab} onChange={setLeftTab} />
-        <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <div className="mz-workbench__drawer-body mz-workbench__drawer-body--flush" style={{ position: 'relative' }}>
           {leftTab === 'glyphs' ? (
-            <GlyphGrid
-              chars={Object.keys(font.glyphs)}
-              selected={selectedChar}
-              onSelect={selectGlyph}
-              font={font}
-              view={view}
-            />
-          ) : (
+            <>
+              <GlyphGrid
+                chars={Object.keys(font.glyphs)}
+                selected={selectedChar}
+                onSelect={selectGlyph}
+                font={font}
+                view={view}
+              />
+              {glyph && (
+                <GlyphMetricsPanel
+                  glyph={glyph}
+                  view={view}
+                  updateGlyph={updateSelectedGlyph}
+                  updateAllGlyphs={updateAllGlyphs}
+                />
+              )}
+            </>
+          ) : leftTab === 'kerning' ? (
             <KerningList
               font={font}
               pairs={font.kerning ?? {}}
               onChange={setKerning}
               refFontFamily={view.refFontFamily}
             />
+          ) : (
+            <SettingsPanel
+              view={view}
+              setView={setGlyphView}
+              setFontGuides={setFontGuides}
+            />
           )}
         </div>
       </div>
-      <div
-        className="mz-glyphsetter__editor"
-        style={{
-          position: 'absolute',
-          top: 0,
-          bottom: 0,
-          left: GRID_W,
-          right: INSPECTOR_W,
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          borderLeft: '1px solid #999',
-          borderRight: '1px solid #999',
-        }}
-      >
+      <div className="mz-workbench__bench mz-glyphsetter__editor">
         {glyph ? (
           <GlyphEditor
             char={selectedChar}
@@ -294,26 +274,14 @@ export function GlyphSetter(): JSX.Element {
           <p style={{ padding: 16 }}>No glyph selected.</p>
         )}
       </div>
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          bottom: 0,
-          right: 0,
-          width: INSPECTOR_W,
-          overflow: 'hidden',
-        }}
-      >
-        <Inspector
-          view={view}
-          setView={setGlyphView}
-          style={font.style}
-          setStyle={setStyle}
-          glyph={glyph}
-          updateGlyph={updateSelectedGlyph}
-          updateAllGlyphs={updateAllGlyphs}
-          original={builtInFonts.find((f) => f.id === font.id)?.style}
-        />
+      <div className="mz-workbench__drawer mz-workbench__drawer--right mz-mod--stylesetter">
+        <div className="mz-workbench__drawer-body">
+          <StyleControls
+            style={style}
+            setStyle={setStyleOverride}
+            {...(loadedStyleSettings ? { original: loadedStyleSettings } : {})}
+          />
+        </div>
       </div>
     </div>
   );
@@ -322,7 +290,7 @@ export function GlyphSetter(): JSX.Element {
 // ---------- Sidebar: glyph grid --------------------------------------------
 
 /** Pixels per font unit in the grid thumbnails. Fixed so all glyphs render at
- *  the same zoom level — the grid wraps and tiles take their natural size. */
+ *  the same zoom level â€” the grid wraps and tiles take their natural size. */
 const GRID_PX_PER_UNIT = 0.35;
 
 function GlyphGrid(props: {
@@ -377,13 +345,14 @@ function GlyphGrid(props: {
                 title={c}
                 style={{
                   width: w + 4,
-                  background: active ? '#222' : '#fff',
-                  color: active ? '#fff' : '#222',
-                  border: '1px solid #ccc',
+                  background: 'var(--mz-paper)',
+                  color: 'var(--mz-ink)',
+                  border: `1px solid ${active ? 'var(--mz-accent)' : 'var(--mz-line)'}`,
                   borderRadius: 4,
                   cursor: 'pointer',
                   padding: 2,
                   display: 'block',
+                  boxShadow: active ? '0 0 0 1px var(--mz-accent) inset' : 'none',
                 }}
               >
                 <div style={{ width: w, height: h }}>
@@ -395,7 +364,7 @@ function GlyphGrid(props: {
                 style={{
                   fontSize: 9,
                   lineHeight: 1,
-                  color: '#999',
+                  color: 'var(--mz-text-faint)',
                   fontFamily: 'monospace',
                 }}
               >
@@ -437,7 +406,7 @@ function ThumbSvg(props: {
       style={{ width: '100%', height: '100%', display: 'block' }}
       preserveAspectRatio="xMidYMid meet"
     >
-      <g fill="currentColor">
+      <g fill="var(--mz-ink)">
         {paths.map((d, i) => (
           <path key={i} d={d} />
         ))}
@@ -448,30 +417,105 @@ function ThumbSvg(props: {
 
 // ---------- Editor (canvas column) -----------------------------------------
 
-function GlyphEditor(props: {
+export function GlyphEditor(props: {
   char: string;
   glyph: Glyph;
   onChange: (fn: (g: Glyph) => Glyph) => void;
   view: GlyphViewOptions;
   setView: (patch: Partial<GlyphViewOptions>) => void;
   font: Font;
+  /** Extra toolbar slot (e.g. BubbleSetter's "Fill" button). Rendered
+   *  inline at the right end of the toolbar, before the help button. */
+  extraToolbar?: React.ReactNode;
+  /** Optional SVG nodes drawn in glyph coordinates underneath the
+   *  editable strokes (BubbleSetter uses this to show siblings + dummy
+   *  text). Pointer events are disabled by the editor wrapper.
+   *
+   *  When `world` is provided, the underlay is instead drawn in **world
+   *  coordinates** (so it stays put when switching layers).
+   */
+  underlay?: React.ReactNode;
+  /** Optional "open Illustrator file" mode: the editor canvas shows a
+   *  fixed world-coord box (e.g. the bubble), the edited glyph is
+   *  positioned inside that world via `(tx, ty, s)`, and the underlay
+   *  is rendered in world coords. Switching layers only changes
+   *  `(tx, ty, s)` â€” the world box, pan and zoom stay anchored, so the
+   *  view does not jump. The default-box / glyph-box reference rects
+   *  are hidden (they relate to a single glyph, not the world). */
+  world?: {
+    box: { w: number; h: number };
+    /** Glyph (0,0) sits at world (tx, ty); 1 glyph unit = `s` world units. */
+    tx: number;
+    ty: number;
+    s: number;
+    /** Spacing of the horizontal lined-paper grid, in world units. When
+     *  omitted the grid falls back to font-line-height Ã— glyph-box-h. */
+    lineHeight?: number;
+  };
 }): JSX.Element {
-  const { char, glyph, onChange, view, font } = props;
+  const { char, glyph, onChange, view, font, extraToolbar } = props;
   const [selection, setSelection] = useState<Selection>({ kind: 'none' });
+  // Spacebar held â‡’ left-click on the canvas pans instead of marquee-
+  // selecting (Illustrator/Figma convention). Tracked at window level so
+  // the user doesn't need to focus the SVG first.
+  const [spaceDown, setSpaceDown] = useState(false);
+  useEffect(() => {
+    const isEditing = (t: EventTarget | null): boolean => {
+      const el = t as HTMLElement | null;
+      if (!el) return false;
+      const tag = el.tagName;
+      return (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        el.isContentEditable === true
+      );
+    };
+    const onKD = (e: KeyboardEvent): void => {
+      if (e.code !== 'Space' || isEditing(e.target)) return;
+      e.preventDefault();
+      setSpaceDown(true);
+    };
+    const onKU = (e: KeyboardEvent): void => {
+      if (e.code !== 'Space') return;
+      setSpaceDown(false);
+    };
+    window.addEventListener('keydown', onKD);
+    window.addEventListener('keyup', onKU);
+    return () => {
+      window.removeEventListener('keydown', onKD);
+      window.removeEventListener('keyup', onKU);
+    };
+  }, []);
   // Live marquee rectangle while the user drags from empty canvas. In
   // glyph-coord units; null when not marqueeing. Kept in React state so
   // the visualization re-renders each frame.
   const [marquee, setMarquee] = useState<
     { x1: number; y1: number; x2: number; y2: number } | null
   >(null);
-  const SCALE = view.editorScale;
   const dragRef = useRef<Drag | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  // The SVG fills the entire canvas area (Illustrator-style infinite
+  // workspace). We measure the wrapper with ResizeObserver and centre
+  // the glyph inside whatever space the user gave us.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({ w: 800, h: 600 });
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const measure = (): void => {
+      setSize({ w: el.clientWidth, h: el.clientHeight });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Glyph as it would render in the StyleSetter / TypeSetter, i.e. with the
   // style's affine (slant, scaleX, scaleY) and per-glyph spline jitter
   // applied. The raw `glyph` is still used for editing handles / hit
-  // testing — only the visual previews (fill, debug border, triangulation
+  // testing â€” only the visual previews (fill, debug border, triangulation
   // overlay) use this transformed copy so the user sees the final look.
   const displayGlyph = useMemo(
     () => previewGlyph(glyph, font.style, { instanceIndex: 0, char }),
@@ -479,22 +523,46 @@ function GlyphEditor(props: {
   );
   const gStyle = useMemo(() => effectiveStyleForGlyph(font.style, glyph), [font.style, glyph]);
 
-  const viewW = Math.max(DEFAULT_BOX, glyph.box.w) * SCALE + PADDING * 2;
-  const viewH = Math.max(DEFAULT_BOX, glyph.box.h) * SCALE + PADDING * 2;
+  // SVG fills the wrapper; the glyph is centred inside that. The wrapper
+  // can be any size, including much larger than the glyph itself, so the
+  // user always has free workspace around the artwork.
+  const viewW = Math.max(size.w, 1);
+  const viewH = Math.max(size.h, 1);
 
   // The glyph's strokes are anchored to the glyph's own box (so the artwork
-  // always sits inside the solid rectangle in the editor — same as the grid
+  // always sits inside the solid rectangle in the editor â€” same as the grid
   // and the StyleSetter preview). The default-box outline is a separate
   // reference frame, drawn centred on the canvas for orientation.
-  const cx = viewW / 2;
-  const cy = viewH / 2;
-  const gBoxX = cx - (glyph.box.w * SCALE) / 2;
-  const gBoxY = cy - (glyph.box.h * SCALE) / 2;
-  const originX = gBoxX; // glyph (0,0) on screen
-  const originY = gBoxY;
+  // World-space model: the canvas is a window onto a world rectangle.
+  // In plain glyph editing the world IS the glyph (box, tx=ty=0, s=1)
+  // so this collapses to the previous behaviour. In BubbleSetter the
+  // world is the bubble; the edited glyph is placed inside it via
+  // (tx, ty, s). Pan + zoom act on the world, so they stay anchored
+  // when the user switches layers.
+  const worldBoxW = props.world?.box.w ?? glyph.box.w;
+  const worldBoxH = props.world?.box.h ?? glyph.box.h;
+  const worldTx = props.world?.tx ?? 0;
+  const worldTy = props.world?.ty ?? 0;
+  const worldGlyphS = props.world?.s ?? 1;
+  const worldS = view.editorScale; // px per world unit
+  const cx = viewW / 2 + (view.panX ?? 0);
+  const cy = viewH / 2 + (view.panY ?? 0);
+  const worldOriginX = cx - (worldBoxW * worldS) / 2;
+  const worldOriginY = cy - (worldBoxH * worldS) / 2;
+  const SCALE = worldS * worldGlyphS; // px per glyph unit
+  const originX = worldOriginX + worldTx * worldS; // glyph (0,0) on screen
+  const originY = worldOriginY + worldTy * worldS;
+  const gBoxX = originX;
+  const gBoxY = originY;
   const defBoxX = cx - (DEFAULT_BOX * SCALE) / 2;
   const defBoxY = cy - (DEFAULT_BOX * SCALE) / 2;
   const xform = `translate(${originX} ${originY}) scale(${SCALE})`;
+  // Underlay transform: world coords when in world mode, glyph coords
+  // otherwise (BubbleSetter passes its underlay in bubble-coords; the
+  // GlyphSetter has no underlay, so this branch is moot for it).
+  const underlayXform = props.world
+    ? `translate(${worldOriginX} ${worldOriginY}) scale(${worldS})`
+    : xform;
 
   const toGlyph = useCallback(
     (clientX: number, clientY: number): Vec2 | null => {
@@ -517,6 +585,15 @@ function GlyphEditor(props: {
   const onPointerMove = (e: React.PointerEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
+    if (drag.kind === 'pan') {
+      // Pan moves the artwork by raw screen-pixel delta â€” no glyph-coord
+      // conversion (we *change* the origin, so converting now would
+      // chase its own tail).
+      const dx = e.clientX - drag.startClientX;
+      const dy = e.clientY - drag.startClientY;
+      props.setView({ panX: drag.startPanX + dx, panY: drag.startPanY + dy });
+      return;
+    }
     const p = toGlyph(e.clientX, e.clientY);
     if (!p) return;
     if (drag.kind === 'anchor') {
@@ -558,7 +635,7 @@ function GlyphEditor(props: {
       const maxX = Math.max(drag.startX, drag.curX);
       const minY = Math.min(drag.startY, drag.curY);
       const maxY = Math.max(drag.startY, drag.curY);
-      // Treat tiny zero-area drags as a plain background click → deselect.
+      // Treat tiny zero-area drags as a plain background click â†’ deselect.
       const TINY = 1; // glyph units
       if (maxX - minX < TINY && maxY - minY < TINY) {
         setSelection({ kind: 'none' });
@@ -566,7 +643,7 @@ function GlyphEditor(props: {
         const hits: number[] = [];
         for (let i = 0; i < glyph.strokes.length; i++) {
           const bb = strokeAnchorBBox(glyph.strokes[i]!);
-          // AABB intersection (inclusive) — pick a stroke if its anchor
+          // AABB intersection (inclusive) â€” pick a stroke if its anchor
           // bbox overlaps the marquee at all.
           if (
             bb.maxX >= minX && bb.minX <= maxX &&
@@ -902,21 +979,23 @@ function GlyphEditor(props: {
     <>
       {/* Canvas — fills remaining space. The editing toolbar is anchored
           to (and exactly the width of) the .mz-glyph-canvas SVG so it
-          tracks the artwork rather than the column. */}
+          tracks the artwork rather than the column. The SVG itself sits
+          in its own scroll-and-center wrapper so the glyph's centre
+          stays in the middle of the bench at every zoom level. */}
       <div
         className="mz-glyphsetter__canvas"
         style={{
           flex: 1,
           minWidth: 0,
           minHeight: 0,
-          overflow: 'auto',
-          background: 'transparent',
-          padding: 12,
+          overflow: 'hidden',
+          background: 'var(--mz-paper)',
+          padding: 0,
           display: 'flex',
           flexDirection: 'column',
-          alignItems: 'center',
+          alignItems: 'stretch',
           justifyContent: 'flex-start',
-          gap: 8,
+          gap: 0,
         }}
       >
         <div
@@ -924,14 +1003,13 @@ function GlyphEditor(props: {
           style={{
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: 10,
             padding: '4px 10px',
-            border: '1px solid #bbb',
-            borderRadius: 6,
-            background: '#eaeaea',
+            background: 'transparent',
             fontSize: 13,
             flexShrink: 0,
-            width: viewW,
+            width: '100%',
             boxSizing: 'border-box',
             minHeight: 32,
           }}
@@ -975,7 +1053,7 @@ function GlyphEditor(props: {
             + Anchor
           </button>
           <button onClick={onDeleteSelected} disabled={selectedStrokeIdxs.length === 0 && selection.kind !== 'anchor'}>
-            − Delete selected
+            âˆ’ Delete selected
           </button>
           <button
             onClick={onFlipH}
@@ -1020,33 +1098,56 @@ function GlyphEditor(props: {
             />
             Break tangent
           </label>
+          {extraToolbar}
           <span
-            style={{ color: '#666', fontSize: 11, marginLeft: 'auto' }}
+            style={{ color: 'var(--mz-text-mute)', fontSize: 11 }}
             title="Drag anchors / handles. Drag stroke body = move whole stroke. Alt-click stroke = insert anchor. Alt-click anchor = toggle corner/smooth."
           >
             (?)
           </span>
         </div>
+        <div
+          ref={wrapRef}
+          className={
+            'mz-glyphsetter__viewport mz-canvas mz-canvas--free' +
+            (props.world ? ' mz-canvas--world' : '')
+          }
+        >
         <svg
           ref={svgRef}
           className="mz-glyph-canvas"
           viewBox={`0 0 ${viewW} ${viewH}`}
           width={viewW}
           height={viewH}
-          style={{ display: 'block', touchAction: 'none', flexShrink: 0 }}
+          style={{ display: 'block', position: 'absolute', inset: 0, touchAction: 'none' }}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
           onPointerLeave={onPointerUp}
         >
-          {/* background — pointer-down starts a marquee selection. A
-              zero-area release (i.e. a plain click) just deselects. */}
+          {/* background â€” pointer-down starts a marquee selection. A
+              zero-area release (i.e. a plain click) just deselects.
+              Middle-mouse button or space+left-mouse pans instead. */}
           <rect
             x={0}
             y={0}
             width={viewW}
             height={viewH}
-            fill="#ffffff"
+            fill="var(--mz-paper)"
+            style={spaceDown ? { cursor: 'grab' } : undefined}
             onPointerDown={(e) => {
+              const isPan = e.button === 1 || (e.button === 0 && spaceDown);
+              if (isPan) {
+                e.preventDefault();
+                dragRef.current = {
+                  kind: 'pan',
+                  startClientX: e.clientX,
+                  startClientY: e.clientY,
+                  startPanX: view.panX ?? 0,
+                  startPanY: view.panY ?? 0,
+                };
+                (e.target as Element).setPointerCapture(e.pointerId);
+                return;
+              }
               if (e.button !== 0) return;
               const p = toGlyph(e.clientX, e.clientY);
               if (!p) return;
@@ -1061,40 +1162,98 @@ function GlyphEditor(props: {
               (e.target as Element).setPointerCapture(e.pointerId);
             }}
           />
-          {/* default box — a fixed square reference frame so adjustments
-              to the current glyph box read as deviations from default */}
-          <rect
-            className="mz-default-box"
-            x={defBoxX}
-            y={defBoxY}
-            width={DEFAULT_BOX * SCALE}
-            height={DEFAULT_BOX * SCALE}
-            fill="none"
-            stroke="#bbb"
-            strokeDasharray="6 4"
-            strokeWidth={1}
-            pointerEvents="none"
-          />
-          {/* glyph box — the 'sheet' the character sits on. No fill so the
-              default-box reference frame stays visible at all times. */}
-          <rect
-            className="mz-glyph-box"
-            x={gBoxX}
-            y={gBoxY}
-            width={glyph.box.w * SCALE}
-            height={glyph.box.h * SCALE}
-            fill="none"
-            stroke="#444"
-            strokeWidth={1}
-            pointerEvents="none"
-          />
+          {/* default box â€” a fixed square reference frame so adjustments
+              to the current glyph box read as deviations from default.
+              Hidden in world mode (BubbleSetter): the world IS the
+              reference frame there. */}
+          {!props.world && (
+            <rect
+              className="mz-default-box"
+              x={defBoxX}
+              y={defBoxY}
+              width={DEFAULT_BOX * SCALE}
+              height={DEFAULT_BOX * SCALE}
+              fill="none"
+              stroke="var(--mz-line)"
+              strokeDasharray="6 4"
+              strokeWidth={1}
+              pointerEvents="none"
+            />
+          )}
+          {/* glyph box â€” the 'sheet' the character sits on. Hidden in
+              world mode â€” the underlay draws the world (e.g. bubble)
+              outline instead, which doesn't jump on layer change. */}
+          {!props.world && (
+            <rect
+              className="mz-glyph-box"
+              x={gBoxX}
+              y={gBoxY}
+              width={glyph.box.w * SCALE}
+              height={glyph.box.h * SCALE}
+              fill="none"
+              stroke="var(--mz-glyph-accent)"
+              strokeWidth={1}
+              pointerEvents="none"
+            />
+          )}
+          {/* Caller-supplied underlay. In plain mode it's drawn in glyph
+              coords; in world mode it's drawn in world coords (so it
+              stays anchored when the user switches the edited layer). */}
+          {props.underlay && (
+            <g transform={underlayXform} pointerEvents="none">
+              {props.underlay}
+            </g>
+          )}
+          {/* Lined-paper grid â€” horizontal lines at the active style's
+              line-height interval, extending across the whole canvas.
+              In world mode the grid is anchored to the world box bottom
+              (so it doesn't jump on layer switch); otherwise it's
+              anchored to the glyph baseline. */}
+          {view.showLineGrid && (() => {
+            const lineMul = font.style.lineHeight ?? 1.2;
+            // World mode: spacing is `world.lineHeight` if provided,
+            // else fall back to font-line-height Ã— glyph-box-h Ã—
+            // glyph-to-world scale (so it tracks the layer's size).
+            const lineUnitsWorld = props.world
+              ? (props.world.lineHeight ?? lineMul * glyph.box.h * worldGlyphS)
+              : lineMul * glyph.box.h;
+            const linePx = props.world
+              ? lineUnitsWorld * worldS
+              : lineUnitsWorld * SCALE;
+            if (linePx < 4) return null;
+            const baseline = props.world
+              ? worldOriginY + worldBoxH * worldS
+              : gBoxY + glyph.box.h * SCALE;
+            const lines: JSX.Element[] = [];
+            // Draw lines covering the entire viewport, both above and
+            // below the baseline.
+            const above = Math.ceil(baseline / linePx) + 1;
+            const below = Math.ceil((viewH - baseline) / linePx) + 1;
+            for (let i = -above; i <= below; i++) {
+              const y = baseline + i * linePx;
+              lines.push(
+                <line
+                  key={`lg${i}`}
+                  x1={0}
+                  y1={y}
+                  x2={viewW}
+                  y2={y}
+                  stroke="var(--mz-line)"
+                  strokeOpacity={0.35}
+                  strokeWidth={1}
+                />,
+              );
+            }
+            return <g pointerEvents="none">{lines}</g>;
+          })()}
           {/* reference font (system/web font) traced behind the ink. The
               baseline + cap- or x-height are read from the first visible
               calligraphy guide layer (if any); otherwise it falls back to
-              the glyph box. We assume the browser font has cap-height ≈
-              0.70em and x-height ≈ 0.50em, which is true for nearly all
-              the curated families. */}
-          {view.refFontFamily && (() => {
+              the glyph box. We assume the browser font has cap-height â‰ˆ
+              0.70em and x-height â‰ˆ 0.50em, which is true for nearly all
+              the curated families. Skipped in world mode â€” bubbles
+              don't have a single "glyph" baseline to trace against. */}
+          {!props.world && view.refFontFamily && (() => {
             const calli = view.guides.layers.find(
               (l) => l.visible && l.kind.kind === 'calligraphy',
             );
@@ -1136,7 +1295,7 @@ function GlyphEditor(props: {
                 fontFamily={view.refFontFamily}
                 fontSize={fontSize}
                 textAnchor="middle"
-                fill="#000"
+                fill="var(--mz-text)"
                 opacity={view.refFontOpacity}
                 pointerEvents="none"
                 style={{ userSelect: 'none' }}
@@ -1145,8 +1304,9 @@ function GlyphEditor(props: {
               </text>
             );
           })()}
-          {/* sidebearing guides — vertical lines indicating advance edges */}
-          {(() => {
+          {/* sidebearing guides â€” vertical lines indicating advance edges.
+              Glyph-only concept; hidden in world (bubble) mode. */}
+          {!props.world && (() => {
             const lsb = glyph.sidebearings?.left ?? 0;
             const rsb = glyph.sidebearings?.right ?? 0;
             if (lsb === 0 && rsb === 0) return null;
@@ -1161,7 +1321,7 @@ function GlyphEditor(props: {
                   x2={xLeft}
                   y1={y0}
                   y2={y1}
-                  stroke="#222"
+                  stroke="var(--mz-glyph-accent)"
                   strokeDasharray="4 3"
                   strokeWidth={1}
                 />
@@ -1170,16 +1330,20 @@ function GlyphEditor(props: {
                   x2={xRight}
                   y1={y0}
                   y2={y1}
-                  stroke="#222"
+                  stroke="var(--mz-glyph-accent)"
                   strokeDasharray="4 3"
                   strokeWidth={1}
                 />
               </g>
             );
           })()}
-          {/* guides — anchored to the *default* box reference frame, so they
-              never slide when the glyph's own box.{w,h} changes. */}
-          {view.guides.enabled && (
+          {/* guides â€” anchored to the *default* box reference frame, so they
+              never slide when the glyph's own box.{w,h} changes. Lines are
+              extruded along their own direction to a huge multiple of the
+              default box so they read as infinite rules across the whole
+              workspace (matches Illustrator-style guides). Hidden in world
+              (bubble) mode â€” bubbles use only the lined-paper grid. */}
+          {!props.world && view.guides.enabled && (
             <g
               transform={`translate(${defBoxX} ${defBoxY}) scale(${SCALE})`}
               pointerEvents="none"
@@ -1188,19 +1352,30 @@ function GlyphEditor(props: {
                 if (!l.visible) return null;
                 const g = computeLayerGeometry(l, DEFAULT_BOX, DEFAULT_BOX);
                 const sw = l.strokeWidth / SCALE;
+                // Far enough that the line spills past any reasonable
+                // canvas size at any zoom level. (In glyph units; the
+                // group's `scale(SCALE)` shrinks it back down.)
+                const FAR = 1e5;
                 return (
                   <g key={l.id} stroke={l.color} fill={l.color} opacity={l.opacity}>
-                    {g.lines.map((ln, i) => (
-                      <line
-                        key={`l${i}`}
-                        x1={ln.x1}
-                        y1={ln.y1}
-                        x2={ln.x2}
-                        y2={ln.y2}
-                        strokeWidth={sw}
-                        fill="none"
-                      />
-                    ))}
+                    {g.lines.map((ln, i) => {
+                      const dx = ln.x2 - ln.x1;
+                      const dy = ln.y2 - ln.y1;
+                      const len = Math.hypot(dx, dy) || 1;
+                      const ux = dx / len;
+                      const uy = dy / len;
+                      return (
+                        <line
+                          key={`l${i}`}
+                          x1={ln.x1 - ux * FAR}
+                          y1={ln.y1 - uy * FAR}
+                          x2={ln.x2 + ux * FAR}
+                          y2={ln.y2 + uy * FAR}
+                          strokeWidth={sw}
+                          fill="none"
+                        />
+                      );
+                    })}
                     {g.arcs.map((a, i) => (
                       <path
                         key={`a${i}`}
@@ -1227,9 +1402,11 @@ function GlyphEditor(props: {
               })}
             </g>
           )}
-          {/* other glyphs of the set, faint red — to see how shapes overlap.
-              Each glyph is drawn at 5% on its own <g> so opacities accumulate. */}
-          {view.showOtherGlyphs && (
+          {/* other glyphs of the set, faint red â€” to see how shapes overlap.
+              Each glyph is drawn at 5% on its own <g> so opacities accumulate.
+              Hidden in world (bubble) mode â€” the bubble's own siblings
+              already render via the underlay. */}
+          {!props.world && view.showOtherGlyphs && (
             <g
               transform={xform}
               fill="rgb(220,30,30)"
@@ -1253,7 +1430,7 @@ function GlyphEditor(props: {
               })}
             </g>
           )}
-          {/* outlined preview (faded) — fill comes from the triangulated mesh */}
+          {/* outlined preview (faded) â€” fill comes from the triangulated mesh */}
           {view.showFillPreview && (
             <g
               transform={xform}
@@ -1286,23 +1463,23 @@ function GlyphEditor(props: {
                 const closed = poly.length > 0 ? [...poly, poly[0]!] : [];
                 return (
                   <g key={`b${i}`}>
-                    <path d={polylineD(closed)} stroke="#1d6fe6" strokeWidth={sw} />
+                    <path d={polylineD(closed)} stroke="var(--mz-glyph-accent)" strokeWidth={sw} />
                     {poly.map((p, k) => (
                       <g key={`v${i}-${k}`}>
                         <circle
                           cx={p.x}
                           cy={p.y}
                           r={dotR}
-                          fill="#1d6fe6"
-                          stroke="#fff"
+                          fill="var(--mz-glyph-accent)"
+                          stroke="var(--mz-glyph-bg)"
                           strokeWidth={sw * 0.6}
                         />
                         <text
                           x={p.x + dotR * 1.4}
                           y={p.y - dotR * 1.4}
                           fontSize={fontPx}
-                          fill="#1d6fe6"
-                          stroke="#fff"
+                          fill="var(--mz-glyph-accent)"
+                          stroke="var(--mz-glyph-bg)"
                           strokeWidth={sw * 0.4}
                           paintOrder="stroke"
                           style={{ userSelect: 'none' }}
@@ -1410,17 +1587,16 @@ function GlyphEditor(props: {
                             y1={nL.y}
                             x2={nR.x}
                             y2={nR.y}
-                            stroke="#ffaa00"
+                            stroke="var(--mz-glyph-accent)"
                             strokeWidth={sw}
                             strokeLinecap="round"
                           />
-                          {hasIn && (
-                            <line
+                          {hasIn && (                            <line
                               x1={a.p.x}
                               y1={a.p.y}
                               x2={inEnd.x}
                               y2={inEnd.y}
-                              stroke="#1e90ff"
+                              stroke="var(--mz-glyph-accent)"
                               strokeWidth={sw}
                               strokeLinecap="round"
                             />
@@ -1431,7 +1607,7 @@ function GlyphEditor(props: {
                               y1={a.p.y}
                               x2={outEnd.x}
                               y2={outEnd.y}
-                              stroke="#1e90ff"
+                              stroke="var(--mz-glyph-accent)"
                               strokeWidth={sw}
                               strokeLinecap="round"
                             />
@@ -1440,8 +1616,8 @@ function GlyphEditor(props: {
                             cx={a.p.x}
                             cy={a.p.y}
                             r={r}
-                            fill="#1e90ff"
-                            stroke="#ffffff"
+                            fill="var(--mz-glyph-accent)"
+                            stroke="var(--mz-glyph-bg)"
                             strokeWidth={sw}
                           />
                         </g>
@@ -1489,7 +1665,7 @@ function GlyphEditor(props: {
                             y1={nL.y}
                             x2={nR.x}
                             y2={nR.y}
-                            stroke="#22dd88"
+                            stroke="var(--mz-style-accent)"
                             strokeWidth={sw}
                             strokeLinecap="round"
                           />
@@ -1506,8 +1682,8 @@ function GlyphEditor(props: {
                             cx={v.p.x}
                             cy={v.p.y}
                             r={r}
-                            fill="#22dd88"
-                            stroke="#003322"
+                            fill="var(--mz-style-accent)"
+                            stroke="var(--mz-style-bg)"
                             strokeWidth={sw * 0.6}
                           />
                         </g>
@@ -1540,24 +1716,30 @@ function GlyphEditor(props: {
             );
           })()}
         </svg>
+        </div>
       </div>
     </>
   );
 }
 
-// ---------- Inspector (right column) ---------------------------------------
+// ---------- Inspector panels (split across left "Settings" tab + right drawer)
 
-function Inspector(props: {
+/**
+ * Left-drawer "Settings" tab. Holds View options and per-font Guides.
+ * Guides are stored on Font (not on the per-glyph view) so they apply
+ * uniformly to every glyph in the typeface.
+ */
+export function SettingsPanel(props: {
   view: GlyphViewOptions;
   setView: (patch: Partial<GlyphViewOptions>) => void;
-  style: StyleSettings;
-  setStyle: (patch: Partial<StyleSettings>) => void;
-  glyph: Glyph | undefined;
-  updateGlyph: (fn: (g: Glyph) => Glyph) => void;
-  updateAllGlyphs: (fn: (g: Glyph, char: string) => Glyph) => void;
-  original?: StyleSettings;
+  setFontGuides: (g: GuideSettings) => void;
+  /** When true (default), skip the glyph-only entries: "Other glyphs",
+   *  the reference-font picker, and the entire Guides section. Used
+   *  by BubbleSetter, which shares the View toggles but not the glyph
+   *  guide system. */
+  bubbleMode?: boolean;
 }): JSX.Element {
-  const { view, setView, style, setStyle, glyph, updateGlyph, updateAllGlyphs, original } = props;
+  const { view, setView, setFontGuides, bubbleMode = false } = props;
   return (
     <aside
       className="mz-glyphsetter__inspector"
@@ -1597,12 +1779,14 @@ function Inspector(props: {
             tooltip="Opacity of the fill preview (0 = invisible, 1 = solid black)."
           />
         )}
-        <Check
-          label="Other glyphs (faint)"
-          checked={view.showOtherGlyphs}
-          onChange={(v) => setView({ showOtherGlyphs: v })}
-          tooltip="Overlay every other glyph in the font behind the edited one for visual reference."
-        />
+        {!bubbleMode && (
+          <Check
+            label="Other glyphs (faint)"
+            checked={view.showOtherGlyphs}
+            onChange={(v) => setView({ showOtherGlyphs: v })}
+            tooltip="Overlay every other glyph in the font behind the edited one for visual reference."
+          />
+        )}
         <Check
           label="Debug borders"
           checked={view.showBorders}
@@ -1627,487 +1811,219 @@ function Inspector(props: {
           onChange={(v) => setView({ showSpline1: v })}
           tooltip="Debug: full row of subdivided spine vertices (anchors + ribbon spine subdivisions) with their tangents and world-blended normals scaled to the local half-width."
         />
-        <button
-          type="button"
-          disabled={!glyph}
-          onClick={() => {
-            if (!glyph) return;
-            const spineSubdiv = ribbonSpineSubdivOf(style);
-            const borderSubdiv = style.ribbonBorderSubdiv ?? 0;
-            const capSubdiv = ribbonCapSubdivOf(style);
-            const brokenAnchorSubdiv = style.ribbonBrokenAnchorSubdiv ?? 0;
-            const spineLengthAware = ribbonSpineLengthAwareOf(style);
-            const dump = {
-              char: glyph.char,
-              box: glyph.box,
-              style: {
-                triMode: style.triMode,
-                ribbonSpineSubdiv: spineSubdiv,
-                ribbonBorderSubdiv: borderSubdiv,
-                ribbonCapSubdiv: capSubdiv,
-                ribbonBrokenAnchorSubdiv: brokenAnchorSubdiv,
-                ribbonSpineLengthAware: spineLengthAware,
-                capRoundBulge: style.capRoundBulge,
-                capStart: style.capStart,
-                capEnd: style.capEnd,
-                widthOrientation: style.widthOrientation,
-                worldAngle: style.worldAngle,
-                worldContractAngle: style.worldContractAngle,
-                worldBlend: style.worldBlend,
-                worldContract: style.worldContract,
-                defaultWidth: style.defaultWidth,
-              },
-              strokes: glyph.strokes.map((s, i) => {
-                const spline0 = ribbonDebugSpline0(s, style);
-                const spline1 = ribbonDebugSpline1(s, style, spineSubdiv, null, brokenAnchorSubdiv, spineLengthAware, glyph.box.h);
-                const ribbon = triangulateStrokeRibbon(s, style, {
-                  spineSubdiv,
-                  borderSubdiv,
-                  capSubdiv,
-                  brokenAnchorSubdiv,
-                  spineLengthAware,
-                  referenceLength: glyph.box.h,
-                });
-                // Per-sample summary: spine point, world-blended normal,
-                // and the resulting left/right border points.
-                const samples = spline1.map((v, k) => ({
-                  k,
-                  p: v.p,
-                  tangent: v.tangent,
-                  normal: v.normal,
-                  half: v.half,
-                  left: { x: v.p.x + v.normal.x * v.half, y: v.p.y + v.normal.y * v.half },
-                  right: { x: v.p.x - v.normal.x * v.half, y: v.p.y - v.normal.y * v.half },
-                }));
-                return {
-                  index: i,
-                  id: s.id,
-                  capStart: s.capStart,
-                  capEnd: s.capEnd,
-                  width: s.width,
-                  vertices: s.vertices,
-                  spline0,
-                  spline1,
-                  samples,
-                  ribbon: {
-                    polygonCount: ribbon.polygon.length,
-                    triangleCount: ribbon.triangles.length,
-                    polygon: ribbon.polygon,
-                    triangles: ribbon.triangles,
-                  },
-                };
-              }),
-            };
-            // eslint-disable-next-line no-console
-            console.log('[ribbon-debug]', dump);
-            // Also print a plain-text summary so you can read it without
-            // expanding the live object reference in DevTools.
-            for (const sd of dump.strokes) {
-              // eslint-disable-next-line no-console
-              console.log(
-                `[ribbon-debug] stroke #${sd.index} (${sd.id}): ` +
-                  `polygonCount=${sd.ribbon.polygonCount}, ` +
-                  `triangleCount=${sd.ribbon.triangleCount}`,
-              );
-              const tbl = sd.samples.map((s) => ({
-                k: s.k,
-                px: +s.p.x.toFixed(2),
-                py: +s.p.y.toFixed(2),
-                tx: +s.tangent.x.toFixed(3),
-                ty: +s.tangent.y.toFixed(3),
-                nx: +s.normal.x.toFixed(3),
-                ny: +s.normal.y.toFixed(3),
-                half: +s.half.toFixed(2),
-              }));
-              // eslint-disable-next-line no-console
-              console.table(tbl);
-            }
-            // Also stash on window for ad-hoc inspection in DevTools.
-            (window as unknown as { __moritzRibbonDebug?: unknown }).__moritzRibbonDebug = dump;
-          }}
-          title="Log full ribbon state of the current glyph (spline0, spline1, polygon, triangles) to the browser console. Also stored on window.__moritzRibbonDebug."
-          style={{ marginTop: 4 }}
-        >
-          Log ribbon state
-        </button>
-        <button
-          type="button"
-          disabled={!glyph}
-          onClick={() => {
-            if (!glyph) return;
-            const spineSubdiv = ribbonSpineSubdivOf(style);
-            const spineLengthAware = ribbonSpineLengthAwareOf(style);
-            const referenceLength = glyph.box.h;
-            // eslint-disable-next-line no-console
-            console.log(
-              `[length-aware-diag] glyph='${glyph.char}' triMode=${style.triMode} ` +
-                `spineSubdiv=${spineSubdiv} spineLengthAware=${spineLengthAware} ` +
-                `referenceLength(box.h)=${referenceLength}`,
-            );
-            const refStep = referenceLength > 0 ? referenceLength / (spineSubdiv + 1) : 0;
-            for (let i = 0; i < glyph.strokes.length; i++) {
-              const s = glyph.strokes[i]!;
-              const segs = strokeToSegments(s);
-              const lens = segs.map(segmentLength);
-              const total = lens.reduce((a, b) => a + b, 0) || 1;
-              const avg = total / Math.max(1, segs.length);
-              const counts = lens.map((l) =>
-                spineLengthAware && refStep > 0
-                  ? Math.max(0, Math.round(l / refStep) - 1)
-                  : spineSubdiv,
-              );
-              // eslint-disable-next-line no-console
-              console.log(
-                `[length-aware-diag]  stroke #${i} (${s.id}): segments=${segs.length} ` +
-                  `total=${total.toFixed(2)} avg=${avg.toFixed(2)} ` +
-                  `refStep=${refStep.toFixed(2)} (= box.h/${spineSubdiv + 1})`,
-              );
-              const tbl = lens.map((l, k) => ({
-                segment: k,
-                length: +l.toFixed(3),
-                ratioToRef: +(l / referenceLength).toFixed(3),
-                fixedCount: spineSubdiv,
-                lengthAwareCount: refStep > 0 ? Math.max(0, Math.round(l / refStep) - 1) : spineSubdiv,
-                actualCount: counts[k],
-              }));
-              // eslint-disable-next-line no-console
-              console.table(tbl);
-            }
-          }}
-          title="Log per-segment arc lengths and the integer subdivision counts that the length-aware spine option WOULD assign vs the fixed count. Use this to verify whether your current glyph has segments of differing length (a uniform glyph won't visibly change when the toggle flips)."
-          style={{ marginTop: 4 }}
-        >
-          Log length-aware diagnostics
-        </button>
-        <button
-          type="button"
-          disabled={!glyph}
-          onClick={() => {
-            if (!glyph) return;
-            // Per-sample world-blend diagnostic. The "snap" is structurally
-            // a sign-flip in the chosen world-normal representative: at each
-            // sample we pick `wn = sign(tn·worldNormal) * worldNormal`, then
-            // slerp `tn → wn` by `blend`. When two adjacent samples sit on
-            // opposite sides of the boundary (`tn·worldNormal == 0`) they
-            // pick opposite `wn`s and slerp toward different targets,
-            // producing a visual fold whose amplitude scales with `blend`.
-            // Rows where `wnSign` differs from the previous sample mark
-            // exactly where that fold lives.
-            const spineSubdiv = ribbonSpineSubdivOf(style);
-            const brokenAnchorSubdiv = style.ribbonBrokenAnchorSubdiv ?? 0;
-            const spineLengthAware = ribbonSpineLengthAwareOf(style);
-            const world = resolveWorldWidth(style);
-            // eslint-disable-next-line no-console
-            console.log(
-              `[world-blend-diag] glyph='${glyph.char}' ` +
-                `widthOrientation=${style.widthOrientation} ` +
-                `worldAngle=${style.worldAngle} (${((style.worldAngle ?? 0) * 180 / Math.PI).toFixed(1)} deg) ` +
-                `worldBlend=${style.worldBlend} ` +
-                `worldContract=${style.worldContract} ` +
-                `worldNormal=(${world?.normal.x.toFixed(3) ?? 'n/a'}, ${world?.normal.y.toFixed(3) ?? 'n/a'})`,
-            );
-            if (!world) {
-              // eslint-disable-next-line no-console
-              console.log('[world-blend-diag] No world component (blend≤0 or orientation=tangent). Nothing to flip.');
-              return;
-            }
-            for (let i = 0; i < glyph.strokes.length; i++) {
-              const s = glyph.strokes[i]!;
-              const data = ribbonDebugSpline1(s, style, spineSubdiv, null, brokenAnchorSubdiv, spineLengthAware, glyph.box.h);
-              if (data.length === 0) continue;
-              let prevSign = 0;
-              const transitions: number[] = [];
-              const tbl = data.map((v, k) => {
-                const tn = { x: -v.tangent.y, y: v.tangent.x };
-                const dot = tn.x * world.normal.x + tn.y * world.normal.y;
-                const wnSign = dot >= 0 ? +1 : -1;
-                const wn = { x: world.normal.x * wnSign, y: world.normal.y * wnSign };
-                const aT = Math.atan2(tn.y, tn.x);
-                const aW = Math.atan2(wn.y, wn.x);
-                let diff = aW - aT;
-                while (diff > Math.PI) diff -= 2 * Math.PI;
-                while (diff <= -Math.PI) diff += 2 * Math.PI;
-                const aBlend = Math.atan2(v.normal.y, v.normal.x);
-                let signChanged = false;
-                if (k > 0 && wnSign !== prevSign) {
-                  signChanged = true;
-                  transitions.push(k);
-                }
-                prevSign = wnSign;
-                return {
-                  k,
-                  tx: +v.tangent.x.toFixed(3),
-                  ty: +v.tangent.y.toFixed(3),
-                  tnDotW: +dot.toFixed(4),
-                  wnSign,
-                  signChanged,
-                  blendDeg: +(diff * 180 / Math.PI).toFixed(2),
-                  nDeg: +(aBlend * 180 / Math.PI).toFixed(2),
-                  nx: +v.normal.x.toFixed(3),
-                  ny: +v.normal.y.toFixed(3),
-                };
-              });
-              // eslint-disable-next-line no-console
-              console.log(
-                `[world-blend-diag]  stroke #${i} (${s.id}): samples=${data.length} ` +
-                  `wnSignTransitionsAt=[${transitions.join(',')}] ` +
-                  `(those are the fold loci when worldBlend > 0)`,
-              );
-              // eslint-disable-next-line no-console
-              console.table(tbl);
-            }
-          }}
-          title="Log per-sample world-blend resolution: tn·worldNormal, the ± representative chosen, and which sample indices flip the chosen sign relative to their neighbor. Sign-transition rows are exactly where the visual snap appears as you raise worldBlend."
-          style={{ marginTop: 4 }}
-        >
-          Log world-blend normals
-        </button>
-        <button
-          type="button"
-          disabled={!glyph}
-          onClick={() => {
-            if (!glyph) return;
-            // Sweep `worldBlend` across {0, .25, .5, .75, 1} and report the
-            // largest angular jump between consecutive spine1 normals at
-            // each setting. A column whose `maxJumpDeg` grows steeply with
-            // blend pinpoints the stroke whose normals snap; rising values
-            // typically mean the stroke crosses the world-axis boundary.
-            const spineSubdiv = ribbonSpineSubdivOf(style);
-            const brokenAnchorSubdiv = style.ribbonBrokenAnchorSubdiv ?? 0;
-            const spineLengthAware = ribbonSpineLengthAwareOf(style);
-            const blends = [0, 0.25, 0.5, 0.75, 1];
-            // eslint-disable-next-line no-console
-            console.log(
-              `[world-blend-sweep] glyph='${glyph.char}' ` +
-                `worldAngle=${style.worldAngle} (${((style.worldAngle ?? 0) * 180 / Math.PI).toFixed(1)} deg) ` +
-                `(actual style.worldBlend=${style.worldBlend}; sweep ignores it)`,
-            );
-            for (let i = 0; i < glyph.strokes.length; i++) {
-              const s = glyph.strokes[i]!;
-              const rows = blends.map((b) => {
-                const probeStyle = { ...style, worldBlend: b, widthOrientation: 'world' as const };
-                const data = ribbonDebugSpline1(s, probeStyle, spineSubdiv, null, brokenAnchorSubdiv, spineLengthAware, glyph.box.h);
-                if (data.length < 2) return { blend: b, samples: data.length, maxJumpDeg: 0, atK: -1, meanJumpDeg: 0 };
-                let maxJump = 0;
-                let maxAtK = -1;
-                let sumJump = 0;
-                for (let k = 1; k < data.length; k++) {
-                  const a = data[k - 1]!.normal;
-                  const c = data[k]!.normal;
-                  const dot = Math.max(-1, Math.min(1, a.x * c.x + a.y * c.y));
-                  const ang = Math.acos(dot) * 180 / Math.PI;
-                  sumJump += ang;
-                  if (ang > maxJump) { maxJump = ang; maxAtK = k; }
-                }
-                return {
-                  blend: b,
-                  samples: data.length,
-                  maxJumpDeg: +maxJump.toFixed(2),
-                  atK: maxAtK,
-                  meanJumpDeg: +(sumJump / (data.length - 1)).toFixed(2),
-                };
-              });
-              // eslint-disable-next-line no-console
-              console.log(`[world-blend-sweep]  stroke #${i} (${s.id}):`);
-              // eslint-disable-next-line no-console
-              console.table(rows);
-            }
-          }}
-          title="Recompute spine1 normals for worldBlend ∈ {0,.25,.5,.75,1} (forcing widthOrientation=world) and report the max angular jump between consecutive samples per blend value, per stroke. A row whose maxJumpDeg grows fast as blend rises pinpoints the stroke and the sample index where the snap happens."
-          style={{ marginTop: 4 }}
-        >
-          Sweep world-blend
-        </button>
-        <RefFontPicker
-          family={view.refFontFamily}
-          opacity={view.refFontOpacity}
-          onChange={setView}
-        />
+        {!bubbleMode && (
+          <RefFontPicker
+            family={view.refFontFamily}
+            opacity={view.refFontOpacity}
+            onChange={setView}
+          />
+        )}
       </Section>
-      {glyph && (
-        <Section title="Glyph" tone="local" subtitle="Per-glyph metrics">
-          <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
-            <button
-              type="button"
-              disabled={!view.refFontFamily}
-              onClick={() => {
-                if (!view.refFontFamily) return;
-                updateGlyph((g) => importGlyphMetrics(g, glyph.char, view.refFontFamily));
-              }}
-              title={
-                view.refFontFamily
-                  ? "Set this glyph's box width and side bearings from the reference font's measured advance width and ink bounds. Vertical scale matches 'Align to reference font'."
-                  : 'Pick a Reference font in the View section first.'
-              }
-              style={{ flex: 1, fontSize: 11, padding: '2px 6px' }}
-            >
-              Import (this glyph)
-            </button>
-            <button
-              type="button"
-              disabled={!view.refFontFamily}
-              onClick={() => {
-                if (!view.refFontFamily) return;
-                if (!confirm('Import box width and side bearings from the reference font for ALL glyphs? Existing strokes are kept and re-centred.')) return;
-                updateAllGlyphs((g, char) => importGlyphMetrics(g, char, view.refFontFamily));
-              }}
-              title={
-                view.refFontFamily
-                  ? 'Apply the same metrics import to every glyph in the typeface.'
-                  : 'Pick a Reference font in the View section first.'
-              }
-              style={{ flex: 1, fontSize: 11, padding: '2px 6px' }}
-            >
-              Import (all glyphs)
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (!confirm('Set left and right side bearings to 0 for ALL glyphs in this font?')) return;
-              updateAllGlyphs((g) => ({
-                ...g,
-                sidebearings: { left: 0, right: 0 },
-              }));
-            }}
-            title="Zero out the left and right side bearings on every glyph. Useful when you want spacing to come purely from box width / tracking / kerning."
-            style={{ width: '100%', fontSize: 11, padding: '2px 6px', marginBottom: 4 }}
-          >
-            Zero all bearings
-          </button>
-          <NumSlider
-            label="Box width"
-            min={20}
-            max={300}
-            step={1}
-            value={glyph.box.w}
-            onChange={(v) =>
-              updateGlyph((g) => {
-                const newW = Math.round(v);
-                const dx = (newW - g.box.w) / 2;
-                if (dx === 0) return { ...g, box: { ...g.box, w: newW } };
-                return {
-                  ...g,
-                  box: { ...g.box, w: newW },
-                  strokes: g.strokes.map((s) => ({
-                    ...s,
-                    vertices: s.vertices.map((vx) => ({
-                      ...vx,
-                      p: { x: vx.p.x + dx, y: vx.p.y },
-                    })),
-                  })),
-                };
-              })
-            }
-            tooltip="Width of this glyph's ink box in font units. The box grows or shrinks symmetrically around the glyph: stroke vertices are shifted by half the delta so the artwork stays visually centred."
-          />
-          <NumSlider
-            label="Box height"
-            min={20}
-            max={300}
-            step={1}
-            value={glyph.box.h}
-            onChange={(v) =>
-              updateGlyph((g) => {
-                const newH = Math.round(v);
-                const dy = (newH - g.box.h) / 2;
-                if (dy === 0) return { ...g, box: { ...g.box, h: newH } };
-                return {
-                  ...g,
-                  box: { ...g.box, h: newH },
-                  strokes: g.strokes.map((s) => ({
-                    ...s,
-                    vertices: s.vertices.map((vx) => ({
-                      ...vx,
-                      p: { x: vx.p.x, y: vx.p.y + dy },
-                    })),
-                  })),
-                };
-              })
-            }
-            tooltip="Height of this glyph's ink box in font units. Grows symmetrically around the glyph (same as Box width)."
-          />
-          <NumSlider
-            label="Left bearing"
-            min={-40}
-            max={80}
-            step={1}
-            value={glyph.sidebearings?.left ?? 0}
-            onChange={(v) =>
-              updateGlyph((g) => ({
-                ...g,
-                sidebearings: {
-                  left: Math.round(v),
-                  right: g.sidebearings?.right ?? 0,
-                },
-              }))
-            }
-            tooltip="Extra horizontal padding before the glyph (font units). Negative values let the previous glyph encroach. Visualised as a dashed blue line."
-          />
-          <NumSlider
-            label="Right bearing"
-            min={-40}
-            max={80}
-            step={1}
-            value={glyph.sidebearings?.right ?? 0}
-            onChange={(v) =>
-              updateGlyph((g) => ({
-                ...g,
-                sidebearings: {
-                  left: g.sidebearings?.left ?? 0,
-                  right: Math.round(v),
-                },
-              }))
-            }
-            tooltip="Extra horizontal padding after the glyph (font units). Negative tightens the next glyph against this one."
-          />
-          <NumSlider
-            label="Baseline ↕"
-            min={-60}
-            max={60}
-            step={1}
-            value={glyph.baselineOffset ?? 0}
-            onChange={(v) =>
-              updateGlyph((g) => ({ ...g, baselineOffset: Math.round(v) }))
-            }
-            tooltip="Vertical offset relative to the baseline. Positive moves the glyph down (descender), negative lifts it (superscript-like)."
-          />
-          <NumSlider
-            label="World blend Δangle (rad)"
-            min={-Math.PI / 2}
-            max={Math.PI / 2}
-            step={0.01}
-            value={glyph.worldAngleOffset ?? 0}
-            onChange={(v) =>
-              updateGlyph((g) => ({ ...g, worldAngleOffset: v }))
-            }
-            tooltip="Per-glyph offset added to the typeface's World blend angle when rendering this glyph. Lets a single glyph lean its nib without touching the StyleSetter value. Saved with the font."
-          />
-          <NumSlider
-            label="World contract Δangle (rad)"
-            min={-Math.PI / 2}
-            max={Math.PI / 2}
-            step={0.01}
-            value={glyph.worldContractAngleOffset ?? 0}
-            onChange={(v) =>
-              updateGlyph((g) => ({ ...g, worldContractAngleOffset: v }))
-            }
-            tooltip="Per-glyph offset added to the typeface's World contract angle when rendering this glyph. Saved with the font."
+      {!bubbleMode && (
+        <Section title="Guides" tone="glyphfont" subtitle="Per-font defaults">
+          <GuidesPanel
+            value={view.guides}
+            onChange={(guides) => setFontGuides(guides)}
+            refFontFamily={view.refFontFamily}
           />
         </Section>
       )}
-      <Section title="Styles" tone="style" subtitle="Forward to StyleSetter">
-        <StyleControls
-          style={style}
-          setStyle={setStyle}
-          {...(original ? { original } : {})}
+    </aside>
+  );
+}
+
+/**
+ * Per-glyph metrics panel (box, side bearings, baseline, per-glyph world
+ * angle offsets). Lives at the bottom of the "Glyphs" left tab when a glyph
+ * is selected.
+ */
+function GlyphMetricsPanel(props: {
+  glyph: Glyph;
+  view: GlyphViewOptions;
+  updateGlyph: (fn: (g: Glyph) => Glyph) => void;
+  updateAllGlyphs: (fn: (g: Glyph, char: string) => Glyph) => void;
+}): JSX.Element {
+  const { glyph, view, updateGlyph, updateAllGlyphs } = props;
+  return (
+    <aside
+      style={{
+        width: '100%',
+        background: 'transparent',
+        padding: 8,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+        boxSizing: 'border-box',
+      }}
+    >
+      <Section title="Glyph" tone="local" subtitle="Per-glyph metrics">
+        <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+          <button
+            type="button"
+            disabled={!view.refFontFamily}
+            onClick={() => {
+              if (!view.refFontFamily) return;
+              updateGlyph((g) => importGlyphMetrics(g, glyph.char, view.refFontFamily));
+            }}
+            title={
+              view.refFontFamily
+                ? "Set this glyph's box width and side bearings from the reference font's measured advance width and ink bounds. Vertical scale matches 'Align to reference font'."
+                : 'Pick a Reference font in the View section first.'
+            }
+            style={{ flex: 1, fontSize: 11, padding: '2px 6px' }}
+          >
+            Import (this glyph)
+          </button>
+          <button
+            type="button"
+            disabled={!view.refFontFamily}
+            onClick={() => {
+              if (!view.refFontFamily) return;
+              if (!confirm('Import box width and side bearings from the reference font for ALL glyphs? Existing strokes are kept and re-centred.')) return;
+              updateAllGlyphs((g, char) => importGlyphMetrics(g, char, view.refFontFamily));
+            }}
+            title={
+              view.refFontFamily
+                ? 'Apply the same metrics import to every glyph in the typeface.'
+                : 'Pick a Reference font in the View section first.'
+            }
+            style={{ flex: 1, fontSize: 11, padding: '2px 6px' }}
+          >
+            Import (all glyphs)
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            if (!confirm('Set left and right side bearings to 0 for ALL glyphs in this font?')) return;
+            updateAllGlyphs((g) => ({
+              ...g,
+              sidebearings: { left: 0, right: 0 },
+            }));
+          }}
+          title="Zero out the left and right side bearings on every glyph. Useful when you want spacing to come purely from box width / tracking / kerning."
+          style={{ width: '100%', fontSize: 11, padding: '2px 6px', marginBottom: 4 }}
+        >
+          Zero all bearings
+        </button>
+        <NumSlider
+          label="Box width"
+          min={20}
+          max={300}
+          step={1}
+          value={glyph.box.w}
+          onChange={(v) =>
+            updateGlyph((g) => {
+              const newW = Math.round(v);
+              const dx = (newW - g.box.w) / 2;
+              if (dx === 0) return { ...g, box: { ...g.box, w: newW } };
+              return {
+                ...g,
+                box: { ...g.box, w: newW },
+                strokes: g.strokes.map((s) => ({
+                  ...s,
+                  vertices: s.vertices.map((vx) => ({
+                    ...vx,
+                    p: { x: vx.p.x + dx, y: vx.p.y },
+                  })),
+                })),
+              };
+            })
+          }
+          tooltip="Width of this glyph's ink box in font units. The box grows or shrinks symmetrically around the glyph: stroke vertices are shifted by half the delta so the artwork stays visually centred."
         />
-      </Section>
-      <Section title="Guides" tone="local">
-        <GuidesPanel
-          value={view.guides}
-          onChange={(guides) => setView({ guides })}
-          refFontFamily={view.refFontFamily}
+        <NumSlider
+          label="Box height"
+          min={20}
+          max={300}
+          step={1}
+          value={glyph.box.h}
+          onChange={(v) =>
+            updateGlyph((g) => {
+              const newH = Math.round(v);
+              const dy = (newH - g.box.h) / 2;
+              if (dy === 0) return { ...g, box: { ...g.box, h: newH } };
+              return {
+                ...g,
+                box: { ...g.box, h: newH },
+                strokes: g.strokes.map((s) => ({
+                  ...s,
+                  vertices: s.vertices.map((vx) => ({
+                    ...vx,
+                    p: { x: vx.p.x, y: vx.p.y + dy },
+                  })),
+                })),
+              };
+            })
+          }
+          tooltip="Height of this glyph's ink box in font units. Grows symmetrically around the glyph (same as Box width)."
+        />
+        <NumSlider
+          label="Left bearing"
+          min={-40}
+          max={80}
+          step={1}
+          value={glyph.sidebearings?.left ?? 0}
+          onChange={(v) =>
+            updateGlyph((g) => ({
+              ...g,
+              sidebearings: {
+                left: Math.round(v),
+                right: g.sidebearings?.right ?? 0,
+              },
+            }))
+          }
+          tooltip="Extra horizontal padding before the glyph (font units). Negative values let the previous glyph encroach. Visualised as a dashed blue line."
+        />
+        <NumSlider
+          label="Right bearing"
+          min={-40}
+          max={80}
+          step={1}
+          value={glyph.sidebearings?.right ?? 0}
+          onChange={(v) =>
+            updateGlyph((g) => ({
+              ...g,
+              sidebearings: {
+                left: g.sidebearings?.left ?? 0,
+                right: Math.round(v),
+              },
+            }))
+          }
+          tooltip="Extra horizontal padding after the glyph (font units). Negative tightens the next glyph against this one."
+        />
+        <NumSlider
+          label="Baseline ↕"
+          min={-60}
+          max={60}
+          step={1}
+          value={glyph.baselineOffset ?? 0}
+          onChange={(v) =>
+            updateGlyph((g) => ({ ...g, baselineOffset: Math.round(v) }))
+          }
+          tooltip="Vertical offset relative to the baseline. Positive moves the glyph down (descender), negative lifts it (superscript-like)."
+        />
+        <NumSlider
+          label="World blend Δangle (rad)"
+          min={-Math.PI / 2}
+          max={Math.PI / 2}
+          step={0.01}
+          value={glyph.worldAngleOffset ?? 0}
+          onChange={(v) =>
+            updateGlyph((g) => ({ ...g, worldAngleOffset: v }))
+          }
+          tooltip="Per-glyph offset added to the typeface's World blend angle when rendering this glyph. Lets a single glyph lean its nib without touching the StyleSetter value. Saved with the font."
+        />
+        <NumSlider
+          label="World contract Δangle (rad)"
+          min={-Math.PI / 2}
+          max={Math.PI / 2}
+          step={0.01}
+          value={glyph.worldContractAngleOffset ?? 0}
+          onChange={(v) =>
+            updateGlyph((g) => ({ ...g, worldContractAngleOffset: v }))
+          }
+          tooltip="Per-glyph offset added to the typeface's World contract angle when rendering this glyph. Saved with the font."
         />
       </Section>
     </aside>
@@ -2117,10 +2033,10 @@ function Inspector(props: {
 // ---------- Left-column tab bar -------------------------------------------
 
 function LeftTabBar(props: {
-  value: 'glyphs' | 'kerning';
-  onChange: (v: 'glyphs' | 'kerning') => void;
+  value: 'glyphs' | 'kerning' | 'settings';
+  onChange: (v: 'glyphs' | 'kerning' | 'settings') => void;
 }): JSX.Element {
-  const tab = (id: 'glyphs' | 'kerning', label: string): JSX.Element => {
+  const tab = (id: 'glyphs' | 'kerning' | 'settings', label: string): JSX.Element => {
     const active = props.value === id;
     return (
       <button
@@ -2133,10 +2049,10 @@ function LeftTabBar(props: {
           padding: '6px 8px',
           fontSize: 12,
           fontWeight: active ? 600 : 400,
-          background: active ? '#fff' : 'transparent',
-          color: active ? '#222' : '#ccc',
+          background: active ? 'var(--mz-bg)' : 'transparent',
+          color: active ? 'var(--mz-accent)' : 'var(--mz-text-mute)',
           border: 'none',
-          borderBottom: active ? '2px solid #222' : '2px solid transparent',
+          borderBottom: active ? '2px solid var(--mz-accent)' : '2px solid transparent',
           cursor: 'pointer',
         }}
       >
@@ -2146,15 +2062,12 @@ function LeftTabBar(props: {
   };
   return (
     <div
-      className="mz-glyphsetter__tabs"
-      style={{
-        display: 'flex',
-        background: '#1f1f1f',
-        borderBottom: '1px solid #111',
-      }}
+      className="mz-glyphsetter__tabs mz-workbench__drawer-header"
+      style={{ padding: 0, gap: 0 }}
     >
       {tab('glyphs', 'Glyphs')}
       {tab('kerning', 'Kerning')}
+      {tab('settings', 'Settings')}
     </div>
   );
 }
@@ -2240,7 +2153,7 @@ function KerningList(props: {
         display: 'flex',
         flexDirection: 'column',
         gap: 6,
-        // Outer container no longer scrolls — only the entries list does,
+        // Outer container no longer scrolls â€” only the entries list does,
         // so the "+ Pair" input stays pinned at the top.
         overflow: 'hidden',
       }}
@@ -2255,7 +2168,7 @@ function KerningList(props: {
           flexDirection: 'column',
           gap: 6,
           paddingBottom: 6,
-          borderBottom: '1px solid #2a2a2a',
+          borderBottom: '1px solid var(--mz-line)',
           background: 'inherit',
         }}
       >
@@ -2267,7 +2180,7 @@ function KerningList(props: {
             gap: 4,
             alignItems: 'center',
             fontSize: 12,
-            color: '#ddd',
+            color: 'var(--mz-text)',
           }}
         >
           <input
@@ -2293,7 +2206,7 @@ function KerningList(props: {
           >
             + Pair
           </button>
-          <span style={{ color: '#888', marginLeft: 'auto' }}>
+          <span style={{ color: 'var(--mz-text-mute)', marginLeft: 'auto' }}>
             {entries.length} pair{entries.length === 1 ? '' : 's'}
           </span>
         </div>
@@ -2324,7 +2237,7 @@ function KerningList(props: {
         }}
       >
         {entries.length === 0 && (
-          <p style={{ fontSize: 11, color: '#999', margin: '4px 0' }}>
+          <p style={{ fontSize: 11, color: 'var(--mz-text-mute)', margin: '4px 0' }}>
             No kerning pairs. Type two characters above and click + Pair.
           </p>
         )}
@@ -2403,12 +2316,12 @@ function KerningEntry(props: {
           display: 'block',
           width: '100%',
           height: 56,
-          background: '#fafafa',
-          border: '1px solid #ddd',
+          background: 'var(--mz-paper)',
+          border: '1px solid var(--mz-line)',
           borderRadius: 3,
         }}
       >
-        <g fill="#222">
+        <g fill="var(--mz-ink)">
           {groups.map((grp, gi) => (
             <g key={gi} transform={`translate(${grp.origin.x} ${grp.origin.y})`}>
               {grp.paths.map((d, i) => (
@@ -2429,8 +2342,8 @@ function KerningEntry(props: {
         flexDirection: 'column',
         gap: 4,
         padding: 6,
-        background: '#3a3a3a',
-        border: '1px solid #1a1a1a',
+        background: 'var(--mz-panel)',
+        border: '1px solid var(--mz-line)',
         borderRadius: 4,
       }}
     >
@@ -2440,7 +2353,7 @@ function KerningEntry(props: {
           alignItems: 'center',
           gap: 6,
           fontSize: 12,
-          color: '#eee',
+          color: 'var(--mz-text)',
         }}
       >
         <code
@@ -2477,7 +2390,7 @@ function KerningEntry(props: {
           title="Remove this pair."
           style={{ padding: '0 6px', fontSize: 11 }}
         >
-          ×
+          Ã—
         </button>
       </div>
       {previewSvg}
@@ -2487,20 +2400,26 @@ function KerningEntry(props: {
 
 function Section(props: {
   title: string;
-  tone: 'local' | 'style';
+  tone: 'local' | 'style' | 'glyphfont';
   subtitle?: string;
   children: React.ReactNode;
   defaultOpen?: boolean;
 }): JSX.Element {
   const isStyle = props.tone === 'style';
+  const isFont = props.tone === 'glyphfont';
+  const modClass = isStyle
+    ? ' mz-mod--stylesetter'
+    : isFont
+      ? ' mz-mod--glyphfont'
+      : '';
   const [open, setOpen] = useState(props.defaultOpen ?? true);
   return (
     <section
-      className={`mz-inspector__section mz-inspector__section--${props.tone}`}
+      className={`mz-inspector__section mz-inspector__section--${props.tone}${modClass}`}
       style={{
-        border: `1px solid ${isStyle ? '#c98a2c' : '#bbb'}`,
+        border: `1px solid var(--mz-line)`,
         borderRadius: 4,
-        background: isStyle ? 'rgba(201, 138, 44, 0.06)' : 'transparent',
+        background: isStyle || isFont ? 'var(--mz-panel)' : 'var(--mz-panel)',
         padding: 8,
         display: 'flex',
         flexDirection: 'column',
@@ -2521,25 +2440,25 @@ function Section(props: {
           aria-hidden
           style={{
             fontSize: 10,
-            color: isStyle ? '#7a4f10' : '#666',
+            color: isStyle || isFont ? 'var(--mz-accent)' : 'var(--mz-text-mute)',
             width: 10,
             display: 'inline-block',
           }}
         >
-          {open ? '▾' : '▸'}
+          {open ? 'â–¾' : 'â–¸'}
         </span>
         <strong
           style={{
             fontSize: 12,
             textTransform: 'uppercase',
             letterSpacing: 0.6,
-            color: isStyle ? '#7a4f10' : '#444',
+            color: isStyle || isFont ? 'var(--mz-accent)' : 'var(--mz-text)',
           }}
         >
           {props.title}
         </strong>
         {props.subtitle && (
-          <span style={{ fontSize: 11, color: '#888' }}>{props.subtitle}</span>
+          <span style={{ fontSize: 11, color: 'var(--mz-text-mute)' }}>{props.subtitle}</span>
         )}
       </header>
       {open && props.children}
@@ -2600,13 +2519,13 @@ function RefFontPicker(props: {
       title="Trace a real system font behind the glyph for reference. Pick from a curated set; the chosen font's matching character is rendered faintly behind your strokes."
     >
       <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ width: 80, color: '#666' }}>Reference</span>
+        <span style={{ width: 80, color: 'var(--mz-text-mute)' }}>Reference</span>
         <select
           value={props.family}
           onChange={(e) => props.onChange({ refFontFamily: e.target.value })}
           style={{ flex: 1, fontSize: 12 }}
         >
-          <option value="">— none —</option>
+          <option value="">â€” none â€”</option>
           {REF_FONTS.map((f) => (
             <option key={f.family} value={f.family} style={{ fontFamily: f.family }}>
               {f.label}
@@ -2645,7 +2564,7 @@ function NumSlider(props: {
       title={props.tooltip}
       style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
     >
-      <span style={{ color: '#666', width: 80, flexShrink: 0 }}>{props.label}</span>
+      <span style={{ color: 'var(--mz-text-mute)', width: 80, flexShrink: 0 }}>{props.label}</span>
       <input
         type="range"
         min={props.min}
@@ -2728,10 +2647,10 @@ function StrokeOverlay(props: {
   const HANDLE = 6 / scale;
   const HAIR = 2 / scale;
 
-  // Per-vertex default normal handle position (perp(tangent) × bare default
+  // Per-vertex default normal handle position (perp(tangent) Ã— bare default
   // half-width at that anchor's arc-length parameter). When a vertex has a
   // normalOverride, the handle sits at p + override; otherwise at the
-  // default. Pure function of (segs, profile) — no React state.
+  // default. Pure function of (segs, profile) â€” no React state.
   const normalHandles = useMemo<readonly Vec2[]>(() => {
     if (segs.length === 0) return stroke.vertices.map((v) => ({ x: v.p.x, y: v.p.y }));
     const lens = segs.map(
@@ -2764,7 +2683,7 @@ function StrokeOverlay(props: {
       <path
         d={d}
         fill="none"
-        stroke={isStrokeSelected ? '#1d6fe6' : '#888'}
+        stroke={isStrokeSelected ? 'var(--mz-glyph-accent)' : 'var(--mz-text-mute)'}
         strokeWidth={HAIR}
         onPointerDown={(e) => props.onStrokePointerDown(e, strokeIdx)}
         style={{ cursor: isStrokeSelected ? 'grabbing' : 'grab' }}
@@ -2785,15 +2704,15 @@ function StrokeOverlay(props: {
                   y1={v.p.y}
                   x2={inAbs.x}
                   y2={inAbs.y}
-                  stroke="#1d6fe6"
+                  stroke="var(--mz-glyph-accent)"
                   strokeWidth={HAIR / 2}
                 />
                 <circle
                   cx={inAbs.x}
                   cy={inAbs.y}
                   r={HANDLE}
-                  fill="#fff"
-                  stroke="#1d6fe6"
+                  fill="var(--mz-glyph-bg)"
+                  stroke="var(--mz-glyph-accent)"
                   strokeWidth={HAIR / 2}
                   style={{ cursor: 'grab' }}
                   onPointerDown={(e) =>
@@ -2809,15 +2728,15 @@ function StrokeOverlay(props: {
                   y1={v.p.y}
                   x2={outAbs.x}
                   y2={outAbs.y}
-                  stroke="#1d6fe6"
+                  stroke="var(--mz-glyph-accent)"
                   strokeWidth={HAIR / 2}
                 />
                 <circle
                   cx={outAbs.x}
                   cy={outAbs.y}
                   r={HANDLE}
-                  fill="#fff"
-                  stroke="#1d6fe6"
+                  fill="var(--mz-glyph-bg)"
+                  stroke="var(--mz-glyph-accent)"
                   strokeWidth={HAIR / 2}
                   style={{ cursor: 'grab' }}
                   onPointerDown={(e) =>
@@ -2866,8 +2785,8 @@ function StrokeOverlay(props: {
               y={v.p.y - ANCHOR / 2}
               width={ANCHOR}
               height={ANCHOR}
-              fill={sel ? '#1d6fe6' : '#fff'}
-              stroke={sel ? '#1d6fe6' : '#222'}
+              fill={sel ? 'var(--mz-glyph-accent)' : 'var(--mz-glyph-bg)'}
+              stroke={sel ? 'var(--mz-glyph-accent)' : 'var(--mz-glyph-line)'}
               strokeWidth={HAIR / 2}
               style={{ cursor: 'grab' }}
               onPointerDown={(e) =>
@@ -2907,7 +2826,7 @@ function trianglesD(
  *
  * When `ctx` is supplied, the polygon is also passed through shape-jitter
  * (matching the StyleSetter / TypeSetter SVG path). Spline jitter and the
- * affine `transformGlyph` step happen at the GLYPH level — see
+ * affine `transformGlyph` step happen at the GLYPH level â€” see
  * `previewGlyph()` below.
  */
 function triangulateForStyle(
