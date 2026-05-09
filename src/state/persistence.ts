@@ -24,6 +24,18 @@ export type FontEnvelope = {
 
 export type LoadedFont = { font: Font; view?: GlyphViewOptions };
 
+/**
+ * Strip session-only fields from a `GlyphViewOptions` before saving. Today
+ * just `editorScale` — it's a per-session ergonomic preference, not part of
+ * the font, and switching fonts shouldn't reset the user's zoom.
+ */
+function stripSessionView(view?: GlyphViewOptions): GlyphViewOptions | undefined {
+  if (!view) return undefined;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { editorScale: _drop, ...rest } = view;
+  return rest as GlyphViewOptions;
+}
+
 export function listFontIds(): string[] {
   try {
     const raw = localStorage.getItem(INDEX_KEY);
@@ -65,7 +77,7 @@ export function loadFontEnvelope(id: string): LoadedFont | null {
 }
 
 export function saveFont(font: Font, view?: GlyphViewOptions): void {
-  const env: FontEnvelope = { format: 'moritz-font', version: 2, font, view };
+  const env: FontEnvelope = { format: 'moritz-font', version: 2, font, view: stripSessionView(view) };
   const json = JSON.stringify(env);
   localStorage.setItem(PREFIX + font.id, json);
   const ids = new Set(listFontIds());
@@ -133,7 +145,7 @@ export async function syncLocalOverridesToRepo(
 }
 
 export function exportFontJson(font: Font, view?: GlyphViewOptions): string {
-  const env: FontEnvelope = { format: 'moritz-font', version: 2, font, view };
+  const env: FontEnvelope = { format: 'moritz-font', version: 2, font, view: stripSessionView(view) };
   return JSON.stringify(env, null, 2);
 }
 

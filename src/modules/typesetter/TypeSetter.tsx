@@ -7,35 +7,45 @@
  * and `italic` (added slant). The same SVG is what gets exported.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { layout } from '../../core/layout.js';
 import { renderLayoutToSvg } from '../../core/export/svg.js';
 import { svgToPng } from '../../core/export/png.js';
 import { bubbleGeometry, type BubbleShape } from '../../core/bubble.js';
 import { downloadBlob } from '../../state/persistence.js';
 import { fontWithOverrides, useAppStore } from '../../state/store.js';
+import { textPresetSets } from '../../data/textPresets.js';
 import {
+  PAGE_FORMATS,
   useTypesetterStore,
   type TextBlock,
 } from '../../state/typesetterStore.js';
 import type { Font } from '../../core/types.js';
+import { Section, StyleControls } from '../stylesetter/StyleControls.js';
 
 export function TypeSetter(): JSX.Element {
   const baseFont = useAppStore((s) => s.font);
-  const styleOverrides = useAppStore((s) => s.styleOverrides);
-  // Pipeline order: glyphsetter → stylesetter → typesetter. We render with
-  // the StyleSetter overlay merged onto the font's intrinsic style.
+  const style = useAppStore((s) => s.style);
+  const setStyleOverride = useAppStore((s) => s.setStyleOverride);
+  const loadedStyleSettings = useAppStore((s) => s.loadedStyleSettings);
+  // Pipeline order: glyphsetter → stylesetter → typesetter. The renderer
+  // always uses the active style from the store; we synthesize a Font for
+  // core consumption that carries it as `.style`.
   const font = useMemo(
-    () => fontWithOverrides(baseFont, styleOverrides),
-    [baseFont, styleOverrides],
+    () => fontWithOverrides(baseFont, style),
+    [baseFont, style],
   );
   const {
     pageImage,
     pageW,
     pageH,
+    pageFormatId,
+    border,
     blocks,
     selectedBlockId,
     setPage,
+    setPageFormat,
+    setBorder,
     addBlock,
     updateBlock,
     deleteBlock,
@@ -43,7 +53,37 @@ export function TypeSetter(): JSX.Element {
   } = useTypesetterStore();
 
   const stageRef = useRef<HTMLDivElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
+  // User-driven zoom override; null = auto-fit to surface.
+  const [manualZoom, setManualZoom] = useState<number | null>(null);
+
+  // Fit page to available surface area whenever the surface or page resizes.
+  useLayoutEffect(() => {
+    if (manualZoom !== null) return;
+    const el = surfaceRef.current;
+    if (!el || pageW <= 0 || pageH <= 0) return;
+    const fit = (): void => {
+      const pad = 16;
+      const aw = Math.max(0, el.clientWidth - pad * 2);
+      const ah = Math.max(0, el.clientHeight - pad * 2);
+      if (aw <= 0 || ah <= 0) return;
+      const z = Math.min(aw / pageW, ah / pageH);
+      if (z > 0 && Number.isFinite(z)) setZoom(z);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [pageW, pageH, manualZoom]);
+
+  // Stop tracking auto-fit only when the user touches the slider.
+  const onZoomSlider = (v: number): void => {
+    setManualZoom(v);
+    setZoom(v);
+  };
+  // One-click "fit" to re-engage auto.
+  // (Reset via the "Fit" button: setManualZoom(null).)
 
   const onLoadImage = async (file: File) => {
     const url = URL.createObjectURL(file);
@@ -74,12 +114,22 @@ export function TypeSetter(): JSX.Element {
   const selected = blocks.find((b) => b.id === selectedBlockId) ?? null;
 
   return (
-    <div className="mz-typesetter" style={{ display: 'flex', height: '100%', minHeight: 0 }}>
-      {/* Left: stage */}
-      <div className="mz-typesetter__stage" style={{ flex: 1, overflow: 'auto', background: '#1a1a1a', padding: 16 }}>
-        <div className="mz-typesetter__toolbar" style={{ marginBottom: 8, color: '#ddd', display: 'flex', gap: 8 }}>
-          <label style={{ background: '#fff', color: '#222', padding: '4px 8px', borderRadius: 4, cursor: 'pointer' }}>
-            Load page…
+    <div className="mz-workbench mz-typesetter">
+      {/* Left drawer — page source + block list */}
+      <div className="mz-workbench__drawer mz-workbench__drawer--left">
+        <div className="mz-workbench__drawer-body">
+          <label
+            style={{
+              background: 'var(--mz-bg)',
+              color: 'var(--mz-text)',
+              border: '1px solid var(--mz-line)',
+              padding: '6px 10px',
+              borderRadius: 4,
+              cursor: 'pointer',
+              textAlign: 'center',
+            }}
+          >
+            Load comic page…
             <input
               type="file"
               accept="image/*"
@@ -90,45 +140,155 @@ export function TypeSetter(): JSX.Element {
               }}
             />
           </label>
-          <button onClick={onAddBlock} disabled={!pageImage}>
+          <button onClick={onAddBlock}>
             + Text block
           </button>
-          <button
-            onClick={() => exportPage(font, blocks, pageW, pageH, 'svg')}
-            disabled={blocks.length === 0}
+          <Section title="Page">
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
+              Format
+              <select
+                value={pageFormatId}
+                onChange={(e) => setPageFormat(e.target.value)}
+                style={{ padding: 4 }}
+              >
+                {PAGE_FORMATS.map((f) => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12, marginTop: 6 }}>
+              <span style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Safe-area inset</span>
+                <span style={{ color: 'var(--mz-text-mute)', fontVariantNumeric: 'tabular-nums' }}>
+                  {Math.round(border.inset)}px
+                </span>
+              </span>
+              <input
+                type="range"
+                min={0}
+                max={120}
+                step={1}
+                value={border.inset}
+                onChange={(e) => setBorder({ inset: parseFloat(e.target.value) })}
+              />
+            </label>
+          </Section>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => exportPage(font, blocks, pageW, pageH, 'svg')}
+              disabled={blocks.length === 0}
+              style={{ flex: 1 }}
+            >
+              Export SVG
+            </button>
+            <button
+              onClick={() => exportPage(font, blocks, pageW, pageH, 'png')}
+              disabled={blocks.length === 0}
+              style={{ flex: 1 }}
+            >
+              Export PNG
+            </button>
+          </div>
+          <Section title="Blocks">
+            {blocks.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 12, color: 'var(--mz-text-mute)' }}>
+                No text blocks yet.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {blocks.map((b, i) => {
+                  const sel = b.id === selectedBlockId;
+                  return (
+                    <button
+                      key={b.id}
+                      onClick={() => selectBlock(b.id)}
+                      style={{
+                        textAlign: 'left',
+                        padding: '6px 8px',
+                        background: sel ? 'var(--mz-bg)' : 'transparent',
+                        border: `1px solid ${sel ? 'var(--mz-accent)' : 'var(--mz-line)'}`,
+                        borderRadius: 4,
+                        cursor: 'pointer',
+                        fontSize: 12,
+                        color: 'var(--mz-text)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <span style={{ color: 'var(--mz-text-mute)', marginRight: 6 }}>{i + 1}.</span>
+                      {b.text || <em style={{ color: 'var(--mz-text-faint)' }}>(empty)</em>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Section>
+          {selected && (
+            <Section title="Block">
+              <BlockInspector
+                block={selected}
+                onChange={(patch) => updateBlock(selected.id, patch)}
+                onDelete={() => deleteBlock(selected.id)}
+              />
+            </Section>
+          )}
+        </div>
+      </div>
+
+      {/* Bench — paper page sits directly on the workspace raster.
+          No drop-shadowed mini-page-on-stage; the page itself IS the
+          subject. The dashed inner rectangle is the safe area / live
+          area (settable per page-format preset). */}
+      <div className="mz-workbench__bench mz-typesetter__bench">
+        <div ref={surfaceRef} className="mz-canvas mz-typesetter__stage">
+          <div
+            style={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '2px 8px',
+              background: 'rgba(255,255,255,0.85)',
+              border: '1px solid var(--mz-line)',
+              borderRadius: 4,
+              fontSize: 11,
+              color: 'var(--mz-text-mute)',
+              zIndex: 2,
+            }}
           >
-            Export SVG
-          </button>
-          <button
-            onClick={() => exportPage(font, blocks, pageW, pageH, 'png')}
-            disabled={blocks.length === 0}
-          >
-            Export PNG
-          </button>
-          <span style={{ marginLeft: 12 }}>
-            Zoom
+            <button
+              onClick={() => setManualZoom(null)}
+              title="Fit page to view"
+              style={{ padding: '0 6px', fontSize: 11 }}
+            >
+              Fit
+            </button>
+            <span>Zoom</span>
             <input
               type="range"
-              min={0.1}
+              min={0.05}
               max={2}
               step={0.05}
               value={zoom}
-              onChange={(e) => setZoom(parseFloat(e.target.value))}
-              style={{ marginLeft: 8 }}
+              onChange={(e) => onZoomSlider(parseFloat(e.target.value))}
+              style={{ width: 120 }}
             />
-          </span>
-        </div>
-        {pageImage ? (
+            <span style={{ minWidth: 32, textAlign: 'right' }}>
+              {Math.round(zoom * 100)}%
+            </span>
+          </div>
           <div
             ref={stageRef}
-            className="mz-typesetter__page"
+            className="mz-page mz-typesetter__page"
             style={{
-              position: 'relative',
               width: pageW * zoom,
               height: pageH * zoom,
-              background: `url(${pageImage}) center/contain no-repeat`,
-              boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
-              transformOrigin: 'top left',
+              ...(pageImage
+                ? { backgroundImage: `url(${pageImage})`, backgroundSize: 'contain', backgroundRepeat: 'no-repeat', backgroundPosition: 'center' }
+                : {}),
             }}
             onClick={(e) => {
               // Only deselect when the bare page is clicked. Block overlays
@@ -138,6 +298,21 @@ export function TypeSetter(): JSX.Element {
               if (e.target === e.currentTarget) selectBlock(null);
             }}
           >
+            {/* Safe-area guide */}
+            {border.inset > 0 && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: border.inset * zoom,
+                  top: border.inset * zoom,
+                  width: Math.max(0, (pageW - border.inset * 2) * zoom),
+                  height: Math.max(0, (pageH - border.inset * 2) * zoom),
+                  border: `${border.stroke}px dashed var(--mz-line)`,
+                  pointerEvents: 'none',
+                  opacity: 0.6,
+                }}
+              />
+            )}
             {blocks.map((b) => (
               <BlockOverlay
                 key={b.id}
@@ -153,33 +328,19 @@ export function TypeSetter(): JSX.Element {
               />
             ))}
           </div>
-        ) : (
-          <div style={{ color: '#888', padding: 24 }}>Load a comic page image to start.</div>
-        )}
+        </div>
       </div>
 
-      {/* Right: inspector */}
-      <aside
-        className="mz-typesetter__inspector"
-        style={{
-          width: 280,
-          background: '#fafafa',
-          borderLeft: '1px solid #ddd',
-          padding: 12,
-          overflowY: 'auto',
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Block</h3>
-        {selected ? (
-          <BlockInspector
-            block={selected}
-            onChange={(patch) => updateBlock(selected.id, patch)}
-            onDelete={() => deleteBlock(selected.id)}
+      {/* Right drawer — style controls (identical position across modules) */}
+      <div className="mz-workbench__drawer mz-workbench__drawer--right mz-mod--stylesetter">
+        <div className="mz-workbench__drawer-body">
+          <StyleControls
+            style={style}
+            setStyle={setStyleOverride}
+            original={loadedStyleSettings}
           />
-        ) : (
-          <p style={{ color: '#666' }}>Click a text block to edit.</p>
-        )}
-      </aside>
+        </div>
+      </div>
     </div>
   );
 }
@@ -235,7 +396,7 @@ function BlockOverlay(props: {
         width: w * zoom,
         height: h * zoom,
         cursor: 'move',
-        outline: props.selected ? '1px dashed #222' : 'none',
+        outline: props.selected ? '1px dashed var(--mz-accent)' : 'none',
       }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -295,8 +456,8 @@ function TailHandle(props: {
         width: 12,
         height: 12,
         borderRadius: '50%',
-        background: '#fff',
-        border: '2px solid #222',
+        background: 'var(--mz-bg)',
+        border: '2px solid var(--mz-accent)',
         cursor: 'grab',
       }}
       onPointerDown={onPointerDown}
@@ -312,8 +473,41 @@ function BlockInspector(props: {
   onDelete: () => void;
 }): JSX.Element {
   const { block, onChange } = props;
+  // Encoded as `${setId}::${bubbleIdx}` so a single <select> can express
+  // "pick a set + a bubble within it" without React state of its own.
+  const onPickPreset = (encoded: string) => {
+    if (!encoded) return;
+    const [setId, idxStr] = encoded.split('::');
+    const set = textPresetSets.find((s) => s.id === setId);
+    const bubble = set?.bubbles[Number(idxStr)];
+    if (bubble) onChange({ text: bubble.text });
+  };
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span>Preset text</span>
+        <select
+          value=""
+          onChange={(e) => {
+            onPickPreset(e.target.value);
+            // Reset to the placeholder so the same preset can be picked
+            // again to re-load (useful after editing the textarea).
+            e.target.value = '';
+          }}
+          style={{ padding: 4 }}
+        >
+          <option value="">— load preset —</option>
+          {textPresetSets.map((set) => (
+            <optgroup key={set.id} label={set.name}>
+              {set.bubbles.map((b, i) => (
+                <option key={`${set.id}::${i}`} value={`${set.id}::${i}`}>
+                  {b.label}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
       <label style={{ display: 'flex', flexDirection: 'column' }}>
         Text
         <textarea
@@ -388,7 +582,7 @@ function BlockInspector(props: {
         value={block.italic}
         onChange={(v) => onChange({ italic: v })}
       />
-      <button onClick={props.onDelete} style={{ marginTop: 12 }}>
+      <button onClick={props.onDelete} className="mz-btn--warn" style={{ marginTop: 12 }}>
         Delete block
       </button>
     </div>
@@ -407,7 +601,7 @@ function NumberRow(props: {
     <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <span style={{ display: 'flex', justifyContent: 'space-between' }}>
         <span>{props.label}</span>
-        <span style={{ color: '#666', fontVariantNumeric: 'tabular-nums' }}>
+        <span style={{ color: 'var(--mz-text-mute)', fontVariantNumeric: 'tabular-nums' }}>
           {props.value.toFixed(2)}
         </span>
       </span>

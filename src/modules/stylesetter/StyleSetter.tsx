@@ -6,23 +6,32 @@ import {
   fontWithOverrides,
   useAppStore,
 } from '../../state/store.js';
-import { builtInFonts } from '../../data/builtInFonts.js';
+import { textPresetSets } from '../../data/textPresets.js';
+import {
+  presetKey,
+  useTextPresetsStore,
+} from '../../state/textPresetsStore.js';
 import { Section, Slider, StyleControls } from './StyleControls.js';
 
 /**
- * StyleSetter — sliders bound to a forward-only style overlay
- * (`styleOverrides`). The overlay sits on top of `font.style` and only
- * propagates downstream (TypeSetter); it never reaches back into
- * GlyphSetter, which always renders from the raw `font.style`.
+ * StyleSetter — sliders bound to the active `style` slice in the store.
+ * The active style is the universal font-agnostic shape/material; it is
+ * loaded either from the font's bundled baseline or from a separately
+ * loaded Style file. Same panel is mirrored in GlyphSetter and TypeSetter
+ * so the controls live in the same screen position across modules.
  */
 export function StyleSetter(): JSX.Element {
   const font = useAppStore((s) => s.font);
-  const styleOverrides = useAppStore((s) => s.styleOverrides);
+  const style = useAppStore((s) => s.style);
   const text = useAppStore((s) => s.text);
   const textScale = useAppStore((s) => s.textScale);
   const setStyle = useAppStore((s) => s.setStyleOverride);
   const setText = useAppStore((s) => s.setText);
   const setTextScale = useAppStore((s) => s.setTextScale);
+  const overrides = useTextPresetsStore((s) => s.overrides);
+  const activeKey = useTextPresetsStore((s) => s.activeBy.stylesetter ?? null);
+  const setActive = useTextPresetsStore((s) => s.setActive);
+  const setOverride = useTextPresetsStore((s) => s.setOverride);
   const setKerning = useAppStore((s) => s.setKerning);
   const setModule = useAppStore((s) => s.setModule);
   const setGlyphsetterTab = useAppStore((s) => s.setGlyphsetterTab);
@@ -32,12 +41,11 @@ export function StyleSetter(): JSX.Element {
   // it's a viewing aid, not a style property, and never affects exports.
   const [debugOverlay, setDebugOverlay] = useState(false);
 
-  // Effective style = font.style with the StyleSetter overlay merged in.
-  // All reads in this component go through `eff` so the preview reflects
-  // overrides immediately. All writes go via `setStyle` (the overlay).
+  // The active style IS the effective style now — no merge step needed.
+  // Kept the local alias to minimise churn at call sites below.
   const eff = useMemo(
-    () => effectiveStyle(font, styleOverrides),
-    [font, styleOverrides],
+    () => effectiveStyle(font, style),
+    [font, style],
   );
 
   // Click delegation for the "+K" badges injected by `renderLayoutToSvg`.
@@ -69,50 +77,83 @@ export function StyleSetter(): JSX.Element {
   };
 
   const svg = useMemo(() => {
-    const merged = fontWithOverrides(font, styleOverrides);
+    const merged = fontWithOverrides(font, style);
     const result = layout(text, merged);
     return renderLayoutToSvg(result, merged, {
       padding: 30,
       scale: textScale,
       debugOverlay,
     });
-  }, [text, font, styleOverrides, textScale, debugOverlay]);
+  }, [text, font, style, textScale, debugOverlay]);
 
-  const original = useMemo(
-    () => builtInFonts.find((f) => f.id === font.id)?.style,
-    [font.id],
-  );
+  // Baseline for the per-slider "modified" markers. This is whatever was
+  // most recently loaded — the font's bundled style on font load, or a
+  // separately loaded Style file's settings. Drift from this baseline
+  // paints the slider red.
+  const original = useAppStore((s) => s.loadedStyleSettings);
 
   return (
-    <div
-      className="mz-stylesetter"
-      style={{ display: 'flex', gap: 24, padding: 16, height: '100%' }}
-    >
-      <div
-        className="mz-stylesetter__sidebar"
-        style={{
-          width: 380,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-          minHeight: 0,
-          overflowY: 'auto',
-        }}
-      >
-        <h2 style={{ margin: 0 }}>StyleSetter</h2>
-        <p style={{ margin: 0, fontSize: 12, color: '#666' }}>
-          Forward-only style overlay. Modulates the typeface for downstream
-          rendering (TypeSetter) without writing back into the GlyphSetter
-          baseline.
-        </p>
+    <div className="mz-workbench mz-stylesetter">
+      {/* Left drawer — text source: preset, content, preview controls */}
+      <div className="mz-workbench__drawer mz-workbench__drawer--left">
+        <div className="mz-workbench__drawer-body">
+          <Section title="Preset">
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 12 }}>Load</span>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <select
+                  value={activeKey ?? ''}
+                  onChange={(e) => {
+                    const enc = e.target.value;
+                    if (!enc) {
+                      setActive('stylesetter', null);
+                      return;
+                    }
+                    const [setId, idxStr] = enc.split('::');
+                    const set = textPresetSets.find((s) => s.id === setId);
+                    const idx = Number(idxStr);
+                    const orig = set?.bubbles[idx]?.text;
+                    if (orig === undefined) return;
+                    setActive('stylesetter', enc);
+                    setText(overrides[enc] ?? orig);
+                  }}
+                  style={{ padding: 4, flex: 1 }}
+                >
+                  <option value="">— load preset —</option>
+                  {textPresetSets.map((set) => (
+                    <optgroup key={set.id} label={set.name}>
+                      {set.bubbles.map((b, i) => {
+                        const k = presetKey(set.id, i);
+                        const modified = overrides[k] !== undefined;
+                        return (
+                          <option key={k} value={k}>
+                            {b.label}{modified ? ' •' : ''}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  ))}
+                </select>
+                <button
+                  className="mz-btn--warn"
+                  onClick={() => {
+                    if (activeKey) setOverride(activeKey, text);
+                  }}
+                  disabled={!activeKey}
+                  title={activeKey ? 'Overwrite this preset with the current text' : 'Load a preset first to overwrite it'}
+                  style={{ padding: '2px 8px' }}
+                >
+                  Save
+                </button>
+              </div>
+            </label>
+          </Section>
 
-        <Section title="Text">
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <span style={{ fontSize: 12 }}>Content</span>
+          <Section title="Content">
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              rows={5}
+              rows={10}
               style={{
                 width: '100%',
                 fontSize: 14,
@@ -122,48 +163,52 @@ export function StyleSetter(): JSX.Element {
                 boxSizing: 'border-box',
               }}
             />
-          </label>
-          <Slider
-            label="Preview scale"
-            min={0.2}
-            max={3}
-            step={0.05}
-            value={textScale}
-            onChange={setTextScale}
-            tooltip="Visual zoom for the preview only. Doesn't affect exported font units."
-          />
-          <label
-            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
-            title="Overlay each glyph's advance box, side-bearing ticks, and kerning offsets between adjacent glyphs. Preview-only — never written to exports."
-          >
-            <input
-              type="checkbox"
-              checked={debugOverlay}
-              onChange={(e) => setDebugOverlay(e.target.checked)}
-            />
-            Glyph debug overlay
-          </label>
-        </Section>
+          </Section>
 
-        <StyleControls
-          style={eff}
-          setStyle={setStyle}
-          {...(original ? { original } : {})}
+          <Section title="Preview">
+            <Slider
+              label="Scale"
+              min={0.2}
+              max={3}
+              step={0.05}
+              value={textScale}
+              onChange={setTextScale}
+              tooltip="Visual zoom for the preview only. Doesn't affect exported font units."
+            />
+            <label
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
+              title="Overlay each glyph's advance box, side-bearing ticks, and kerning offsets between adjacent glyphs. Preview-only — never written to exports."
+            >
+              <input
+                type="checkbox"
+                checked={debugOverlay}
+                onChange={(e) => setDebugOverlay(e.target.checked)}
+              />
+              Glyph debug overlay
+            </label>
+          </Section>
+        </div>
+      </div>
+
+      {/* Bench — paper-white preview surface on the shared workspace raster */}
+      <div className="mz-workbench__bench mz-stylesetter__bench">
+        <div
+          className="mz-canvas mz-stylesetter__preview"
+          onClick={handleSvgClick}
+          dangerouslySetInnerHTML={{ __html: svg }}
         />
       </div>
 
-      <div
-        className="mz-stylesetter__preview"
-        style={{
-          flex: 1,
-          background: '#ffffff',
-          border: '1px solid #888',
-          overflow: 'auto',
-          padding: 16,
-        }}
-        onClick={handleSvgClick}
-        dangerouslySetInnerHTML={{ __html: svg }}
-      />
+      {/* Right drawer — style controls (identical position across modules) */}
+      <div className="mz-workbench__drawer mz-workbench__drawer--right mz-mod--stylesetter">
+        <div className="mz-workbench__drawer-body">
+          <StyleControls
+            style={eff}
+            setStyle={setStyle}
+            {...(original ? { original } : {})}
+          />
+        </div>
+      </div>
     </div>
   );
 }

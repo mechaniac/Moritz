@@ -140,7 +140,7 @@ export function FontBar(): JSX.Element {
         title="Saving uses this name's id; matching a built-in id overwrites it (Reset restores the original)."
       />
       <button
-        className="mz-fontbar__save"
+        className="mz-fontbar__save mz-btn--warn"
         onClick={onSave}
         title={
           'Save the current font + view settings.\n' +
@@ -152,7 +152,7 @@ export function FontBar(): JSX.Element {
         Save
       </button>
       <button
-        className="mz-fontbar__delete"
+        className="mz-fontbar__delete mz-btn--warn"
         onClick={onDeleteCurrent}
         disabled={!canDelete}
         title={

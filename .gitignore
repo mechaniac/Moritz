@@ -6,3 +6,7 @@ dist
 coverage
 
 tsconfig.tsbuildinfo
+
+# Per-developer local text presets (your personal reference snippets).
+# Copy textPresets.local.example.ts to textPresets.local.ts and edit.
+src/data/textPresets.local.ts

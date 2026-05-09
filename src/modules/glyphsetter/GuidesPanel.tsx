@@ -76,6 +76,7 @@ export function GuidesPanel(props: Props): JSX.Element {
         <strong>Guides</strong>
         <button
           type="button"
+          className="mz-btn--warn"
           onClick={() => onChange(defaultGuides())}
           title="Reset all guide layers to the built-in defaults (calligraphy + golden + columns)."
           style={{ marginLeft: 'auto', fontSize: 10, padding: '0 6px' }}
@@ -130,7 +131,7 @@ export function GuidesPanel(props: Props): JSX.Element {
           />
         ))}
         {value.layers.length === 0 && (
-          <div style={{ fontSize: 11, color: '#888', fontStyle: 'italic' }}>
+          <div style={{ fontSize: 11, color: 'var(--mz-text-mute)', fontStyle: 'italic' }}>
             No guide layers — add one above.
           </div>
         )}
@@ -152,13 +153,13 @@ function LayerRow(props: {
     <div
       className={`mz-guides__layer mz-guides__layer--${layer.kind.kind}`}
       style={{
-        border: '1px solid #ddd',
+        border: '1px solid var(--mz-line)',
         borderRadius: 4,
         padding: 4,
         display: 'flex',
         flexDirection: 'column',
         gap: 4,
-        background: '#fafafa',
+        background: 'var(--mz-bg)',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -198,6 +199,7 @@ function LayerRow(props: {
         </button>
         <button
           type="button"
+          className="mz-btn--warn"
           onClick={() => onChange({ kind: defaultKindFor(layer.kind) })}
           style={{ fontSize: 10, padding: '0 4px' }}
           title="Reset this layer's parameters to the preset defaults."
@@ -206,6 +208,7 @@ function LayerRow(props: {
         </button>
         <button
           type="button"
+          className="mz-btn--warn"
           onClick={onRemove}
           style={{ fontSize: 10, padding: '0 4px' }}
           title="Remove"

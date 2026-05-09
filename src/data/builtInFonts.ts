@@ -8,10 +8,11 @@ import {
 } from '../state/persistence.js';
 import { defaultFont, withCommonGlyphFallback } from './defaultFont.js';
 import { roundFont } from './roundFont.js';
+import { iconFont } from './iconFont.js';
 import { getFileFont } from './fontFiles.js';
 
 /** The bundled, never-mutated TS originals. */
-const bundledFonts: readonly Font[] = [defaultFont, roundFont];
+const bundledFonts: readonly Font[] = [defaultFont, roundFont, iconFont];
 
 const builtInIds = new Set(bundledFonts.map((f) => f.id));
 

@@ -36,6 +36,8 @@ export type LayoutOptions = {
   /** Override `style.spaceWidth`. */
   readonly spaceWidth?: number;
   readonly missingChar?: string; // fallback glyph key, default '?'
+  /** Horizontal alignment within the longest line's width. Default 'left'. */
+  readonly align?: 'left' | 'center' | 'right';
 };
 
 export function layout(
@@ -82,11 +84,17 @@ export function layout(
   const splineJitter = font.style.effects?.splineJitter;
   let instanceIndex = 0;
 
+  // Per-line buffers so we can apply alignment after measuring each line.
+  type Pending = Omit<PositionedGlyph, 'origin'> & { x: number; y: number };
+  const pendingByLine: Pending[][] = [];
+  const lineWidths: number[] = [];
+
   for (let li = 0; li < lines.length; li++) {
     const line = lines[li]!;
     let cursorX = 0;
     let prevChar = '';
     const y = li * lineStep;
+    const buf: Pending[] = [];
     for (const ch of line) {
       if (ch === ' ') {
         cursorX += spaceW + tracking;
@@ -111,9 +119,10 @@ export function layout(
             resolveJitterSeed(splineJitter, { instanceIndex, char: ch }, 0x5a17),
           )
         : g;
-      placed.push({
+      buf.push({
         glyph: finalGlyph,
-        origin: { x: cursorX, y: y + yOff },
+        x: cursorX,
+        y: y + yOff,
         char: ch,
         instanceIndex,
       });
@@ -121,7 +130,28 @@ export function layout(
       prevChar = ch;
       instanceIndex++;
     }
+    pendingByLine.push(buf);
+    lineWidths.push(cursorX);
     maxWidth = Math.max(maxWidth, cursorX);
+  }
+
+  // Apply alignment: each line gets shifted so it sits at left/center/right
+  // of the layout's overall width (= longest line).
+  const align = opts.align ?? 'left';
+  for (let li = 0; li < pendingByLine.length; li++) {
+    const lw = lineWidths[li]!;
+    const dx =
+      align === 'left' ? 0 :
+      align === 'right' ? maxWidth - lw :
+      (maxWidth - lw) / 2;
+    for (const p of pendingByLine[li]!) {
+      placed.push({
+        glyph: p.glyph,
+        origin: { x: p.x + dx, y: p.y },
+        char: p.char,
+        instanceIndex: p.instanceIndex,
+      });
+    }
   }
 
   return {

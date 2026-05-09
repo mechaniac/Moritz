@@ -856,7 +856,7 @@ function BulkResetBar(props: {
           fontWeight: 600,
           letterSpacing: '0.06em',
           textTransform: 'uppercase',
-          color: '#555',
+          color: 'var(--mz-text-mute)',
           flex: 1,
         }}
       >
@@ -869,9 +869,9 @@ function BulkResetBar(props: {
         title={reset.modified ? `Reset ${label.toLowerCase()} to default` : 'Nothing to reset'}
         style={{
           border: '1px solid',
-          borderColor: reset.modified ? '#c33' : '#ccc',
+          borderColor: reset.modified ? 'var(--mz-modified)' : 'var(--mz-line)',
           background: 'transparent',
-          color: reset.modified ? '#c33' : '#aaa',
+          color: reset.modified ? 'var(--mz-modified)' : 'var(--mz-text-faint)',
           cursor: reset.modified ? 'pointer' : 'default',
           fontSize: 11,
           padding: '2px 8px',
@@ -922,7 +922,7 @@ export function Section(props: {
             style={{
               border: 'none',
               background: 'transparent',
-              color: reset.modified ? '#c33' : '#bbb',
+              color: reset.modified ? 'var(--mz-modified)' : 'var(--mz-text-faint)',
               cursor: reset.modified ? 'pointer' : 'default',
               fontSize: 13,
               lineHeight: 1,
