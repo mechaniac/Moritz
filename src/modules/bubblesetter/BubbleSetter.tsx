@@ -25,6 +25,7 @@ import { fillLoopsForStrokes, loopsToPath } from '../../core/bubbleFill.js';
 import { GlyphEditor, SettingsPanel } from '../glyphsetter/GlyphSetter.js';
 import { Section } from '../stylesetter/StyleControls.js';
 import { StyleControls } from '../stylesetter/StyleControls.js';
+import { FloatingWindow, useSiftLayout, dockOutliner, dockAttrs } from '../../sift/index.js';
 import { textPresetSets } from '../../data/textPresets.js';
 import {
   presetKey,
@@ -103,18 +104,11 @@ function useBubbleEditing(): BubbleEditingTarget {
   return ctx ?? fallback;
 }
 
-export function BubbleSetter(props: {
-  /** When true, hides the bubble grid (left drawer) and the bubble-font
-   *  Style Controls drawer (right drawer). Used by the TypeSetter when
-   *  the editor is embedded in-place to edit a single block's bubble. */
-  readonly embedded?: boolean;
-  /** Optional extra UI shown at the bottom of the left drawer (only
-   *  consulted in embedded mode — host adds Save / Save-As / Reset etc). */
-  readonly leftDrawerExtras?: React.ReactNode;
-  /** Optional extra UI shown at the bottom of the right drawer in
-   *  embedded mode. */
-  readonly rightDrawerExtras?: React.ReactNode;
-}): JSX.Element {
+/** Shared derivation hook used by the standalone Stage / Outliner / Attrs
+ *  sub-components (and by the embedded BubbleSetter path). All zustand reads
+ *  return the same values across components, so it's safe to call this hook
+ *  in three sibling components — they all see identical state. */
+function useBubbleSetterState() {
   const editing = useBubbleEditing();
   const bubble = editing.bubble;
   const selectedLayerId = editing.selectedLayerId;
@@ -292,40 +286,158 @@ export function BubbleSetter(props: {
     </button>
   ) : null;
 
-  return (
-    <div className="mz-workbench mz-bubblesetter">
-      <div className="mz-workbench__drawer mz-workbench__drawer--left">
+  return {
+    bubble,
+    layer,
+    editorFont,
+    editorView,
+    setEditorView,
+    onGlyphChange,
+    fillButton,
+    underlay,
+    style,
+    setStyleOverride,
+    loadedStyleSettings,
+    standaloneFont,
+    standaloneSelectedId,
+    standaloneSelectBubble,
+  };
+}
+
+export function BubbleSetter(props: {
+  /** When true, hides the bubble grid (left drawer) and the bubble-font
+   *  Style Controls drawer (right drawer). Used by the TypeSetter when
+   *  the editor is embedded in-place to edit a single block's bubble. */
+  readonly embedded?: boolean;
+  /** Optional extra UI shown at the bottom of the left drawer (only
+   *  consulted in embedded mode — host adds Save / Save-As / Reset etc). */
+  readonly leftDrawerExtras?: React.ReactNode;
+  /** Optional extra UI shown at the bottom of the right drawer in
+   *  embedded mode. */
+  readonly rightDrawerExtras?: React.ReactNode;
+}): JSX.Element {
+  const s = useBubbleSetterState();
+  const { bubble, layer, editorFont, editorView, setEditorView,
+    onGlyphChange, fillButton, underlay } = s;
+
+  if (props.embedded) {
+    return (
+      <div
+        className="mz-bubblesetter mz-bubblesetter--embedded"
+        style={{ display: 'flex', width: '100%', height: '100%' }}
+      >
         <div
-          className="mz-workbench__drawer-body"
-          style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 8 }}
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+            padding: 8,
+            width: 280,
+            overflow: 'auto',
+          }}
         >
-          {!props.embedded && (
-            <BubbleGrid
-              bubbles={Object.values(standaloneFont.bubbles)}
-              selected={standaloneSelectedId}
-              onSelect={standaloneSelectBubble}
-              style={style}
-            />
-          )}
           {bubble && <LayerList bubble={bubble} />}
           {bubble && <PreviewTextPanel />}
           {props.leftDrawerExtras}
-          {/* Reuse the GlyphSetter's View settings (anchors, fill
-              preview, debug overlays, triangulation, splinesâ€¦). The
-              glyph-only entries (other glyphs, reference font, guides)
-              are hidden via `bubbleMode`. The bubble editor has its
-              own grid system (lined-paper) so we don't need them. */}
           <SettingsPanel
             view={editorView}
             setView={setEditorView}
-            setFontGuides={() => {
-              /* noop in bubble mode â€” guides section is hidden */
-            }}
+            setFontGuides={() => {}}
             bubbleMode
           />
         </div>
+        <div style={{ flex: 1, position: 'relative' }}>
+          {bubble && layer && editorFont ? (
+            <GlyphEditor
+              char={layer.id}
+              glyph={layer.glyph}
+              onChange={onGlyphChange}
+              view={editorView}
+              setView={setEditorView}
+              font={editorFont}
+              extraToolbar={fillButton}
+              world={{
+                box: { w: bubble.box.w, h: bubble.box.h },
+                ...layerTransform(bubble, layer),
+              }}
+              {...(underlay ? { underlay } : {})}
+            />
+          ) : (
+            <p style={{ padding: 16 }}>
+              {bubble ? 'No layer selected.' : 'No bubble selected.'}
+            </p>
+          )}
+        </div>
+        {props.rightDrawerExtras && (
+          <div style={{ width: 280, overflow: 'auto', padding: 8 }}>
+            {props.rightDrawerExtras}
+          </div>
+        )}
       </div>
-      <div className="mz-workbench__bench mz-glyphsetter__editor">
+    );
+  }
+
+  return (
+    <StandaloneBubbleSetter />
+  );
+}
+
+function StandaloneBubbleSetter(): JSX.Element {
+  const layout = useSiftLayout();
+  return (
+    <>
+      <BubbleSetterStage />
+      <FloatingWindow
+        id="moritz.outliner"
+        title="Bubbles"
+        mod="bubblesetter"
+        initial={{ x: 16, y: 360, w: 320, h: 480 }}
+        dock={dockOutliner(layout)}
+      >
+        <BubbleSetterOutliner />
+      </FloatingWindow>
+      <FloatingWindow
+        id="moritz.attrs"
+        title="Style"
+        mod="stylesetter"
+        initial={{
+          x: typeof window !== 'undefined' ? window.innerWidth - 320 - 16 : 800,
+          y: 16,
+          w: 320,
+          h: 560,
+        }}
+        dock={dockAttrs(layout)}
+      >
+        <BubbleSetterAttrs />
+      </FloatingWindow>
+    </>
+  );
+}
+
+/** Central editor surface for standalone-mode bubble editing. */
+export function BubbleSetterStage(): JSX.Element {
+  const { bubble, layer, editorFont, editorView, setEditorView,
+    onGlyphChange, fillButton, underlay } = useBubbleSetterState();
+  return (
+    <div
+      className="mz-bubblesetter mz-bubblesetter--sift"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <div
+        className="mz-glyphsetter__editor"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
         {bubble && layer && editorFont ? (
           <GlyphEditor
             char={layer.id}
@@ -347,24 +459,45 @@ export function BubbleSetter(props: {
           </p>
         )}
       </div>
-      {!props.embedded && (
-        <div className="mz-workbench__drawer mz-workbench__drawer--right mz-mod--stylesetter">
-          <div className="mz-workbench__drawer-body">
-            <StyleControls
-              style={style}
-              setStyle={setStyleOverride}
-              {...(loadedStyleSettings ? { original: loadedStyleSettings } : {})}
-            />
-          </div>
-        </div>
-      )}
-      {props.embedded && props.rightDrawerExtras && (
-        <div className="mz-workbench__drawer mz-workbench__drawer--right">
-          <div className="mz-workbench__drawer-body">
-            {props.rightDrawerExtras}
-          </div>
-        </div>
-      )}
+    </div>
+  );
+}
+
+/** Outliner content for standalone-mode bubble editing. */
+export function BubbleSetterOutliner(): JSX.Element {
+  const { bubble, editorView, setEditorView, style,
+    standaloneFont, standaloneSelectedId, standaloneSelectBubble } =
+    useBubbleSetterState();
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <BubbleGrid
+        bubbles={Object.values(standaloneFont.bubbles)}
+        selected={standaloneSelectedId}
+        onSelect={standaloneSelectBubble}
+        style={style}
+      />
+      {bubble && <LayerList bubble={bubble} />}
+      {bubble && <PreviewTextPanel />}
+      <SettingsPanel
+        view={editorView}
+        setView={setEditorView}
+        setFontGuides={() => {}}
+        bubbleMode
+      />
+    </div>
+  );
+}
+
+/** Attrs (style controls) content for standalone-mode bubble editing. */
+export function BubbleSetterAttrs(): JSX.Element {
+  const { style, setStyleOverride, loadedStyleSettings } = useBubbleSetterState();
+  return (
+    <div className="mz-mod--stylesetter">
+      <StyleControls
+        style={style}
+        setStyle={setStyleOverride}
+        {...(loadedStyleSettings ? { original: loadedStyleSettings } : {})}
+      />
     </div>
   );
 }

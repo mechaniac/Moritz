@@ -48,6 +48,7 @@ import type {
   WidthProfile,
 } from '../../core/types.js';
 import { Section, StyleControls } from '../stylesetter/StyleControls.js';
+import { FloatingWindow, useSiftLayout, dockOutliner, dockAttrs } from '../../sift/index.js';
 import { StrokeOverlay, type Selection } from '../glyphsetter/GlyphSetter.js';
 
 /**
@@ -62,6 +63,7 @@ const LEGACY_SHAPE_TO_PRESET: Readonly<Record<string, string>> = {
 };
 
 export function TypeSetter(): JSX.Element {
+  const layout = useSiftLayout();
   const baseFont = useAppStore((s) => s.font);
   const style = useAppStore((s) => s.style);
   const setStyleOverride = useAppStore((s) => s.setStyleOverride);
@@ -104,51 +106,133 @@ export function TypeSetter(): JSX.Element {
 
   const stageRef = useRef<HTMLDivElement>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(1);
-  // User-driven zoom override; null = auto-fit to surface.
-  const [manualZoom, setManualZoom] = useState<number | null>(null);
+  // Free camera (panX, panY, zoom). Pan is in screen px from the
+  // workspace origin. The page sits in world space at (0,0)–(pageW,pageH);
+  // its rendered top-left is `(panX, panY)` and its rendered size is
+  // `(pageW*zoom, pageH*zoom)`. Same convention as every other module.
+  const [cam, setCamState] = useState({ zoom: 1, panX: 0, panY: 0 });
+  const setCam = (patch: Partial<typeof cam>): void =>
+    setCamState((c) => ({ ...c, ...patch }));
+  // Auto-fit until the user touches the camera (wheel, pinch, pan or
+  // explicit Fit). After that we leave the camera alone.
+  const userTouchedRef = useRef(false);
 
-  // Fit page to available surface area whenever the surface or page resizes.
+  // Auto-fit page into the surface. Reruns on surface or page resize
+  // until the user takes over.
   useLayoutEffect(() => {
-    if (manualZoom !== null) return;
+    if (userTouchedRef.current) return;
     const el = surfaceRef.current;
     if (!el || pageW <= 0 || pageH <= 0) return;
     const fit = (): void => {
-      const pad = 16;
-      const aw = Math.max(0, el.clientWidth - pad * 2);
-      const ah = Math.max(0, el.clientHeight - pad * 2);
+      if (userTouchedRef.current) return;
+      const pad = 24;
+      const cw = el.clientWidth;
+      const ch = el.clientHeight;
+      const aw = Math.max(0, cw - pad * 2);
+      const ah = Math.max(0, ch - pad * 2);
       if (aw <= 0 || ah <= 0) return;
       const z = Math.min(aw / pageW, ah / pageH);
-      if (z > 0 && Number.isFinite(z)) setZoom(z);
+      if (!(z > 0) || !Number.isFinite(z)) return;
+      setCamState({
+        zoom: z,
+        panX: (cw - pageW * z) / 2,
+        panY: (ch - pageH * z) / 2,
+      });
     };
     fit();
     const ro = new ResizeObserver(fit);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [pageW, pageH, manualZoom]);
+  }, [pageW, pageH]);
 
-  // Stop tracking auto-fit only when the user touches the slider.
-  const onZoomSlider = (v: number): void => {
-    setManualZoom(v);
-    setZoom(v);
+  // Public "Fit" — reset auto-fit so the next layout pass re-centres
+  // the page. We just clear the user-touched flag and force a re-run
+  // by nudging state (no-op patch is enough because the effect's
+  // ResizeObserver will fire on the next frame; for snappier feel we
+  // also recompute now).
+  const onFit = (): void => {
+    userTouchedRef.current = false;
+    const el = surfaceRef.current;
+    if (!el || pageW <= 0 || pageH <= 0) return;
+    const cw = el.clientWidth;
+    const ch = el.clientHeight;
+    const pad = 24;
+    const aw = Math.max(0, cw - pad * 2);
+    const ah = Math.max(0, ch - pad * 2);
+    const z = Math.min(aw / pageW, ah / pageH);
+    if (!(z > 0) || !Number.isFinite(z)) return;
+    setCamState({
+      zoom: z,
+      panX: (cw - pageW * z) / 2,
+      panY: (ch - pageH * z) / 2,
+    });
   };
-  // One-click "fit" to re-engage auto.
-  // (Reset via the "Fit" button: setManualZoom(null).)
 
-  // Shared canvas-shell input: wheel + pinch zoom on the surface.
-  // We always-fresh-ref the live zoom so the once-bound listener
-  // sees current values without re-binding.
-  const zoomRef = useRef(zoom);
-  zoomRef.current = zoom;
-  useCanvasInput(surfaceRef, {
-    pan: 'none',
-    minZoom: 0.05,
-    maxZoom: 2,
-    getCamera: () => ({ zoom: zoomRef.current, panX: 0, panY: 0 }),
-    setCamera: (c) => {
-      if (c.zoom !== undefined) onZoomSlider(c.zoom);
+  const onZoomSlider = (nextZoom: number): void => {
+    if (!(nextZoom > 0) || !Number.isFinite(nextZoom)) return;
+    userTouchedRef.current = true;
+    setCam({ zoom: nextZoom });
+  };
+
+  // Shared canvas-shell input: cursor-anchored wheel + pinch zoom +
+  // space/middle-mouse pan. Same hook every other module uses.
+  const camRef = useRef(cam);
+  camRef.current = cam;
+  const { spaceDown } = useCanvasInput(surfaceRef, {
+    pan: 'both',
+    minZoom: 0.02,
+    maxZoom: 8,
+    getCamera: () => camRef.current,
+    setCamera: (patch) => {
+      userTouchedRef.current = true;
+      setCam(patch);
     },
   });
+
+  // Space/middle-mouse pan drag — wired locally because the hook only
+  // owns the gesture detection, not the drag plumbing (see
+  // `isPanGesture` in useCanvasInput.ts).
+  const panDragRef = useRef<
+    | { startClientX: number; startClientY: number; startPanX: number; startPanY: number }
+    | null
+  >(null);
+  const onSurfacePointerDown = (e: React.PointerEvent): void => {
+    // Middle-mouse always pans; left-mouse pans when space is held.
+    const isPan = e.button === 1 || (e.button === 0 && spaceDown);
+    if (!isPan) return;
+    e.preventDefault();
+    e.stopPropagation();
+    panDragRef.current = {
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startPanX: camRef.current.panX,
+      startPanY: camRef.current.panY,
+    };
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    userTouchedRef.current = true;
+  };
+  const onSurfacePointerMove = (e: React.PointerEvent): void => {
+    const d = panDragRef.current;
+    if (!d) return;
+    setCam({
+      panX: d.startPanX + (e.clientX - d.startClientX),
+      panY: d.startPanY + (e.clientY - d.startClientY),
+    });
+  };
+  const onSurfacePointerUp = (e: React.PointerEvent): void => {
+    if (!panDragRef.current) return;
+    panDragRef.current = null;
+    try {
+      (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  // The rest of the file keeps its existing per-child `* zoom`
+  // multiplication for hit-testing math, so we expose `zoom` as a
+  // local alias for readability.
+  const zoom = cam.zoom;
 
   const onLoadImage = async (file: File) => {
     const url = URL.createObjectURL(file);
@@ -260,10 +344,19 @@ export function TypeSetter(): JSX.Element {
   // As / Reset / Done) lives in the right inspector.
 
   return (
-    <div className="mz-workbench mz-typesetter">
-      {/* Left drawer — page source + block list */}
-      <div className="mz-workbench__drawer mz-workbench__drawer--left">
-        <div className="mz-workbench__drawer-body">
+    <div
+      className="mz-typesetter mz-typesetter--sift"
+      style={{ position: 'absolute', inset: 0 }}
+    >
+      {/* Outliner — page source + block list */}
+      <FloatingWindow
+        id="moritz.outliner"
+        title="Page"
+        mod="typesetter"
+        initial={{ x: 16, y: 360, w: 320, h: 520 }}
+        dock={dockOutliner(layout)}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <label
             style={{
               background: 'var(--mz-bg)',
@@ -403,14 +496,24 @@ export function TypeSetter(): JSX.Element {
             </Section>
           )}
         </div>
-      </div>
+      </FloatingWindow>
 
-      {/* Bench — paper page sits directly on the workspace raster.
+      {/* Stage — paper page sits directly on the workspace raster.
           No drop-shadowed mini-page-on-stage; the page itself IS the
           subject. The dashed inner rectangle is the safe area / live
           area (settable per page-format preset). */}
-      <div className="mz-workbench__bench mz-typesetter__bench">
-        <div ref={surfaceRef} className="mz-canvas mz-typesetter__stage">
+      <div
+        className="mz-typesetter__bench"
+        style={{ position: 'absolute', inset: 0 }}
+      >
+        <div
+          ref={surfaceRef}
+          className="mz-canvas mz-typesetter__stage"
+          onPointerDown={onSurfacePointerDown}
+          onPointerMove={onSurfacePointerMove}
+          onPointerUp={onSurfacePointerUp}
+          onPointerCancel={onSurfacePointerUp}
+        >
           <div
             style={{
               position: 'absolute',
@@ -427,9 +530,9 @@ export function TypeSetter(): JSX.Element {
               color: 'var(--mz-text-mute)',
               zIndex: 2,
             }}
-          >
-            <button
-              onClick={() => setManualZoom(null)}
+            >
+              <button
+              onClick={onFit}
               title="Fit page to view"
               style={{ padding: '0 6px', fontSize: 11 }}
             >
@@ -532,16 +635,27 @@ export function TypeSetter(): JSX.Element {
         </div>
       </div>
 
-      {/* Right drawer — style controls (identical position across modules) */}
-      <div className="mz-workbench__drawer mz-workbench__drawer--right mz-mod--stylesetter">
-        <div className="mz-workbench__drawer-body">
+      {/* Attributes — style controls (identical position across modules) */}
+      <FloatingWindow
+        id="moritz.attrs"
+        title="Style"
+        mod="stylesetter"
+        initial={{
+          x: typeof window !== 'undefined' ? window.innerWidth - 320 - 16 : 800,
+          y: 16,
+          w: 320,
+          h: 560,
+        }}
+        dock={dockAttrs(layout)}
+      >
+        <div className="mz-mod--stylesetter">
           <StyleControls
             style={style}
             setStyle={setStyleOverride}
             original={loadedStyleSettings}
           />
         </div>
-      </div>
+      </FloatingWindow>
     </div>
   );
 }

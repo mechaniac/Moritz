@@ -1,17 +1,23 @@
 /* ---------------------------------------------------------------------------
    Moritz UI — global styles.
 
-   Three named colour schemes (pastel / dusk / kraft) live below as
-   `:root[data-theme="<id>"]` blocks. Each scheme defines a per-module
-   palette (glyph / style / type) using two close shades per module to
-   avoid sharp contrast and keep things printable / legible.
+   Always-dark contract: every scheme is bright type on dark ground. The
+   rendered glyphs are black ink on white paper, so the surrounding chrome
+   does the inverse. Each scheme defines a per-module palette
+   (glyph / bubble / glyphfont / style / type) where:
 
-   The trick that makes it composable: any element wrapped in
-   `.mz-mod--glyphsetter` (or stylesetter / typesetter) inherits a local
-   alias `--mz-bg / --mz-panel / --mz-line / --mz-accent` mapped to that
-   module's colours. Style controls embedded inside the GlyphSetter UI
-   can therefore be tagged `.mz-mod--stylesetter` and they will render
-   in the orange palette regardless of where they live in the tree.
+     --mz-{mod}-bg      deep tinted ground
+     --mz-{mod}-panel   one step up — the floating-window surface
+     --mz-{mod}-line    mid-tone divider (subtle on its own panel)
+     --mz-{mod}-accent  bright saturated hue — used for active text /
+                        highlights / primary buttons; the brand colour
+                        that says "this thing is orange / blue / green".
+
+   `.mz-mod--{id}` wrappers alias these onto the generic
+   `--mz-bg / --mz-panel / --mz-line / --mz-accent` so any subtree
+   (including a floating window dropped at the document root via
+   `<FloatingWindow mod="..." />`) inherits the right palette regardless of
+   where it lives in the DOM.
    --------------------------------------------------------------------------- */
 
 /* ---------- Default (Pastel) palette + shared tokens ---------------------- */
@@ -23,194 +29,181 @@
 
 :root,
 [data-theme='pastel'] {
-  --mz-glyph-bg:     #e7eef6;
-  --mz-glyph-panel:  #d2dfeb;
-  --mz-glyph-line:   #7d97b0;
-  --mz-glyph-accent: #355979;
+  /* Glyph — cool blue, slate ground. */
+  --mz-glyph-bg:     #1a2433;
+  --mz-glyph-panel:  #243349;
+  --mz-glyph-line:   #3b557a;
+  --mz-glyph-accent: #8ab8ec;
 
-  /* Bubble module — a duller, slightly desaturated steel-blue so it reads
-     as adjacent-but-distinct from the brighter glyph blue. */
-  --mz-bubble-bg:     #d8dfe5;
-  --mz-bubble-panel:  #bcc6cf;
-  --mz-bubble-line:   #6b7c8c;
-  --mz-bubble-accent: #2e4253;
+  /* Bubble — slightly cooler / desaturated steel. */
+  --mz-bubble-bg:     #161e2a;
+  --mz-bubble-panel:  #202b3c;
+  --mz-bubble-line:   #344660;
+  --mz-bubble-accent: #a3c0db;
 
-  /* `glyphfont` = per-font glyph defaults (calligraphy lines, sidebearings,
-     metrics) — stored once per font, applied to every glyph. Visually a
-     deeper, denser blue so it reads as a separate "chassis" from the per-
-     glyph blue above. */
-  --mz-glyphfont-bg:     #c6d4e2;
-  --mz-glyphfont-panel:  #a9bccd;
-  --mz-glyphfont-line:   #3d5a78;
-  --mz-glyphfont-accent: #15304a;
+  /* Per-font glyph defaults — deeper, denser blue (a separate "chassis"). */
+  --mz-glyphfont-bg:     #11192a;
+  --mz-glyphfont-panel:  #1a2640;
+  --mz-glyphfont-line:   #2f4974;
+  --mz-glyphfont-accent: #b8d4f4;
 
-  --mz-style-bg:     #f7e8d6;
-  --mz-style-panel:  #ecd0b1;
-  --mz-style-line:   #b4885a;
-  --mz-style-accent: #6f4520;
+  /* Style — warm amber. */
+  --mz-style-bg:     #2a1f12;
+  --mz-style-panel:  #3a2c19;
+  --mz-style-line:   #6a4d28;
+  --mz-style-accent: #f0b370;
 
-  --mz-type-bg:      #f5edcf;
-  --mz-type-panel:   #e6daa1;
-  --mz-type-line:    #a59140;
-  --mz-type-accent:  #5a4d12;
+  /* Type — warm mustard. */
+  --mz-type-bg:      #2a2410;
+  --mz-type-panel:   #3a3217;
+  --mz-type-line:    #6a5b22;
+  --mz-type-accent:  #ecd06b;
 
-  --mz-text:         #2a2a2a;
-  --mz-text-mute:    #555;
-  --mz-text-faint:   #777;
+  --mz-text:         #e8ecf1;
+  --mz-text-mute:    #a8b0bd;
+  --mz-text-faint:   #707888;
 
   --mz-modified:      var(--mz-warn);
   --mz-modified-soft: var(--mz-warn-soft);
 
-  /* The actual rendered glyphs are always real ink on real paper.
-     These tokens are constant across all themes — the chrome can be coloured,
-     but every surface where glyphs appear (editor canvas, thumbnails, kerning
-     preview, typesetter page) is pure white, and the glyphs themselves are
-     pure black. That gives the rendered lettering the highest contrast on the
-     page and keeps it the only true black/white in the UI. */
+  /* The rendered glyphs are always real ink on real paper — constant
+     across every scheme. */
   --mz-paper:        #ffffff;
   --mz-ink:          #000000;
 }
 
-/* Universal-across-themes tokens. Identical in pastel / dusk / kraft so the
-   user can scan one colour to find every reversible change.
-     - paper / ink  — the glyph rendering surface (white & black).
-     - warn / warn-soft — the single "undoable / destructive / drifted-from-
-       default" colour. Any slider moved off its loaded preset, every
-       Reset / Undo / Save button, and every destructive action all use
-       this red. `--mz-modified*` aliases `--mz-warn*` so existing
-       modified-state styling remains a one-token concept. */
+/* Universal-across-themes tokens. */
 :root {
-  --mz-warn:        #c8351b;
-  --mz-warn-strong: #9a2410;
-  --mz-warn-soft:   #f1b8ae;
+  --mz-warn:        #ff5a3c;
+  --mz-warn-strong: #c8351b;
+  --mz-warn-soft:   #5a1f10;
 }
 
+/* Dusk — deeper night-blue / wine-warm. */
 [data-theme='dusk'] {
-  --mz-glyph-bg:     #3c4a5d;
-  --mz-glyph-panel:  #4f6378;
-  --mz-glyph-line:   #6e88a4;
-  --mz-glyph-accent: #cbe0f4;
+  --mz-glyph-bg:     #131a26;
+  --mz-glyph-panel:  #1d2839;
+  --mz-glyph-line:   #324966;
+  --mz-glyph-accent: #b3d2f4;
 
-  --mz-bubble-bg:     #344050;
-  --mz-bubble-panel:  #475667;
-  --mz-bubble-line:   #607890;
-  --mz-bubble-accent: #b8cee0;
+  --mz-bubble-bg:     #101622;
+  --mz-bubble-panel:  #1a2333;
+  --mz-bubble-line:   #2c405d;
+  --mz-bubble-accent: #c4d6ea;
 
-  --mz-glyphfont-bg:     #2a3648;
-  --mz-glyphfont-panel:  #364660;
-  --mz-glyphfont-line:   #88a8c8;
-  --mz-glyphfont-accent: #e9f2fc;
+  --mz-glyphfont-bg:     #0c1322;
+  --mz-glyphfont-panel:  #161f36;
+  --mz-glyphfont-line:   #28406b;
+  --mz-glyphfont-accent: #d8e8fa;
 
-  --mz-style-bg:     #5a3f2a;
-  --mz-style-panel:  #765437;
-  --mz-style-line:   #a07c57;
-  --mz-style-accent: #f1d4b3;
+  --mz-style-bg:     #2a1b10;
+  --mz-style-panel:  #3a2616;
+  --mz-style-line:   #6a4324;
+  --mz-style-accent: #f4c79b;
 
-  --mz-type-bg:      #4f4828;
-  --mz-type-panel:   #6a623a;
-  --mz-type-line:    #9a8e57;
-  --mz-type-accent:  #ece2b4;
+  --mz-type-bg:      #2a230f;
+  --mz-type-panel:   #3a3015;
+  --mz-type-line:    #6a541f;
+  --mz-type-accent:  #f0dc88;
 
   --mz-text:         #ececec;
-  --mz-text-mute:    #c8c8c8;
-  --mz-text-faint:   #a8a8a8;
+  --mz-text-mute:    #b5bac4;
+  --mz-text-faint:   #828896;
 }
 
+/* Kraft — warm-leaning very dark base, cardboard-paper accents. */
 [data-theme='kraft'] {
-  --mz-glyph-bg:     #b8c4d0;
-  --mz-glyph-panel:  #9aa9b9;
-  --mz-glyph-line:   #5b6c7d;
-  --mz-glyph-accent: #2c3a4b;
+  --mz-glyph-bg:     #1c1d1a;
+  --mz-glyph-panel:  #272824;
+  --mz-glyph-line:   #4a4c46;
+  --mz-glyph-accent: #b9c4cf;
 
-  --mz-bubble-bg:     #a6b1bd;
-  --mz-bubble-panel:  #8b97a3;
-  --mz-bubble-line:   #4f5d6c;
-  --mz-bubble-accent: #1f2a36;
+  --mz-bubble-bg:     #18191a;
+  --mz-bubble-panel:  #232425;
+  --mz-bubble-line:   #444649;
+  --mz-bubble-accent: #b1bdc9;
 
-  --mz-glyphfont-bg:     #92a3b6;
-  --mz-glyphfont-panel:  #6f829a;
-  --mz-glyphfont-line:   #283242;
-  --mz-glyphfont-accent: #0d1626;
+  --mz-glyphfont-bg:     #15171a;
+  --mz-glyphfont-panel:  #1f2226;
+  --mz-glyphfont-line:   #3a4150;
+  --mz-glyphfont-accent: #cad6e3;
 
-  --mz-style-bg:     #d6b896;
-  --mz-style-panel:  #b99971;
-  --mz-style-line:   #6f5234;
-  --mz-style-accent: #392a18;
+  --mz-style-bg:     #2a201a;
+  --mz-style-panel:  #392c23;
+  --mz-style-line:   #6a4e3a;
+  --mz-style-accent: #e6b485;
 
-  --mz-type-bg:      #d3c87f;
-  --mz-type-panel:   #b6a857;
-  --mz-type-line:    #6b5d1f;
-  --mz-type-accent:  #392f08;
+  --mz-type-bg:      #2a2614;
+  --mz-type-panel:   #3a341c;
+  --mz-type-line:    #6a5e2c;
+  --mz-type-accent:  #d8c87a;
 
-  --mz-text:         #1d1d1d;
-  --mz-text-mute:    #4a4a4a;
-  --mz-text-faint:   #6a6a6a;
+  --mz-text:         #ebe7df;
+  --mz-text-mute:    #b4afa3;
+  --mz-text-faint:   #807c70;
 }
 
 /* ---------- Experimental themes ------------------------------------------ *
- * Each follows the same per-module palette contract: glyph (cool), bubble
- * (cool, slightly off), style (warm), type (warm, slightly off). The
- * `text*` tokens determine ink-on-chrome contrast. Keep `--mz-paper` and
- * `--mz-ink` constant — those are universal across themes (real ink on
- * real paper for the rendered lettering). */
+ * All themes follow the always-dark contract: dark surfaces, bright accents,
+ * bright text. Glyphs (real ink on real paper) stay constant. */
 
 /* Noir — high-contrast B&W with a single hot accent per module. */
 [data-theme='noir'] {
-  --mz-glyph-bg:     #1a1a1a;
-  --mz-glyph-panel:  #262626;
-  --mz-glyph-line:   #444;
+  --mz-glyph-bg:     #111;
+  --mz-glyph-panel:  #1c1c1c;
+  --mz-glyph-line:   #383838;
   --mz-glyph-accent: #5fb6ff;
 
-  --mz-bubble-bg:     #141414;
-  --mz-bubble-panel:  #1f1f1f;
-  --mz-bubble-line:   #3a3a3a;
+  --mz-bubble-bg:     #0d0d0d;
+  --mz-bubble-panel:  #181818;
+  --mz-bubble-line:   #303030;
   --mz-bubble-accent: #7fb1d8;
 
-  --mz-glyphfont-bg:     #0d0d0d;
-  --mz-glyphfont-panel:  #1a1a1a;
-  --mz-glyphfont-line:   #555;
+  --mz-glyphfont-bg:     #080808;
+  --mz-glyphfont-panel:  #131313;
+  --mz-glyphfont-line:   #2c2c2c;
   --mz-glyphfont-accent: #cfe6ff;
 
-  --mz-style-bg:     #1d1612;
-  --mz-style-panel:  #2a1f17;
-  --mz-style-line:   #5a3f2a;
+  --mz-style-bg:     #16110c;
+  --mz-style-panel:  #221913;
+  --mz-style-line:   #4a3522;
   --mz-style-accent: #f0a060;
 
-  --mz-type-bg:      #1d1c12;
-  --mz-type-panel:   #29281a;
-  --mz-type-line:    #5b5430;
+  --mz-type-bg:      #16150c;
+  --mz-type-panel:   #221f13;
+  --mz-type-line:    #4a4427;
   --mz-type-accent:  #ecd06b;
 
-  --mz-text:         #ececec;
+  --mz-text:         #f0f0f0;
   --mz-text-mute:    #b0b0b0;
-  --mz-text-faint:   #888;
+  --mz-text-faint:   #777;
 }
 
-/* Neon — saturated cyberpunk on near-black. Loud on purpose. */
+/* Neon — saturated cyberpunk on near-black. */
 [data-theme='neon'] {
-  --mz-glyph-bg:     #0e0a1f;
-  --mz-glyph-panel:  #1a1338;
-  --mz-glyph-line:   #4a3aa6;
+  --mz-glyph-bg:     #08061a;
+  --mz-glyph-panel:  #110d2c;
+  --mz-glyph-line:   #2a217a;
   --mz-glyph-accent: #00e5ff;
 
-  --mz-bubble-bg:     #0d0a1a;
-  --mz-bubble-panel:  #161030;
-  --mz-bubble-line:   #3d2f8a;
+  --mz-bubble-bg:     #07061a;
+  --mz-bubble-panel:  #0e0a26;
+  --mz-bubble-line:   #261c66;
   --mz-bubble-accent: #5fa9ff;
 
-  --mz-glyphfont-bg:     #07051a;
-  --mz-glyphfont-panel:  #110a2a;
-  --mz-glyphfont-line:   #6b54e0;
+  --mz-glyphfont-bg:     #050418;
+  --mz-glyphfont-panel:  #0b0822;
+  --mz-glyphfont-line:   #4636b0;
   --mz-glyphfont-accent: #a8f0ff;
 
-  --mz-style-bg:     #1f0a1a;
-  --mz-style-panel:  #2e0f24;
-  --mz-style-line:   #a035a0;
+  --mz-style-bg:     #1a0716;
+  --mz-style-panel:  #260c20;
+  --mz-style-line:   #802a80;
   --mz-style-accent: #ff3fa9;
 
-  --mz-type-bg:      #0a1a13;
-  --mz-type-panel:   #0f2a1f;
-  --mz-type-line:    #2f8a55;
+  --mz-type-bg:      #06170f;
+  --mz-type-panel:   #0a221a;
+  --mz-type-line:    #246a44;
   --mz-type-accent:  #5cff9b;
 
   --mz-text:         #f0eaff;
@@ -218,135 +211,132 @@
   --mz-text-faint:   #8c84a8;
 }
 
-/* Sepia — vintage newspaper. Warm cream paper, ink-brown chrome. */
+/* Sepia — vintage newspaper, dark-tobacco ground with cream highlights. */
 [data-theme='sepia'] {
-  --mz-glyph-bg:     #ece2c8;
-  --mz-glyph-panel:  #d8c8a3;
-  --mz-glyph-line:   #886d3e;
-  --mz-glyph-accent: #463213;
+  --mz-glyph-bg:     #1f160a;
+  --mz-glyph-panel:  #2c1f10;
+  --mz-glyph-line:   #533c1d;
+  --mz-glyph-accent: #d8c8a3;
 
-  --mz-bubble-bg:     #e3d6b8;
-  --mz-bubble-panel:  #ccb98e;
-  --mz-bubble-line:   #7a5f30;
-  --mz-bubble-accent: #3c2a0f;
+  --mz-bubble-bg:     #1c140a;
+  --mz-bubble-panel:  #281c10;
+  --mz-bubble-line:   #4a361c;
+  --mz-bubble-accent: #ccb98e;
 
-  --mz-glyphfont-bg:     #d4c198;
-  --mz-glyphfont-panel:  #b8a273;
-  --mz-glyphfont-line:   #5e4720;
-  --mz-glyphfont-accent: #2a1a06;
+  --mz-glyphfont-bg:     #1a120a;
+  --mz-glyphfont-panel:  #25190e;
+  --mz-glyphfont-line:   #432f17;
+  --mz-glyphfont-accent: #e5d3a8;
 
-  --mz-style-bg:     #efd9b5;
-  --mz-style-panel:  #d8b683;
-  --mz-style-line:   #8c5d28;
-  --mz-style-accent: #3f230a;
+  --mz-style-bg:     #20120a;
+  --mz-style-panel:  #2e1a0e;
+  --mz-style-line:   #5a3415;
+  --mz-style-accent: #e0a868;
 
-  --mz-type-bg:      #efe2af;
-  --mz-type-panel:   #d6c477;
-  --mz-type-line:    #7e6a1e;
-  --mz-type-accent:  #382d05;
+  --mz-type-bg:      #1f1a07;
+  --mz-type-panel:   #2c260c;
+  --mz-type-line:    #5a4d18;
+  --mz-type-accent:  #e5cc6a;
 
-  --mz-text:         #2a1f0c;
-  --mz-text-mute:    #574125;
-  --mz-text-faint:   #80633a;
+  --mz-text:         #f0e3c4;
+  --mz-text-mute:    #b8a880;
+  --mz-text-faint:   #806f50;
 }
 
-/* Risograph — a punchy two-and-a-half-tone print look. Pinks + blues +
-   mustards on warm white, calibrated to feel screen-printed. */
+/* Risograph — saturated pinks / blues / mustards on near-black ground. */
 [data-theme='riso'] {
-  --mz-glyph-bg:     #eaf1f8;
-  --mz-glyph-panel:  #c9dcf0;
-  --mz-glyph-line:   #4571a4;
-  --mz-glyph-accent: #1d3a6e;
+  --mz-glyph-bg:     #0c1422;
+  --mz-glyph-panel:  #16203a;
+  --mz-glyph-line:   #2c4674;
+  --mz-glyph-accent: #6ea4e0;
 
-  --mz-bubble-bg:     #e6e9f0;
-  --mz-bubble-panel:  #c2c9da;
-  --mz-bubble-line:   #4a5a86;
-  --mz-bubble-accent: #1c2848;
+  --mz-bubble-bg:     #0d1118;
+  --mz-bubble-panel:  #161c2a;
+  --mz-bubble-line:   #2c3a5e;
+  --mz-bubble-accent: #8a9cc0;
 
-  --mz-glyphfont-bg:     #d6e3f3;
-  --mz-glyphfont-panel:  #aec3df;
-  --mz-glyphfont-line:   #2c4d80;
-  --mz-glyphfont-accent: #0a1f44;
+  --mz-glyphfont-bg:     #0a1322;
+  --mz-glyphfont-panel:  #131e36;
+  --mz-glyphfont-line:   #234070;
+  --mz-glyphfont-accent: #aac6ec;
 
-  --mz-style-bg:     #fde2eb;
-  --mz-style-panel:  #f6b8cd;
-  --mz-style-line:   #c83d75;
-  --mz-style-accent: #7a1640;
+  --mz-style-bg:     #220a14;
+  --mz-style-panel:  #321420;
+  --mz-style-line:   #802a4e;
+  --mz-style-accent: #f6b8cd;
 
-  --mz-type-bg:      #fff4cf;
-  --mz-type-panel:   #ffd97a;
-  --mz-type-line:    #b88416;
-  --mz-type-accent:  #6a4a05;
+  --mz-type-bg:      #221b07;
+  --mz-type-panel:   #2e2510;
+  --mz-type-line:    #6a541a;
+  --mz-type-accent:  #f0c860;
 
-  --mz-text:         #1f1f24;
-  --mz-text-mute:    #4f4f58;
-  --mz-text-faint:   #76767f;
+  --mz-text:         #ecedf2;
+  --mz-text-mute:    #b0b3c0;
+  --mz-text-faint:   #7b7e8d;
 }
 
-/* Forest — moss greens / bark browns / lichen yellows on cream. */
+/* Forest — deep moss / loam, lichen-bright accents. */
 [data-theme='forest'] {
-  --mz-glyph-bg:     #dde8d9;
-  --mz-glyph-panel:  #b9cdb1;
-  --mz-glyph-line:   #4f7549;
-  --mz-glyph-accent: #1f3d1d;
+  --mz-glyph-bg:     #131a14;
+  --mz-glyph-panel:  #1c281d;
+  --mz-glyph-line:   #36502f;
+  --mz-glyph-accent: #9ec97a;
 
-  --mz-bubble-bg:     #cfdbcb;
-  --mz-bubble-panel:  #abbea3;
-  --mz-bubble-line:   #4a6745;
-  --mz-bubble-accent: #1a3018;
+  --mz-bubble-bg:     #101610;
+  --mz-bubble-panel:  #182218;
+  --mz-bubble-line:   #2c4028;
+  --mz-bubble-accent: #aac298;
 
-  --mz-glyphfont-bg:     #b9c9b4;
-  --mz-glyphfont-panel:  #94aa8e;
-  --mz-glyphfont-line:   #2f4d2c;
-  --mz-glyphfont-accent: #102414;
+  --mz-glyphfont-bg:     #0d130d;
+  --mz-glyphfont-panel:  #161e16;
+  --mz-glyphfont-line:   #2a4226;
+  --mz-glyphfont-accent: #c4dca8;
 
-  --mz-style-bg:     #e6d6c2;
-  --mz-style-panel:  #c9aa84;
-  --mz-style-line:   #6f4a26;
-  --mz-style-accent: #3a2210;
+  --mz-style-bg:     #1f160c;
+  --mz-style-panel:  #2c1e10;
+  --mz-style-line:   #553720;
+  --mz-style-accent: #d8a468;
 
-  --mz-type-bg:      #ece2b3;
-  --mz-type-panel:   #d2c372;
-  --mz-type-line:    #807317;
-  --mz-type-accent:  #3a3406;
+  --mz-type-bg:      #1d1a0a;
+  --mz-type-panel:   #2a2510;
+  --mz-type-line:    #6a5a1f;
+  --mz-type-accent:  #d8c168;
 
-  --mz-text:         #1d2418;
-  --mz-text-mute:    #4a523f;
-  --mz-text-faint:   #707860;
+  --mz-text:         #e8ecdf;
+  --mz-text-mute:    #aab09a;
+  --mz-text-faint:   #76806a;
 }
 
-/* Inkwash — desaturated cool greys with a single steel-blue accent per
-   module. Pretends to be greyscale but each module still has its own
-   identity through subtle hue shifts. */
+/* Inkwash — desaturated dark slate with subtle module hue shifts. */
 [data-theme='inkwash'] {
-  --mz-glyph-bg:     #e6e8ec;
-  --mz-glyph-panel:  #c8ccd4;
-  --mz-glyph-line:   #6b7280;
-  --mz-glyph-accent: #2b3a4d;
+  --mz-glyph-bg:     #181c22;
+  --mz-glyph-panel:  #232830;
+  --mz-glyph-line:   #404858;
+  --mz-glyph-accent: #b5c4d8;
 
-  --mz-bubble-bg:     #dde0e5;
-  --mz-bubble-panel:  #bcc1ca;
-  --mz-bubble-line:   #5e6573;
-  --mz-bubble-accent: #1f2a3a;
+  --mz-bubble-bg:     #15181d;
+  --mz-bubble-panel:  #1f242c;
+  --mz-bubble-line:   #383f4c;
+  --mz-bubble-accent: #aab2c0;
 
-  --mz-glyphfont-bg:     #ccd0d8;
-  --mz-glyphfont-panel:  #a8aeb9;
-  --mz-glyphfont-line:   #424b5b;
-  --mz-glyphfont-accent: #11192a;
+  --mz-glyphfont-bg:     #12161c;
+  --mz-glyphfont-panel:  #1b2028;
+  --mz-glyphfont-line:   #344052;
+  --mz-glyphfont-accent: #c8d2e0;
 
-  --mz-style-bg:     #e9e3dc;
-  --mz-style-panel:  #c8bdaf;
-  --mz-style-line:   #74614b;
-  --mz-style-accent: #3b2c19;
+  --mz-style-bg:     #1f1a14;
+  --mz-style-panel:  #2c241b;
+  --mz-style-line:   #5a4732;
+  --mz-style-accent: #d6b994;
 
-  --mz-type-bg:      #e7e4d4;
-  --mz-type-panel:   #c4be9f;
-  --mz-type-line:    #6e6539;
-  --mz-type-accent:  #322d0d;
+  --mz-type-bg:      #1f1d10;
+  --mz-type-panel:   #2c2818;
+  --mz-type-line:    #594c28;
+  --mz-type-accent:  #d8c98a;
 
-  --mz-text:         #1f2227;
-  --mz-text-mute:    #4a4f59;
-  --mz-text-faint:   #717783;
+  --mz-text:         #e6e8ec;
+  --mz-text-mute:    #aab0bc;
+  --mz-text-faint:   #767c88;
 }
 
 
@@ -369,12 +359,20 @@
   --mz-panel:  var(--mz-style-panel);
   --mz-line:   var(--mz-style-line);
   --mz-accent: var(--mz-style-accent);
+  /* Soften text on the warm amber ground — pure white feels surgical;
+     a slightly warm off-white sits inside the palette. */
+  --mz-text:       #e6d8c2;
+  --mz-text-mute:  #a8957a;
+  --mz-text-faint: #6e5e48;
 }
 .mz-mod--typesetter {
   --mz-bg:     var(--mz-type-bg);
   --mz-panel:  var(--mz-type-panel);
   --mz-line:   var(--mz-type-line);
   --mz-accent: var(--mz-type-accent);
+  --mz-text:       #e8dcb8;
+  --mz-text-mute:  #a89870;
+  --mz-text-faint: #6e6240;
 }
 /* Per-font glyph defaults (calligraphy lines, sidebearings) — deeper blue,
    reads as a separate chassis from per-glyph blue. Wrap any panel that
@@ -432,6 +430,58 @@ button:hover:not(:disabled) {
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* Module tabs in the top toolbar — each button always wears its own
+ * module's accent. Active = solid accent fill on dark text; inactive =
+ * outline only, accent text. The whole bar therefore tells you at a
+ * glance which colour means which module. */
+.mz-modtab {
+  font: inherit;
+  padding: 4px 10px;
+  border: 1px solid var(--mz-accent);
+  background: transparent;
+  color: var(--mz-accent);
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1.2;
+  font-weight: 500;
+}
+.mz-modtab:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mz-accent) 18%, transparent);
+}
+.mz-modtab--active {
+  background: var(--mz-accent);
+  color: var(--mz-bg);
+  font-weight: 700;
+}
+.mz-modtab--active:hover:not(:disabled) {
+  background: var(--mz-accent);
+}
+
+/* Compact icon button — square, transparent, accent on hover. Used for
+ * gear / dev / settings affordances inside toolbars. */
+.mz-iconbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  width: 26px;
+  height: 26px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--mz-text-mute);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.mz-iconbtn:hover:not(:disabled) {
+  color: var(--mz-accent);
+  border-color: var(--mz-line);
+  background: color-mix(in srgb, var(--mz-accent) 12%, transparent);
+}
+.mz-iconbtn:focus {
+  outline: 1px solid var(--mz-accent);
+  outline-offset: -1px;
 }
 
 select,

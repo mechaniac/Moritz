@@ -202,6 +202,38 @@ Four top-level modules under `src/modules/`:
 UI modules are thin — they translate user input into intents and render the
 output of `core/`. **No domain logic in components.**
 
+### Interface system
+
+Moritz UI is built on the extractable `src/sift/` interface library. New shared
+interface work belongs there first, then Moritz-specific components compose it.
+
+1. **One visual axis.** The interface is almost monochromatic: a cold/dark night
+   end and a warm/bright day end, never pure black or pure white except at
+   deliberate extremes.
+2. **Low local contrast.** Nearby visible parts should be close in colour and
+   value. Use Sift tokens, `ClosenessGroup`, and Sift inputs so slider tracks,
+   knobs, checkboxes, ticks, labels, panels, and controls stay in the same
+   contrast family.
+3. **Semantic colour only.** Colour communicates function, not decoration:
+   green = generate/start, yellow = annotation/help, orange = current
+   relevance, red = changed/save/overwrite/destructive. Changed controls change
+   themselves; do not add unrelated red outlines.
+4. **Floating workbench.** The app is fullscreen. Main UI lives in dockable
+   floating windows: toolbar/top, outliner/left, attributes/right. Windows have
+   sensible locked positions, can be unpinned, and can snap back.
+5. **Outliner + attributes everywhere.** Every workspace exposes its scene or
+   artefact hierarchy through the Sift `Tree` and its selected-node properties
+   through `Attrs`. TypeSetter's page hierarchy is the target model for the rest
+   of the app.
+6. **Importance is a first-class state.** Important, selected, or active things
+   become bigger, brighter, heavier, or higher contrast through Sift importance
+   levels. In debug mode, right-click Sift importance targets to tune them.
+7. **Debug visibility.** Debug mode should reveal controls and relationships,
+   including selected elements and children. Future node overlays and connection
+   splines should be Sift/Moritz shell features, not one-off module drawings.
+8. **No Tailwind.** The UI is opinionated CSS with meaningful class names
+   (`sf-*` for extractable Sift pieces, `mz-*` for Moritz-specific composition).
+
 ---
 
 ## 5. Coding rules

@@ -121,17 +121,41 @@ export function useCanvasInput(
     // widens TS's signature picker to the generic Event variant).
     const target: EventTarget = el;
 
-    const apply = (nextZoom: number): void => {
-      const cur = cfgRef.current.getCamera().zoom;
+    /**
+     * Cursor-anchored zoom. Keeps the world point under (clientX, clientY)
+     * fixed on screen while the zoom changes. Convention:
+     *   world = (screen - pan) / zoom
+     * Solving (s - p) / z = (s - p') / z'  →  p' = s - (s - p) * z'/z.
+     * So we shift pan by `(s - p) * (1 - z'/z)`. Falls back to plain
+     * zoom if the camera has no pan (panX/Y are missing or both 0 and the
+     * caller's setter ignores them).
+     */
+    const applyAt = (nextZoom: number, sx: number, sy: number): void => {
+      const cam = cfgRef.current.getCamera();
+      const cur = cam.zoom;
       const next = clampZoom(nextZoom, cfgRef.current.minZoom, cfgRef.current.maxZoom);
       if (next === cur) return;
-      cfgRef.current.setCamera({ zoom: next });
+      const k = next / cur;
+      const px = cam.panX ?? 0;
+      const py = cam.panY ?? 0;
+      cfgRef.current.setCamera({
+        zoom: next,
+        panX: sx - (sx - px) * k,
+        panY: sy - (sy - py) * k,
+      });
     };
 
     const onWheel = (e: Event): void => {
       const w = e as WheelEvent;
       w.preventDefault();
-      apply(cfgRef.current.getCamera().zoom * wheelZoomFactor(w.deltaY));
+      const rect = (el as Element).getBoundingClientRect();
+      const sx = w.clientX - rect.left;
+      const sy = w.clientY - rect.top;
+      applyAt(
+        cfgRef.current.getCamera().zoom * wheelZoomFactor(w.deltaY),
+        sx,
+        sy,
+      );
     };
     target.addEventListener('wheel', onWheel, { passive: false });
 
@@ -164,7 +188,11 @@ export function useCanvasInput(
       pts.set(p.pointerId, { x: p.clientX, y: p.clientY });
       if (pts.size >= 2 && startDist > 0) {
         p.preventDefault();
-        apply(startZoom * (dist() / startDist));
+        const arr = Array.from(pts.values());
+        const rect = (el as Element).getBoundingClientRect();
+        const mx = (arr[0]!.x + arr[1]!.x) / 2 - rect.left;
+        const my = (arr[0]!.y + arr[1]!.y) / 2 - rect.top;
+        applyAt(startZoom * (dist() / startDist), mx, my);
       }
     };
     const onPEnd = (e: Event): void => {

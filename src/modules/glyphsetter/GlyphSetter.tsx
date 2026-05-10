@@ -81,6 +81,7 @@ import {
 import type { GuideSettings } from './guides.js';
 import { useAppStore } from '../../state/store.js';
 import { StyleControls } from '../stylesetter/StyleControls.js';
+import { FloatingWindow, useSiftLayout, dockOutliner, dockAttrs, dockItemAttrs } from '../../sift/index.js';
 
 // Module-level clipboard for copied strokes. Persists across glyph switches
 // (the GlyphEditor remounts when `selectedGlyph` changes) and even module
@@ -203,66 +204,73 @@ type Drag =
   | { kind: 'pan'; startClientX: number; startClientY: number; startPanX: number; startPanY: number };
 
 export function GlyphSetter(): JSX.Element {
+  const layout = useSiftLayout();
+  return (
+    <>
+      <GlyphSetterStage />
+      <FloatingWindow
+        id="moritz.outliner"
+        title="Glyphs"
+        mod="glyphsetter"
+        initial={{ x: 16, y: 360, w: 320, h: 480 }}
+        dock={dockOutliner(layout)}
+      >
+        <GlyphSetterOutliner />
+      </FloatingWindow>
+      <FloatingWindow
+        id="moritz.itemattrs"
+        bare
+        mod="glyphsetter"
+        initial={{ x: 320, y: 132, w: 280, h: 320 }}
+        dock={dockItemAttrs(layout)}
+      >
+        <GlyphSetterItemAttrs />
+      </FloatingWindow>
+      <FloatingWindow
+        id="moritz.attrs"
+        title="Style"
+        mod="stylesetter"
+        initial={{
+          x: typeof window !== 'undefined' ? window.innerWidth - 320 - 16 : 800,
+          y: 16,
+          w: 320,
+          h: 560,
+        }}
+        dock={dockAttrs(layout)}
+      >
+        <GlyphSetterAttrs />
+      </FloatingWindow>
+    </>
+  );
+}
+
+export function GlyphSetterStage(): JSX.Element {
   const font = useAppStore((s) => s.font);
   const selectedChar = useAppStore((s) => s.selectedGlyph);
-  const selectGlyph = useAppStore((s) => s.selectGlyph);
   const updateSelectedGlyph = useAppStore((s) => s.updateSelectedGlyph);
-  const updateAllGlyphs = useAppStore((s) => s.updateAllGlyphs);
   const view = useAppStore((s) => s.glyphView);
   const setGlyphView = useAppStore((s) => s.setGlyphView);
-  const setStyleOverride = useAppStore((s) => s.setStyleOverride);
-  const style = useAppStore((s) => s.style);
-  const loadedStyleSettings = useAppStore((s) => s.loadedStyleSettings);
-  const setFontGuides = useAppStore((s) => s.setFontGuides);
-  const setKerning = useAppStore((s) => s.setKerning);
-
   const glyph = font.glyphs[selectedChar];
-
-  // Lifted into the store so the StyleSetter "Add kerning with next"
-  // overlay can switch us to the kerning tab on click.
-  const leftTab = useAppStore((s) => s.glyphsetterTab);
-  const setLeftTab = useAppStore((s) => s.setGlyphsetterTab);
-
   return (
-    <div className="mz-workbench mz-glyphsetter">
-      <div className="mz-workbench__drawer mz-workbench__drawer--left">
-        <LeftTabBar value={leftTab} onChange={setLeftTab} />
-        <div className="mz-workbench__drawer-body mz-workbench__drawer-body--flush" style={{ position: 'relative' }}>
-          {leftTab === 'glyphs' ? (
-            <>
-              <GlyphGrid
-                chars={Object.keys(font.glyphs)}
-                selected={selectedChar}
-                onSelect={selectGlyph}
-                font={font}
-                view={view}
-              />
-              {glyph && (
-                <GlyphMetricsPanel
-                  glyph={glyph}
-                  view={view}
-                  updateGlyph={updateSelectedGlyph}
-                  updateAllGlyphs={updateAllGlyphs}
-                />
-              )}
-            </>
-          ) : leftTab === 'kerning' ? (
-            <KerningList
-              font={font}
-              pairs={font.kerning ?? {}}
-              onChange={setKerning}
-              refFontFamily={view.refFontFamily}
-            />
-          ) : (
-            <SettingsPanel
-              view={view}
-              setView={setGlyphView}
-              setFontGuides={setFontGuides}
-            />
-          )}
-        </div>
-      </div>
-      <div className="mz-workbench__bench mz-glyphsetter__editor">
+    <div
+      className="mz-glyphsetter mz-glyphsetter--sift"
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <div
+        className="mz-glyphsetter__editor"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
         {glyph ? (
           <GlyphEditor
             char={selectedChar}
@@ -276,16 +284,83 @@ export function GlyphSetter(): JSX.Element {
           <p style={{ padding: 16 }}>No glyph selected.</p>
         )}
       </div>
-      <div className="mz-workbench__drawer mz-workbench__drawer--right mz-mod--stylesetter">
-        <div className="mz-workbench__drawer-body">
-          <StyleControls
-            style={style}
-            setStyle={setStyleOverride}
-            {...(loadedStyleSettings ? { original: loadedStyleSettings } : {})}
-          />
-        </div>
-      </div>
     </div>
+  );
+}
+
+export function GlyphSetterOutliner(): JSX.Element {
+  const font = useAppStore((s) => s.font);
+  const selectedChar = useAppStore((s) => s.selectedGlyph);
+  const selectGlyph = useAppStore((s) => s.selectGlyph);
+  const view = useAppStore((s) => s.glyphView);
+  const setGlyphView = useAppStore((s) => s.setGlyphView);
+  const setFontGuides = useAppStore((s) => s.setFontGuides);
+  const setKerning = useAppStore((s) => s.setKerning);
+  const leftTab = useAppStore((s) => s.glyphsetterTab);
+  const setLeftTab = useAppStore((s) => s.setGlyphsetterTab);
+  return (
+    <>
+      <LeftTabBar value={leftTab} onChange={setLeftTab} />
+      <div style={{ marginTop: 'var(--sf-pad-tight)' }}>
+        {leftTab === 'glyphs' ? (
+          <GlyphGrid
+            chars={Object.keys(font.glyphs)}
+            selected={selectedChar}
+            onSelect={selectGlyph}
+            font={font}
+            view={view}
+          />
+        ) : leftTab === 'kerning' ? (
+          <KerningList
+            font={font}
+            pairs={font.kerning ?? {}}
+            onChange={setKerning}
+            refFontFamily={view.refFontFamily}
+          />
+        ) : (
+          <SettingsPanel
+            view={view}
+            setView={setGlyphView}
+            setFontGuides={setFontGuides}
+          />
+        )}
+      </div>
+    </>
+  );
+}
+
+export function GlyphSetterAttrs(): JSX.Element {
+  const setStyleOverride = useAppStore((s) => s.setStyleOverride);
+  const style = useAppStore((s) => s.style);
+  const loadedStyleSettings = useAppStore((s) => s.loadedStyleSettings);
+  return (
+    <div className="mz-mod--stylesetter">
+      <StyleControls
+        style={style}
+        setStyle={setStyleOverride}
+        {...(loadedStyleSettings ? { original: loadedStyleSettings } : {})}
+      />
+    </div>
+  );
+}
+
+/** Per-item (per-glyph) attributes panel — content of the floating
+ *  "Glyph" window. Same slot across every workspace (see `dockItemAttrs`). */
+export function GlyphSetterItemAttrs(): JSX.Element {
+  const font = useAppStore((s) => s.font);
+  const selectedChar = useAppStore((s) => s.selectedGlyph);
+  const view = useAppStore((s) => s.glyphView);
+  const updateSelectedGlyph = useAppStore((s) => s.updateSelectedGlyph);
+  const updateAllGlyphs = useAppStore((s) => s.updateAllGlyphs);
+  const glyph = font.glyphs[selectedChar];
+  if (!glyph) return <p style={{ color: 'var(--mz-text-mute)', fontSize: 12 }}>No glyph selected.</p>;
+  return (
+    <GlyphMetricsPanel
+      glyph={glyph}
+      view={view}
+      updateGlyph={updateSelectedGlyph}
+      updateAllGlyphs={updateAllGlyphs}
+    />
   );
 }
 
@@ -306,10 +381,8 @@ function GlyphGrid(props: {
     <aside
       className="mz-glyphsetter__grid"
       style={{
-        position: 'absolute',
-        inset: 0,
-        padding: 8,
-        overflowY: 'auto',
+        width: '100%',
+        padding: 0,
         boxSizing: 'border-box',
       }}
     >
@@ -903,27 +976,32 @@ export function GlyphEditor(props: {
           alignItems: 'stretch',
           justifyContent: 'flex-start',
           gap: 0,
+          position: 'relative',
         }}
       >
         <div
           className="mz-glyphsetter__toolbar"
           style={{
-            display: 'flex',
+            position: 'absolute',
+            left: '50%',
+            bottom: 8,
+            transform: 'translateX(-50%)',
+            display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 10,
             padding: '4px 10px',
-            background: 'transparent',
+            background: 'var(--mz-paper)',
+            border: '1px solid var(--mz-line)',
+            borderRadius: 4,
+            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
             fontSize: 13,
             flexShrink: 0,
-            width: '100%',
             boxSizing: 'border-box',
             minHeight: 32,
+            zIndex: 5,
           }}
         >
-          <strong style={{ fontSize: 14, width: 90, flexShrink: 0 }}>
-            Editing: {char}
-          </strong>
           <button onClick={onAddStroke}>+ Stroke</button>
           <button
             onClick={() => {
@@ -1765,8 +1843,10 @@ export function SettingsPanel(props: {
 
 /**
  * Per-glyph metrics panel (box, side bearings, baseline, per-glyph world
- * angle offsets). Lives at the bottom of the "Glyphs" left tab when a glyph
- * is selected.
+ * angle offsets). Rendered inside the bare floating "Glyph" window — no
+ * extra titles, no extra borders. Mass-actions (import metrics, zero
+ * bearings) live behind a small "⋯" popover so the panel stays sliders-only
+ * by default.
  */
 function GlyphMetricsPanel(props: {
   glyph: Glyph;
@@ -1775,189 +1855,231 @@ function GlyphMetricsPanel(props: {
   updateAllGlyphs: (fn: (g: Glyph, char: string) => Glyph) => void;
 }): JSX.Element {
   const { glyph, view, updateGlyph, updateAllGlyphs } = props;
+  const [actionsOpen, setActionsOpen] = useState(false);
   return (
-    <aside
+    <div
       style={{
-        width: '100%',
-        background: 'transparent',
-        padding: 8,
         display: 'flex',
         flexDirection: 'column',
-        gap: 12,
-        boxSizing: 'border-box',
+        gap: 4,
+        position: 'relative',
       }}
+      onPointerDown={(e) => e.stopPropagation()}
     >
-      <Section title="Glyph" tone="local" subtitle="Per-glyph metrics">
-        <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+      <button
+        type="button"
+        onClick={() => setActionsOpen((o) => !o)}
+        title="More actions"
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 22,
+          padding: '0 4px',
+          fontSize: 12,
+          lineHeight: 1,
+          background: 'transparent',
+          border: '1px solid transparent',
+          color: 'var(--mz-text-mute)',
+          cursor: 'pointer',
+        }}
+      >
+        ⋯
+      </button>
+      {actionsOpen && (
+        <ActionsPopover onClose={() => setActionsOpen(false)}>
           <button
             type="button"
             disabled={!view.refFontFamily}
             onClick={() => {
               if (!view.refFontFamily) return;
               updateGlyph((g) => importGlyphMetrics(g, glyph.char, view.refFontFamily));
+              setActionsOpen(false);
             }}
             title={
               view.refFontFamily
-                ? "Set this glyph's box width and side bearings from the reference font's measured advance width and ink bounds. Vertical scale matches 'Align to reference font'."
+                ? "Set this glyph's box width and side bearings from the reference font."
                 : 'Pick a Reference font in the View section first.'
             }
-            style={{ flex: 1, fontSize: 11, padding: '2px 6px' }}
           >
-            Import (this glyph)
+            Import metrics (this glyph)
           </button>
           <button
             type="button"
             disabled={!view.refFontFamily}
             onClick={() => {
               if (!view.refFontFamily) return;
-              if (!confirm('Import box width and side bearings from the reference font for ALL glyphs? Existing strokes are kept and re-centred.')) return;
+              if (!confirm('Import metrics from the reference font for ALL glyphs?')) return;
               updateAllGlyphs((g, char) => importGlyphMetrics(g, char, view.refFontFamily));
+              setActionsOpen(false);
             }}
-            title={
-              view.refFontFamily
-                ? 'Apply the same metrics import to every glyph in the typeface.'
-                : 'Pick a Reference font in the View section first.'
-            }
-            style={{ flex: 1, fontSize: 11, padding: '2px 6px' }}
           >
-            Import (all glyphs)
+            Import metrics (all glyphs)
           </button>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            if (!confirm('Set left and right side bearings to 0 for ALL glyphs in this font?')) return;
-            updateAllGlyphs((g) => ({
+          <button
+            type="button"
+            onClick={() => {
+              if (!confirm('Set left and right side bearings to 0 for ALL glyphs in this font?')) return;
+              updateAllGlyphs((g) => ({ ...g, sidebearings: { left: 0, right: 0 } }));
+              setActionsOpen(false);
+            }}
+          >
+            Zero all bearings
+          </button>
+        </ActionsPopover>
+      )}
+      <NumSlider
+        label="Box width"
+        min={20}
+        max={300}
+        step={1}
+        value={glyph.box.w}
+        onChange={(v) =>
+          updateGlyph((g) => {
+            const newW = Math.round(v);
+            const dx = (newW - g.box.w) / 2;
+            if (dx === 0) return { ...g, box: { ...g.box, w: newW } };
+            return {
               ...g,
-              sidebearings: { left: 0, right: 0 },
-            }));
-          }}
-          title="Zero out the left and right side bearings on every glyph. Useful when you want spacing to come purely from box width / tracking / kerning."
-          style={{ width: '100%', fontSize: 11, padding: '2px 6px', marginBottom: 4 }}
-        >
-          Zero all bearings
-        </button>
-        <NumSlider
-          label="Box width"
-          min={20}
-          max={300}
-          step={1}
-          value={glyph.box.w}
-          onChange={(v) =>
-            updateGlyph((g) => {
-              const newW = Math.round(v);
-              const dx = (newW - g.box.w) / 2;
-              if (dx === 0) return { ...g, box: { ...g.box, w: newW } };
-              return {
-                ...g,
-                box: { ...g.box, w: newW },
-                strokes: g.strokes.map((s) => ({
-                  ...s,
-                  vertices: s.vertices.map((vx) => ({
-                    ...vx,
-                    p: { x: vx.p.x + dx, y: vx.p.y },
-                  })),
+              box: { ...g.box, w: newW },
+              strokes: g.strokes.map((s) => ({
+                ...s,
+                vertices: s.vertices.map((vx) => ({
+                  ...vx,
+                  p: { x: vx.p.x + dx, y: vx.p.y },
                 })),
-              };
-            })
-          }
-          tooltip="Width of this glyph's ink box in font units. The box grows or shrinks symmetrically around the glyph: stroke vertices are shifted by half the delta so the artwork stays visually centred."
-        />
-        <NumSlider
-          label="Box height"
-          min={20}
-          max={300}
-          step={1}
-          value={glyph.box.h}
-          onChange={(v) =>
-            updateGlyph((g) => {
-              const newH = Math.round(v);
-              const dy = (newH - g.box.h) / 2;
-              if (dy === 0) return { ...g, box: { ...g.box, h: newH } };
-              return {
-                ...g,
-                box: { ...g.box, h: newH },
-                strokes: g.strokes.map((s) => ({
-                  ...s,
-                  vertices: s.vertices.map((vx) => ({
-                    ...vx,
-                    p: { x: vx.p.x, y: vx.p.y + dy },
-                  })),
+              })),
+            };
+          })
+        }
+        tooltip="Width of this glyph's ink box in font units. Grows symmetrically: stroke vertices shift by half the delta so artwork stays centred."
+      />
+      <NumSlider
+        label="Box height"
+        min={20}
+        max={300}
+        step={1}
+        value={glyph.box.h}
+        onChange={(v) =>
+          updateGlyph((g) => {
+            const newH = Math.round(v);
+            const dy = (newH - g.box.h) / 2;
+            if (dy === 0) return { ...g, box: { ...g.box, h: newH } };
+            return {
+              ...g,
+              box: { ...g.box, h: newH },
+              strokes: g.strokes.map((s) => ({
+                ...s,
+                vertices: s.vertices.map((vx) => ({
+                  ...vx,
+                  p: { x: vx.p.x, y: vx.p.y + dy },
                 })),
-              };
-            })
-          }
-          tooltip="Height of this glyph's ink box in font units. Grows symmetrically around the glyph (same as Box width)."
-        />
-        <NumSlider
-          label="Left bearing"
-          min={-40}
-          max={80}
-          step={1}
-          value={glyph.sidebearings?.left ?? 0}
-          onChange={(v) =>
-            updateGlyph((g) => ({
-              ...g,
-              sidebearings: {
-                left: Math.round(v),
-                right: g.sidebearings?.right ?? 0,
-              },
-            }))
-          }
-          tooltip="Extra horizontal padding before the glyph (font units). Negative values let the previous glyph encroach. Visualised as a dashed blue line."
-        />
-        <NumSlider
-          label="Right bearing"
-          min={-40}
-          max={80}
-          step={1}
-          value={glyph.sidebearings?.right ?? 0}
-          onChange={(v) =>
-            updateGlyph((g) => ({
-              ...g,
-              sidebearings: {
-                left: g.sidebearings?.left ?? 0,
-                right: Math.round(v),
-              },
-            }))
-          }
-          tooltip="Extra horizontal padding after the glyph (font units). Negative tightens the next glyph against this one."
-        />
-        <NumSlider
-          label="Baseline ↕"
-          min={-60}
-          max={60}
-          step={1}
-          value={glyph.baselineOffset ?? 0}
-          onChange={(v) =>
-            updateGlyph((g) => ({ ...g, baselineOffset: Math.round(v) }))
-          }
-          tooltip="Vertical offset relative to the baseline. Positive moves the glyph down (descender), negative lifts it (superscript-like)."
-        />
-        <NumSlider
-          label="World blend Δangle (rad)"
-          min={-Math.PI / 2}
-          max={Math.PI / 2}
-          step={0.01}
-          value={glyph.worldAngleOffset ?? 0}
-          onChange={(v) =>
-            updateGlyph((g) => ({ ...g, worldAngleOffset: v }))
-          }
-          tooltip="Per-glyph offset added to the typeface's World blend angle when rendering this glyph. Lets a single glyph lean its nib without touching the StyleSetter value. Saved with the font."
-        />
-        <NumSlider
-          label="World contract Δangle (rad)"
-          min={-Math.PI / 2}
-          max={Math.PI / 2}
-          step={0.01}
-          value={glyph.worldContractAngleOffset ?? 0}
-          onChange={(v) =>
-            updateGlyph((g) => ({ ...g, worldContractAngleOffset: v }))
-          }
-          tooltip="Per-glyph offset added to the typeface's World contract angle when rendering this glyph. Saved with the font."
-        />
-      </Section>
-    </aside>
+              })),
+            };
+          })
+        }
+        tooltip="Height of this glyph's ink box in font units. Grows symmetrically (same as Box width)."
+      />
+      <NumSlider
+        label="Left bearing"
+        min={-40}
+        max={80}
+        step={1}
+        value={glyph.sidebearings?.left ?? 0}
+        onChange={(v) =>
+          updateGlyph((g) => ({
+            ...g,
+            sidebearings: { left: Math.round(v), right: g.sidebearings?.right ?? 0 },
+          }))
+        }
+        tooltip="Extra horizontal padding before the glyph (font units). Negative lets the previous glyph encroach."
+      />
+      <NumSlider
+        label="Right bearing"
+        min={-40}
+        max={80}
+        step={1}
+        value={glyph.sidebearings?.right ?? 0}
+        onChange={(v) =>
+          updateGlyph((g) => ({
+            ...g,
+            sidebearings: { left: g.sidebearings?.left ?? 0, right: Math.round(v) },
+          }))
+        }
+        tooltip="Extra horizontal padding after the glyph (font units). Negative tightens the next glyph against this one."
+      />
+      <NumSlider
+        label="Baseline ↕"
+        min={-60}
+        max={60}
+        step={1}
+        value={glyph.baselineOffset ?? 0}
+        onChange={(v) => updateGlyph((g) => ({ ...g, baselineOffset: Math.round(v) }))}
+        tooltip="Vertical offset relative to the baseline. Positive moves the glyph down."
+      />
+      <NumSlider
+        label="World blend Δ"
+        min={-Math.PI / 2}
+        max={Math.PI / 2}
+        step={0.01}
+        value={glyph.worldAngleOffset ?? 0}
+        onChange={(v) => updateGlyph((g) => ({ ...g, worldAngleOffset: v }))}
+        tooltip="Per-glyph offset added to the typeface's World blend angle. Saved with the font."
+      />
+      <NumSlider
+        label="World contract Δ"
+        min={-Math.PI / 2}
+        max={Math.PI / 2}
+        step={0.01}
+        value={glyph.worldContractAngleOffset ?? 0}
+        onChange={(v) => updateGlyph((g) => ({ ...g, worldContractAngleOffset: v }))}
+        tooltip="Per-glyph offset added to the typeface's World contract angle. Saved with the font."
+      />
+    </div>
+  );
+}
+
+/** Compact popover for secondary actions. Closes on outside click or Esc. */
+function ActionsPopover(props: {
+  onClose: () => void;
+  children: React.ReactNode;
+}): JSX.Element {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDocDown = (e: MouseEvent): void => {
+      if (!ref.current) return;
+      if (!ref.current.contains(e.target as Node)) props.onClose();
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') props.onClose();
+    };
+    document.addEventListener('mousedown', onDocDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [props]);
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: 'absolute',
+        top: 18,
+        right: 0,
+        zIndex: 20,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+        padding: 6,
+        minWidth: 200,
+        background: 'var(--mz-panel)',
+        border: '1px solid var(--mz-line)',
+        borderRadius: 4,
+        boxShadow: '0 4px 12px rgba(0,0,0,0.12)',
+      }}
+    >
+      {props.children}
+    </div>
   );
 }
 
