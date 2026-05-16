@@ -51,9 +51,10 @@ describe('triangulatePolygon', () => {
 
   it('triangulates a self-touching annulus (closed-stroke outline)', () => {
     // A self-touching annulus would be a violation of the open-stroke
-    // invariant. We test that earcut still returns *some* triangulation
-    // rather than crashing — but rendering pipelines must never produce
-    // such input. See `outlineStroke` for the runtime guard.
+    // invariant. We test that the upstream simple-polygon triangulator
+    // still returns *some* triangulation rather than crashing — but
+    // rendering pipelines must never produce such input. See
+    // `outlineStroke` for the runtime guard.
     const poly = [
       { x: 0, y: 0 },
       { x: 10, y: 0 },

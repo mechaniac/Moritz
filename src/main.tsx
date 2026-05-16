@@ -1,5 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
+import { MagdalenaProvider } from '@christof/magdalena/react';
+import '@christof/magdalena/styles.css';
 import { App } from './app.js';
 import './styles.css';
 import { syncLocalOverridesToRepo } from './state/persistence.js';
@@ -19,6 +21,17 @@ const el = document.getElementById('root');
 if (!el) throw new Error('Missing #root');
 createRoot(el).render(
   <React.StrictMode>
-    <App />
+    {/*
+      Pilot Magdalena adoption (see docs/platform-team-wishlist.md):
+      wrap the Sift-owned app in MagdalenaProvider so .mg-root exists
+      and Magdalena components (starting with MgDevSettingsWindow) can
+      render alongside Sift while we migrate surface-by-surface.
+    */}
+    <MagdalenaProvider
+      appId="moritz"
+      storageKey="moritz.magdalena.settings.v1"
+    >
+      <App />
+    </MagdalenaProvider>
   </React.StrictMode>,
 );

@@ -9,12 +9,22 @@ import {
 import { defaultFont, withCommonGlyphFallback } from './defaultFont.js';
 import { roundFont } from './roundFont.js';
 import { iconFont } from './iconFont.js';
-import { getFileFont } from './fontFiles.js';
+import { fileFontEnvelopes, getFileFont } from './fontFiles.js';
 
 /** The bundled, never-mutated TS originals. */
 const bundledFonts: readonly Font[] = [defaultFont, roundFont, iconFont];
 
-const builtInIds = new Set(bundledFonts.map((f) => f.id));
+/** Ids that exist only as committed JSON files under `src/data/fonts/`
+ *  (no TS bundled skeleton). Treated as built-ins so they appear in the
+ *  Glyphsetter font picker alongside the bundled ones. */
+const fileOnlyIds: readonly string[] = Object.keys(fileFontEnvelopes).filter(
+  (id) => !bundledFonts.some((f) => f.id === id),
+);
+
+const builtInIds = new Set<string>([
+  ...bundledFonts.map((f) => f.id),
+  ...fileOnlyIds,
+]);
 
 /**
  * The effective built-in for an id: a JSON override under
@@ -30,9 +40,13 @@ const effectiveBuiltIn = (id: string): Font | undefined => {
 };
 
 /** All built-in fonts in their *current* (file-overridden) form. */
-export const builtInFonts: readonly Font[] = bundledFonts.map(
-  (f) => effectiveBuiltIn(f.id) ?? withCommonGlyphFallback(f),
-);
+export const builtInFonts: readonly Font[] = [
+  ...bundledFonts.map((f) => effectiveBuiltIn(f.id) ?? withCommonGlyphFallback(f)),
+  // File-only built-ins (no TS skeleton, just a committed JSON file).
+  ...fileOnlyIds
+    .map((id) => effectiveBuiltIn(id))
+    .filter((f): f is Font => !!f),
+];
 
 export const isBuiltInId = (id: string): boolean => builtInIds.has(id);
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { GlyphSetter } from './modules/glyphsetter/GlyphSetter.js';
 import { BubbleSetter } from './modules/bubblesetter/BubbleSetter';
 import { StyleSetter } from './modules/stylesetter/StyleSetter.js';
@@ -10,18 +10,13 @@ import { BubbleBar } from './ui/BubbleBar.js';
 import { StyleBar } from './ui/StyleBar.js';
 import { PageBar } from './ui/PageBar.js';
 import { SettingsModal } from './ui/SettingsModal.js';
-import { Icon } from './ui/Icon.js';
+import { MoritzLabel } from './ui/MoritzText.js';
+import { MgWorkbench, MgViewportLayer, MgTopBar } from '@christof/magdalena/react';
 import {
   SiftRoot,
-  Workbench,
-  FloatingWindow,
   Button,
   Slider,
-  DevSettingsWindow,
   ImportanceDebugLayer,
-  Imp,
-  useSiftLayout,
-  dockToolbar,
 } from './sift/index.js';
 
 const tabs: { id: ModuleId; label: string }[] = [
@@ -52,42 +47,30 @@ function AppShell(): JSX.Element {
   const editorScale = useAppStore((s) => s.glyphView.editorScale);
   const setGlyphView = useAppStore((s) => s.setGlyphView);
   const openSettings = useThemeStore((s) => s.openSettings);
-  const layout = useSiftLayout();
-
-  const [showDev, setShowDev] = useState(false);
 
   return (
-    <Workbench
-        stage={
-          <div
-            className={`mz-app mz-mod--${module} mz-app--sift`}
+    <MgWorkbench>
+      <MgViewportLayer>
+        <div
+          className={`mz-app mz-mod--${module} mz-app--sift`}
+          style={{ width: '100%', height: '100%' }}
+        >
+          <main
+            className={`mz-app__main mz-main--${module}`}
             style={{ width: '100%', height: '100%' }}
           >
-            <main
-              className={`mz-app__main mz-main--${module}`}
-              style={{ width: '100%', height: '100%' }}
-            >
-              {module === 'glyphsetter' && <GlyphSetter />}
-              {module === 'bubblesetter' && <BubbleSetter />}
-              {module === 'stylesetter' && <StyleSetter />}
-              {module === 'typesetter' && <TypeSetter />}
-            </main>
-            <SettingsModal />
-          </div>
-        }
-        windows={
-          <>
-            <FloatingWindow
-              id="moritz-toolbar"
-              title={
-                <Imp id="moritz.title" level={3}>
-                  Moritz
-                </Imp>
-              }
-              mod={module}
-              initial={{ x: 16, y: 16, w: 320, h: 320 }}
-              dock={dockToolbar(layout)}
-            >
+            {module === 'glyphsetter' && <GlyphSetter />}
+            {module === 'bubblesetter' && <BubbleSetter />}
+            {module === 'stylesetter' && <StyleSetter />}
+            {module === 'typesetter' && <TypeSetter />}
+          </main>
+          <SettingsModal />
+        </div>
+      </MgViewportLayer>
+      <MgTopBar
+        id="moritz-toolbar"
+        title="Moritz"
+      >
               <div
                 style={{
                   display: 'flex',
@@ -106,9 +89,11 @@ function AppShell(): JSX.Element {
                         variant={active ? 'solid' : 'ghost'}
                         imp={active ? 2 : 1}
                         className={`mz-mod--${t.id}`}
+                        aria-label={t.label}
+                        title={t.label}
                         onClick={() => setModule(t.id)}
                       >
-                        {t.label}
+                        <MoritzLabel text={t.label} size={13} />
                       </Button>
                     );
                   })}
@@ -132,7 +117,7 @@ function AppShell(): JSX.Element {
                           gap: 6,
                         }}
                       >
-                        Zoom
+                        <MoritzLabel text="Zoom" size={12} />
                         <Slider
                           min={1}
                           max={30}
@@ -162,25 +147,13 @@ function AppShell(): JSX.Element {
                     alignItems: 'center',
                   }}
                 >
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    imp={0}
-                    title="Dev settings"
-                    onClick={() => setShowDev((v) => !v)}
-                  >
-                    <Icon name="settings" size={16} />
-                  </Button>
-                  <Button onClick={openSettings} imp={0}>
-                    legacy theme…
+                  <Button onClick={openSettings} imp={0} aria-label="legacy theme" title="legacy theme">
+                    <MoritzLabel text="legacy theme" size={12} />
                   </Button>
                 </div>
               </div>
-            </FloatingWindow>
-            {showDev && <DevSettingsWindow onClose={() => setShowDev(false)} />}
-          </>
-        }
-        overlays={<ImportanceDebugLayer />}
-      />
+            </MgTopBar>
+      <ImportanceDebugLayer />
+    </MgWorkbench>
   );
 }

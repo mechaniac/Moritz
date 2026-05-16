@@ -1,4 +1,5 @@
 import { THEMES, useThemeStore, type ThemeId } from '../state/themeStore.js';
+import { MoritzLabel } from './MoritzText.js';
 
 /**
  * Settings modal — currently only houses the colour-scheme picker.
@@ -28,7 +29,9 @@ export function SettingsModal(): JSX.Element | null {
         role="dialog"
         aria-label="Settings"
       >
-        <h2>Colour scheme</h2>
+        <h2>
+          <MoritzLabel text="Colour scheme" size={18} />
+        </h2>
         {THEMES.map((t) => (
           <ThemeOption
             key={t.id}
@@ -40,7 +43,9 @@ export function SettingsModal(): JSX.Element | null {
           />
         ))}
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-          <button onClick={close}>Close</button>
+          <button onClick={close} aria-label="Close">
+            <MoritzLabel text="Close" size={12} />
+          </button>
         </div>
       </div>
     </div>
@@ -82,8 +87,12 @@ function ThemeOption(props: {
         <span className="mz-theme-option__swatch" style={{ background: 'var(--mz-type-accent)' }} />
       </div>
       <div className="mz-theme-option__text">
-        <span className="mz-theme-option__name">{props.name}</span>
-        <span className="mz-theme-option__blurb">{props.blurb}</span>
+        <span className="mz-theme-option__name">
+          <MoritzLabel text={props.name} size={12} />
+        </span>
+        <span className="mz-theme-option__blurb">
+          <MoritzLabel text={props.blurb} size={10} />
+        </span>
       </div>
     </div>
   );

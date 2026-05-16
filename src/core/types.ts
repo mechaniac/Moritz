@@ -92,6 +92,34 @@ export type Glyph = {
    * `worldAngle`) when rendering this glyph. Defaults to 0.
    */
   readonly worldContractAngleOffset?: number;
+  /**
+   * Optional pure-data animator component for this glyph. A font is a
+   * collection; the glyph is the smallest universal, drawable unit. Animation
+   * therefore belongs here, not on the font container.
+   */
+  readonly animator?: GlyphAnimatorComponent;
+};
+
+export type GlyphAnimatorSymbol = {
+  readonly id: string;
+  /** Optional normalized offset from this symbol's base slot. */
+  readonly offset?: number;
+};
+
+export type GlyphAnimatorComponent = {
+  readonly id: string;
+  readonly kind: 'symbol-along-stroke';
+  readonly symbols: readonly GlyphAnimatorSymbol[];
+  readonly strokeIds?: readonly string[];
+  readonly samplesPerSegment?: number;
+  /** Normalized phase added to every symbol. */
+  readonly phase?: number;
+  /** Normalized arc units per time unit. */
+  readonly speed?: number;
+  readonly direction?: 1 | -1;
+  readonly spacing?: number;
+  readonly loop?: boolean;
+  readonly easing?: 'linear' | 'smoothstep';
 };
 
 /**

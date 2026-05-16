@@ -15,7 +15,9 @@ import {
 import { Section, Slider, StyleControls } from './StyleControls.js';
 import { Workspace } from '../../ui/canvas/Workspace.js';
 import type { CameraSnapshot } from '../../ui/canvas/useCanvasInput.js';
-import { FloatingWindow, useSiftLayout, dockOutliner, dockAttrs } from '../../sift/index.js';
+import { MoritzLabel } from '../../ui/MoritzText.js';
+import { MoritzSelect } from '../../ui/MoritzSelect.js';
+import { MgLeftBar, MgRightBar } from '@christof/magdalena/react';
 
 // Tiny shared store so the Stage and the Outliner (now separate
 // components hosted in different windows) can share the debug-overlay
@@ -36,33 +38,21 @@ const useStyleSetterUiStore = create<{
  * so the controls live in the same screen position across modules.
  */
 export function StyleSetter(): JSX.Element {
-  const layout = useSiftLayout();
   return (
     <>
       <StyleSetterStage />
-      <FloatingWindow
+      <MgLeftBar
         id="moritz.outliner"
         title="Style"
-        mod="stylesetter"
-        initial={{ x: 16, y: 360, w: 320, h: 480 }}
-        dock={dockOutliner(layout)}
       >
         <StyleSetterOutliner />
-      </FloatingWindow>
-      <FloatingWindow
+      </MgLeftBar>
+      <MgRightBar
         id="moritz.attrs"
         title="Attributes"
-        mod="stylesetter"
-        initial={{
-          x: typeof window !== 'undefined' ? window.innerWidth - 320 - 16 : 800,
-          y: 16,
-          w: 320,
-          h: 560,
-        }}
-        dock={dockAttrs(layout)}
       >
         <StyleSetterAttrs />
-      </FloatingWindow>
+      </MgRightBar>
     </>
   );
 }
@@ -182,16 +172,32 @@ export function StyleSetterOutliner(): JSX.Element {
   const setOverride = useTextPresetsStore((s) => s.setOverride);
   const debugOverlay = useStyleSetterUiStore((s) => s.debugOverlay);
   const setDebugOverlay = useStyleSetterUiStore((s) => s.setDebugOverlay);
+  const presetOptions = [
+    { value: '', label: 'load preset' },
+    ...textPresetSets.flatMap((set) => [
+      { value: `set:${set.id}`, label: set.name, disabled: true },
+      ...set.bubbles.map((b, i) => {
+        const k = presetKey(set.id, i);
+        const modified = overrides[k] !== undefined;
+        return {
+          value: k,
+          label: modified ? `${b.label} modified` : b.label,
+        };
+      }),
+    ]),
+  ];
   return (
     <>
       <Section title="Preset">
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={{ fontSize: 12 }}>Load</span>
+          <span style={{ fontSize: 12 }}>
+            <MoritzLabel text="Load" size={11} />
+          </span>
           <div style={{ display: 'flex', gap: 4 }}>
-            <select
+            <MoritzSelect
               value={activeKey ?? ''}
-              onChange={(e) => {
-                const enc = e.target.value;
+              options={presetOptions}
+              onChange={(enc) => {
                 if (!enc) {
                   setActive('stylesetter', null);
                   return;
@@ -205,22 +211,7 @@ export function StyleSetterOutliner(): JSX.Element {
                 setText(overrides[enc] ?? orig);
               }}
               style={{ padding: 4, flex: 1 }}
-            >
-              <option value="">— load preset —</option>
-              {textPresetSets.map((set) => (
-                <optgroup key={set.id} label={set.name}>
-                  {set.bubbles.map((b, i) => {
-                    const k = presetKey(set.id, i);
-                    const modified = overrides[k] !== undefined;
-                    return (
-                      <option key={k} value={k}>
-                        {b.label}{modified ? ' •' : ''}
-                      </option>
-                    );
-                  })}
-                </optgroup>
-              ))}
-            </select>
+            />
             <button
               className="mz-btn--warn"
               onClick={() => {
@@ -228,9 +219,10 @@ export function StyleSetterOutliner(): JSX.Element {
               }}
               disabled={!activeKey}
               title={activeKey ? 'Overwrite this preset with the current text' : 'Load a preset first to overwrite it'}
+              aria-label="Save preset"
               style={{ padding: '2px 8px' }}
             >
-              Save
+              <MoritzLabel text="Save" size={12} />
             </button>
           </div>
         </label>
@@ -271,7 +263,7 @@ export function StyleSetterOutliner(): JSX.Element {
             checked={debugOverlay}
             onChange={(e) => setDebugOverlay(e.target.checked)}
           />
-          Glyph debug overlay
+          <MoritzLabel text="Glyph debug overlay" size={11} />
         </label>
       </Section>
     </>

@@ -5,74 +5,54 @@
  * A "segment" here is a single cubic Bézier defined by 4 absolute points
  * (p0, c1, c2, p1). A `Stroke` from `types.ts` becomes a chain of segments
  * between consecutive vertices, with control points `vertex.p + handle`.
+ *
+ * Adoption-queue row #2 (see docs/platform-team-wishlist.md): the pure
+ * cubic + tangent + segment-construction helpers now delegate to
+ * `@christof/sigrid-curves` (slice 92, `glyphSpline2d`). The legacy
+ * function names are kept as thin re-exports/aliases so the ~25 call
+ * sites across the renderer don't have to change in lockstep. The
+ * `bezier-js`-backed helpers (`segmentLength`, `closestPointT`,
+ * `sampleStroke`) stay local until upstream ships an arc-length and
+ * projection equivalent; once it does, this file disappears entirely.
  */
 
 import { Bezier } from 'bezier-js';
+import {
+  evalGlyphCubicSegment,
+  glyphStrokeToSegments,
+  glyphVertexPairToSegment,
+  unitTangentGlyphCubicSegment,
+  type GlyphCubicSegment2d,
+} from '@christof/sigrid-curves';
 import type { Stroke, Vec2, Vertex } from './types.js';
 
-export type CubicSegment = {
-  readonly p0: Vec2;
-  readonly c1: Vec2;
-  readonly c2: Vec2;
-  readonly p1: Vec2;
-};
-
-const add = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x + b.x, y: a.y + b.y });
+export type CubicSegment = GlyphCubicSegment2d;
 
 /** Build the chain of cubic segments from a stroke's vertices. */
 export function strokeToSegments(stroke: Stroke): CubicSegment[] {
-  const vs = stroke.vertices;
-  const out: CubicSegment[] = [];
-  for (let i = 0; i < vs.length - 1; i++) {
-    out.push(vertexPairToSegment(vs[i]!, vs[i + 1]!));
-  }
-  return out;
+  // Local `Stroke` is structurally a `GlyphSplineStroke` (it has the
+  // required `id` and `readonly vertices: readonly Vertex[]`, and `Vertex`
+  // is a structural superset of `GlyphSplineVertex`). The extra fields
+  // (`width`, `capStart`, `capEnd`) are ignored upstream.
+  return glyphStrokeToSegments(stroke);
 }
 
 export function vertexPairToSegment(a: Vertex, b: Vertex): CubicSegment {
-  return {
-    p0: a.p,
-    c1: add(a.p, a.outHandle),
-    c2: add(b.p, b.inHandle),
-    p1: b.p,
-  };
+  return glyphVertexPairToSegment(a, b);
 }
 
 /** Sample a single cubic at parameter t∈[0,1]. */
 export function pointAt(seg: CubicSegment, t: number): Vec2 {
-  const u = 1 - t;
-  const b0 = u * u * u;
-  const b1 = 3 * u * u * t;
-  const b2 = 3 * u * t * t;
-  const b3 = t * t * t;
-  return {
-    x: b0 * seg.p0.x + b1 * seg.c1.x + b2 * seg.c2.x + b3 * seg.p1.x,
-    y: b0 * seg.p0.y + b1 * seg.c1.y + b2 * seg.c2.y + b3 * seg.p1.y,
-  };
+  return evalGlyphCubicSegment(seg, t);
 }
 
-/** Unit tangent at parameter t. */
+/**
+ * Unit tangent at parameter t. Falls back to the chord direction at
+ * degenerate parameters (zero-length handles), matching the behaviour the
+ * rest of Moritz' renderer assumes.
+ */
 export function tangentAt(seg: CubicSegment, t: number): Vec2 {
-  const u = 1 - t;
-  // Derivative of a cubic Bézier:
-  //   B'(t) = 3(1-t)^2 (c1-p0) + 6(1-t)t (c2-c1) + 3t^2 (p1-c2)
-  const dx =
-    3 * u * u * (seg.c1.x - seg.p0.x) +
-    6 * u * t * (seg.c2.x - seg.c1.x) +
-    3 * t * t * (seg.p1.x - seg.c2.x);
-  const dy =
-    3 * u * u * (seg.c1.y - seg.p0.y) +
-    6 * u * t * (seg.c2.y - seg.c1.y) +
-    3 * t * t * (seg.p1.y - seg.c2.y);
-  const len = Math.hypot(dx, dy);
-  if (len >= 1e-9) return { x: dx / len, y: dy / len };
-  // Degenerate: handles collapse the derivative (typical for corner anchors
-  // with zero handles → straight line). Fall back to the chord direction.
-  const cx = seg.p1.x - seg.p0.x;
-  const cy = seg.p1.y - seg.p0.y;
-  const clen = Math.hypot(cx, cy);
-  if (clen >= 1e-9) return { x: cx / clen, y: cy / clen };
-  return { x: 1, y: 0 };
+  return unitTangentGlyphCubicSegment(seg, t);
 }
 
 /** Approximate arc length using bezier-js (used for width-profile mapping). */

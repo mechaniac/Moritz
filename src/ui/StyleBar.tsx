@@ -16,6 +16,8 @@ import {
   resetBuiltInStyle,
 } from '../data/builtInStyles.js';
 import type { Style } from '../core/types.js';
+import { MoritzLabel } from './MoritzText.js';
+import { MoritzSelect } from './MoritzSelect.js';
 
 /**
  * Save / load / import / export the active Style.
@@ -107,7 +109,7 @@ export function StyleBar(): JSX.Element {
   const builtInIdSet = new Set(builtInStyles.map((s) => s.id));
   const userIds = savedIds.filter((id) => !builtInIdSet.has(id));
   const options: { id: string; label: string; disabled?: boolean }[] = [];
-  options.push({ id: '__h_built', label: '— Built-in —', disabled: true });
+  options.push({ id: '__h_built', label: 'Built in', disabled: true });
   for (const s of builtInStyles) {
     options.push({
       id: s.id,
@@ -115,28 +117,27 @@ export function StyleBar(): JSX.Element {
     });
   }
   if (userIds.length > 0) {
-    options.push({ id: '__h_user', label: '— Saved —', disabled: true });
+    options.push({ id: '__h_user', label: 'Saved', disabled: true });
     for (const id of userIds) options.push({ id, label: id });
   }
   if (!options.some((o) => o.id === activeId)) {
-    options.push({ id: '__h_unsaved', label: '— Unsaved —', disabled: true });
+    options.push({ id: '__h_unsaved', label: 'Unsaved', disabled: true });
     options.push({ id: activeId, label: `${name} (unsaved)` });
   }
 
   return (
     <div className="mz-fontbar mz-stylebar" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-      <select
+      <MoritzSelect
         value={activeId}
-        onChange={(e) => onLoad(e.target.value)}
+        options={options.map((o) => ({
+          value: o.id,
+          label: o.label,
+          disabled: o.disabled,
+        }))}
+        onChange={onLoad}
         title="Switch style"
         style={{ minWidth: 140 }}
-      >
-        {options.map((o) => (
-          <option key={o.id} value={o.id} disabled={o.disabled}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      />
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -144,17 +145,24 @@ export function StyleBar(): JSX.Element {
         placeholder="Style name"
         title="Saving uses this name's id."
       />
-      <button className="mz-btn--warn" onClick={onSave} title="Save the active style.">Save</button>
+      <button className="mz-btn--warn" onClick={onSave} aria-label="Save" title="Save the active style.">
+        <MoritzLabel text="Save" size={12} />
+      </button>
       <button
         className="mz-btn--warn"
         onClick={onDeleteCurrent}
         disabled={!canDelete}
+        aria-label={builtIn ? 'Reset' : 'Delete'}
         title={builtIn ? 'Reset this built-in style.' : 'Delete this saved style.'}
       >
-        {builtIn ? 'Reset' : 'Delete'}
+        <MoritzLabel text={builtIn ? 'Reset' : 'Delete'} size={12} />
       </button>
-      <button onClick={onExport} title="Download a .style.moritz.json file.">Export</button>
-      <button onClick={() => fileInput.current?.click()} title="Load a .style.moritz.json file.">Import</button>
+      <button onClick={onExport} aria-label="Export" title="Download a .style.moritz.json file.">
+        <MoritzLabel text="Export" size={12} />
+      </button>
+      <button onClick={() => fileInput.current?.click()} aria-label="Import" title="Load a .style.moritz.json file.">
+        <MoritzLabel text="Import" size={12} />
+      </button>
       <input
         ref={fileInput}
         type="file"

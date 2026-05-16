@@ -16,6 +16,8 @@ import {
   isBuiltInId,
   resetBuiltInFont,
 } from '../data/builtInFonts.js';
+import { MoritzLabel } from './MoritzText.js';
+import { MoritzSelect } from './MoritzSelect.js';
 
 /** Save / load / import / export the active font (and the UI view
  *  settings captured alongside it). */
@@ -100,7 +102,7 @@ export function FontBar(): JSX.Element {
   const builtInIdSet = new Set(builtInFonts.map((f) => f.id));
   const userIds = savedIds.filter((id) => !builtInIdSet.has(id));
   const options: { id: string; label: string; disabled?: boolean }[] = [];
-  options.push({ id: '__h_built', label: '— Built-in —', disabled: true });
+  options.push({ id: '__h_built', label: 'Built in', disabled: true });
   for (const f of builtInFonts) {
     options.push({
       id: f.id,
@@ -108,29 +110,28 @@ export function FontBar(): JSX.Element {
     });
   }
   if (userIds.length > 0) {
-    options.push({ id: '__h_user', label: '— Saved —', disabled: true });
+    options.push({ id: '__h_user', label: 'Saved', disabled: true });
     for (const id of userIds) options.push({ id, label: id });
   }
   if (!options.some((o) => o.id === font.id)) {
-    options.push({ id: '__h_unsaved', label: '— Unsaved —', disabled: true });
+    options.push({ id: '__h_unsaved', label: 'Unsaved', disabled: true });
     options.push({ id: font.id, label: `${font.name} (unsaved)` });
   }
 
   return (
     <div className="mz-fontbar" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-      <select
+      <MoritzSelect
         className="mz-fontbar__pick"
         value={font.id}
-        onChange={(e) => onLoad(e.target.value)}
+        options={options.map((o) => ({
+          value: o.id,
+          label: o.label,
+          disabled: o.disabled,
+        }))}
+        onChange={onLoad}
         title="Switch font"
         style={{ minWidth: 180 }}
-      >
-        {options.map((o) => (
-          <option key={o.id} value={o.id} disabled={o.disabled}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      />
       <input
         className={`mz-fontbar__name${name !== font.name ? ' mz-modified-input' : ''}`}
         value={name}
@@ -142,6 +143,7 @@ export function FontBar(): JSX.Element {
       <button
         className="mz-fontbar__save mz-btn--warn"
         onClick={onSave}
+        aria-label="Save"
         title={
           'Save the current font + view settings.\n' +
           'Stored in browser localStorage (key: moritz.fonts.<id>).\n' +
@@ -149,40 +151,43 @@ export function FontBar(): JSX.Element {
           'tracked by git and survives clearing browser storage.'
         }
       >
-        Save
+        <MoritzLabel text="Save" size={12} />
       </button>
       <button
         className="mz-fontbar__delete mz-btn--warn"
         onClick={onDeleteCurrent}
         disabled={!canDelete}
+        aria-label={builtIn ? 'Reset' : 'Delete'}
         title={
           builtIn
             ? 'Discard saved changes to this built-in and reload the bundled original.'
             : 'Delete this saved font from browser localStorage. The exported .moritz.json file (if any) is left alone.'
         }
       >
-        {builtIn ? 'Reset' : 'Delete'}
+        <MoritzLabel text={builtIn ? 'Reset' : 'Delete'} size={12} />
       </button>
       <button
         className="mz-fontbar__export"
         onClick={onExport}
+        aria-label="Export"
         title={
           `Download "${font.id}-<date>.moritz.json" to your browser's\n` +
           'Downloads folder. In dev, also writes a copy to\n' +
           `src/data/fonts/${font.id}.json (the repo's tracked font folder).`
         }
       >
-        Export
+        <MoritzLabel text="Export" size={12} />
       </button>
       <button
         className="mz-fontbar__import"
         onClick={() => fileInput.current?.click()}
+        aria-label="Import"
         title={
           'Load a .moritz.json file (previously exported, or one of the\n' +
           'tracked files under src/data/fonts/).'
         }
       >
-        Import
+        <MoritzLabel text="Import" size={12} />
       </button>
       <input
         ref={fileInput}

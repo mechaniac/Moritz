@@ -18,6 +18,7 @@
  */
 
 import { createContext, useCallback, useContext, useMemo } from 'react';
+import type { CObject } from '@christof/sigrid-geometry';
 import { useAppStore } from '../../state/store.js';
 import { useBubbleStore } from '../../state/bubbleStore.js';
 import { outlineStroke, effectiveStyleForGlyph } from '../../core/stroke.js';
@@ -25,14 +26,22 @@ import { fillLoopsForStrokes, loopsToPath } from '../../core/bubbleFill.js';
 import { GlyphEditor, SettingsPanel } from '../glyphsetter/GlyphSetter.js';
 import { Section } from '../stylesetter/StyleControls.js';
 import { StyleControls } from '../stylesetter/StyleControls.js';
-import { FloatingWindow, useSiftLayout, dockOutliner, dockAttrs } from '../../sift/index.js';
+import { MgLeftBar, MgRightBar, MgOutliner, type MgTreeNode } from '@christof/magdalena/react';
 import { textPresetSets } from '../../data/textPresets.js';
 import {
   presetKey,
   useTextPresetsStore,
 } from '../../state/textPresetsStore.js';
+import { MoritzLabel } from '../../ui/MoritzText.js';
+import { MoritzSelect } from '../../ui/MoritzSelect.js';
+import {
+  moritzBubbleCObjectId,
+  moritzBubbleCObjectMetaFromId,
+  moritzBubbleCObjectSelection,
+} from '../../core/moritzCObjects.js';
 import type {
   Bubble,
+  BubbleFont,
   BubbleLayer,
   Font,
   Glyph,
@@ -282,12 +291,14 @@ function useBubbleSetterState() {
           : undefined
       }
     >
-      Fill
+      <MoritzLabel text="Fill" size={12} />
     </button>
   ) : null;
 
   return {
     bubble,
+    selectedLayerId,
+    selectLayer,
     layer,
     editorFont,
     editorView,
@@ -383,33 +394,21 @@ export function BubbleSetter(props: {
 }
 
 function StandaloneBubbleSetter(): JSX.Element {
-  const layout = useSiftLayout();
   return (
     <>
       <BubbleSetterStage />
-      <FloatingWindow
+      <MgLeftBar
         id="moritz.outliner"
         title="Bubbles"
-        mod="bubblesetter"
-        initial={{ x: 16, y: 360, w: 320, h: 480 }}
-        dock={dockOutliner(layout)}
       >
         <BubbleSetterOutliner />
-      </FloatingWindow>
-      <FloatingWindow
+      </MgLeftBar>
+      <MgRightBar
         id="moritz.attrs"
         title="Style"
-        mod="stylesetter"
-        initial={{
-          x: typeof window !== 'undefined' ? window.innerWidth - 320 - 16 : 800,
-          y: 16,
-          w: 320,
-          h: 560,
-        }}
-        dock={dockAttrs(layout)}
       >
         <BubbleSetterAttrs />
-      </FloatingWindow>
+      </MgRightBar>
     </>
   );
 }
@@ -465,9 +464,13 @@ export function BubbleSetterStage(): JSX.Element {
 
 /** Outliner content for standalone-mode bubble editing. */
 export function BubbleSetterOutliner(): JSX.Element {
-  const { bubble, editorView, setEditorView, style,
+  const { bubble, selectedLayerId, selectLayer, editorView, setEditorView, style,
     standaloneFont, standaloneSelectedId, standaloneSelectBubble } =
     useBubbleSetterState();
+  const cObjectSelection = useMemo(
+    () => moritzBubbleCObjectSelection(standaloneFont, standaloneSelectedId, selectedLayerId),
+    [standaloneFont, standaloneSelectedId, selectedLayerId],
+  );
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <BubbleGrid
@@ -475,6 +478,22 @@ export function BubbleSetterOutliner(): JSX.Element {
         selected={standaloneSelectedId}
         onSelect={standaloneSelectBubble}
         style={style}
+      />
+      <BubbleCObjectOutliner
+        font={standaloneFont}
+        selectedBubbleId={standaloneSelectedId}
+        selection={cObjectSelection}
+        onSelect={(id) => {
+          const meta = moritzBubbleCObjectMetaFromId(standaloneFont, standaloneSelectedId, id);
+          if (meta?.bubbleId && meta.bubbleId !== standaloneSelectedId) {
+            standaloneSelectBubble(meta.bubbleId);
+          }
+          if (meta?.layerId) {
+            selectLayer(meta.layerId);
+          } else if (meta?.role === 'bubble') {
+            selectLayer(null);
+          }
+        }}
       />
       {bubble && <LayerList bubble={bubble} />}
       {bubble && <PreviewTextPanel />}
@@ -486,6 +505,61 @@ export function BubbleSetterOutliner(): JSX.Element {
       />
     </div>
   );
+}
+
+function BubbleCObjectOutliner(props: {
+  font: BubbleFont;
+  selectedBubbleId: string;
+  selection: {
+    readonly root: CObject | null;
+    readonly selected: CObject | null;
+  };
+  onSelect: (id: string) => void;
+}): JSX.Element | null {
+  const root = props.selection.root;
+  if (!root) return null;
+  const bubbleId = props.selectedBubbleId;
+  const bubbleNode = root.children.find(
+    (node) => node.id === moritzBubbleCObjectId(props.font.id, bubbleId),
+  );
+  const nodes = bubbleNode ? [bubbleCObjectToTreeNode(props.font, bubbleId, bubbleNode)] : [];
+  if (nodes.length === 0) return null;
+  return (
+    <MgOutliner
+      nodes={nodes}
+      selectedId={props.selection.selected?.id ?? null}
+      onSelect={props.onSelect}
+    />
+  );
+}
+
+function bubbleCObjectToTreeNode(
+  font: BubbleFont,
+  selectedBubbleId: string,
+  node: CObject,
+): MgTreeNode {
+  const meta = moritzBubbleCObjectMetaFromId(font, selectedBubbleId, node.id);
+  return {
+    id: node.id,
+    label: meta?.label ?? cObjectFallbackLabel(node.id),
+    kind: meta?.role ?? node.kind,
+    selected: node.selected === true,
+    tone:
+      meta?.role === 'bubble'
+        ? 'relevant'
+        : meta?.role === 'bubbleLayer'
+          ? 'generate'
+          : 'neutral',
+    importance: node.selected ? 5 : meta?.role === 'bubble' ? 3 : 1,
+    ...(node.children.length > 0
+      ? { children: node.children.map((child) => bubbleCObjectToTreeNode(font, selectedBubbleId, child)) }
+      : {}),
+  };
+}
+
+function cObjectFallbackLabel(id: string): string {
+  const parts = id.split('.');
+  return parts[parts.length - 1] || id;
 }
 
 /** Attrs (style controls) content for standalone-mode bubble editing. */
@@ -549,7 +623,7 @@ function BubbleGrid(props: {
                 fontFamily: 'monospace',
               }}
             >
-              {b.name}
+              <MoritzLabel text={b.name} size={9} />
             </div>
           </button>
         );
@@ -659,7 +733,9 @@ function LayerList(props: { bubble: Bubble }): JSX.Element {
   const { bubble } = props;
   return (
     <div className="mz-section">
-      <div className="mz-section__title">Layers</div>
+      <div className="mz-section__title">
+        <MoritzLabel text="Layers" size={12} />
+      </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {bubble.layers.map((l) => {
           const active = l.id === selectedLayer;
@@ -690,7 +766,9 @@ function LayerList(props: { bubble: Bubble }): JSX.Element {
                 onClick={(e) => e.stopPropagation()}
                 title="Visible"
               />
-              <span style={{ flex: 1, fontSize: 12 }}>{l.name}</span>
+              <span style={{ flex: 1, fontSize: 12 }}>
+                <MoritzLabel text={l.name} size={11} />
+              </span>
               {l.role && (
                 <span
                   style={{
@@ -830,15 +908,31 @@ function PreviewTextPanel(): JSX.Element | null {
   const setOverride = useTextPresetsStore((s) => s.setOverride);
   if (!bubble) return null;
   const text = bubble.dummyText ?? '';
+  const presetOptions = [
+    { value: '', label: 'load snippet' },
+    ...textPresetSets.flatMap((set) => [
+      { value: `set:${set.id}`, label: set.name, disabled: true },
+      ...set.bubbles.map((b, i) => {
+        const k = presetKey(set.id, i);
+        const modified = overrides[k] !== undefined;
+        return {
+          value: k,
+          label: modified ? `${b.label} modified` : b.label,
+        };
+      }),
+    ]),
+  ];
   return (
     <Section title="Preview text">
       <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <span style={{ fontSize: 12 }}>Load snippet</span>
+        <span style={{ fontSize: 12 }}>
+          <MoritzLabel text="Load snippet" size={11} />
+        </span>
         <div style={{ display: 'flex', gap: 4 }}>
-          <select
+          <MoritzSelect
             value={activeKey ?? ''}
-            onChange={(e) => {
-              const enc = e.target.value;
+            options={presetOptions}
+            onChange={(enc) => {
               if (!enc) {
                 setActive('bubblesetter', null);
                 return;
@@ -853,23 +947,7 @@ function PreviewTextPanel(): JSX.Element | null {
               updateBubble((b) => ({ ...b, dummyText: next }));
             }}
             style={{ padding: 4, flex: 1 }}
-          >
-            <option value="">— load snippet —</option>
-            {textPresetSets.map((set) => (
-              <optgroup key={set.id} label={set.name}>
-                {set.bubbles.map((b, i) => {
-                  const k = presetKey(set.id, i);
-                  const modified = overrides[k] !== undefined;
-                  return (
-                    <option key={k} value={k}>
-                      {b.label}
-                      {modified ? ' •' : ''}
-                    </option>
-                  );
-                })}
-              </optgroup>
-            ))}
-          </select>
+          />
           <button
             className="mz-btn--warn"
             onClick={() => {
@@ -882,8 +960,9 @@ function PreviewTextPanel(): JSX.Element | null {
                 : 'Load a snippet first to overwrite it'
             }
             style={{ padding: '2px 8px' }}
+            aria-label="Save snippet"
           >
-            Save
+            <MoritzLabel text="Save" size={12} />
           </button>
         </div>
       </label>

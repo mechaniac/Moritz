@@ -12,9 +12,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@types/earcut": "^3.0.0",
+    "@christof/magdalena": "file:../Luise/packages/magdalena",
+    "@christof/sigrid": "file:../Luise/packages/sigrid",
+    "@christof/sigrid-curves": "file:../Luise/packages/sigrid-curves",
+    "@christof/sigrid-geometry": "file:../Luise/packages/sigrid-geometry",
     "bezier-js": "^6.1.4",
-    "earcut": "^3.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "zustand": "^4.5.5"

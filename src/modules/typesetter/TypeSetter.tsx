@@ -8,6 +8,7 @@
  */
 
 import { useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
+import type { CObject } from '@christof/sigrid-geometry';
 import { layout } from '../../core/layout.js';
 import { renderLayoutToSvg } from '../../core/export/svg.js';
 import { svgToPng } from '../../core/export/png.js';
@@ -48,8 +49,16 @@ import type {
   WidthProfile,
 } from '../../core/types.js';
 import { Section, StyleControls } from '../stylesetter/StyleControls.js';
-import { FloatingWindow, useSiftLayout, dockOutliner, dockAttrs } from '../../sift/index.js';
+import { MgLeftBar, MgRightBar, MgOutliner, type MgTreeNode } from '@christof/magdalena/react';
 import { StrokeOverlay, type Selection } from '../glyphsetter/GlyphSetter.js';
+import { MoritzLabel } from '../../ui/MoritzText.js';
+import { MoritzSelect } from '../../ui/MoritzSelect.js';
+import {
+  moritzTypeSetterCObjectMetaFromId,
+  moritzTypeSetterObjectSelectionFromCObjectId,
+  moritzTypeSetterPageCObjectSelection,
+  type TypeSetterCObjectInput,
+} from '../../core/moritzCObjects.js';
 
 /**
  * Legacy `block.shape` strings ('speech', 'cloud', 'rect') predate the
@@ -63,7 +72,6 @@ const LEGACY_SHAPE_TO_PRESET: Readonly<Record<string, string>> = {
 };
 
 export function TypeSetter(): JSX.Element {
-  const layout = useSiftLayout();
   const baseFont = useAppStore((s) => s.font);
   const style = useAppStore((s) => s.style);
   const setStyleOverride = useAppStore((s) => s.setStyleOverride);
@@ -286,6 +294,40 @@ export function TypeSetter(): JSX.Element {
   const editingLayerId =
     bubbleEditingLayerId ?? editingBubble?.layers[0]?.id ?? null;
   const isEditingSelected = !!editingBlock && !!editingBubble;
+  const cObjectInput: TypeSetterCObjectInput = useMemo(
+    () => ({
+      pageId: 'live',
+      pageName: 'Page',
+      blocks,
+      bubbleFont,
+    }),
+    [blocks, bubbleFont],
+  );
+  const cObjectSelection = useMemo(
+    () =>
+      moritzTypeSetterPageCObjectSelection(cObjectInput, {
+        blockId: selectedBlockId,
+        layerId: isEditingSelected ? bubbleEditingLayerId : null,
+      }),
+    [cObjectInput, selectedBlockId, isEditingSelected, bubbleEditingLayerId],
+  );
+  const selectCObject = useCallback(
+    (id: string): void => {
+      const selection = moritzTypeSetterObjectSelectionFromCObjectId(cObjectInput, id);
+      if (selection.kind === 'page') {
+        selectBlock(null);
+        selectBubbleEditingLayer(null);
+        return;
+      }
+      selectBlock(selection.blockId);
+      if (selection.kind === 'bubbleLayer') {
+        selectBubbleEditingLayer(selection.layerId);
+      } else {
+        selectBubbleEditingLayer(null);
+      }
+    },
+    [cObjectInput, selectBlock, selectBubbleEditingLayer],
+  );
 
   const onSaveToPreset = useCallback(() => {
     if (!editingBlock || !editingBubble || !editingBlock.bubblePresetId) return;
@@ -349,12 +391,9 @@ export function TypeSetter(): JSX.Element {
       style={{ position: 'absolute', inset: 0 }}
     >
       {/* Outliner — page source + block list */}
-      <FloatingWindow
+      <MgLeftBar
         id="moritz.outliner"
         title="Page"
-        mod="typesetter"
-        initial={{ x: 16, y: 360, w: 320, h: 520 }}
-        dock={dockOutliner(layout)}
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <label
@@ -368,7 +407,7 @@ export function TypeSetter(): JSX.Element {
               textAlign: 'center',
             }}
           >
-            Load comic page…
+            <MoritzLabel text="Load comic page" size={12} />
             <input
               type="file"
               accept="image/*"
@@ -380,24 +419,22 @@ export function TypeSetter(): JSX.Element {
             />
           </label>
           <button onClick={onAddBlock}>
-            + Text block
+            <MoritzLabel text="Add text block" size={12} />
           </button>
           <Section title="Page">
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
-              Format
-              <select
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
+              <MoritzLabel text="Format" size={11} />
+              <MoritzSelect
                 value={pageFormatId}
-                onChange={(e) => setPageFormat(e.target.value)}
-                style={{ padding: 4 }}
-              >
-                {PAGE_FORMATS.map((f) => (
-                  <option key={f.id} value={f.id}>{f.name}</option>
-                ))}
-              </select>
-            </label>
+                options={PAGE_FORMATS.map((f) => ({ value: f.id, label: f.name }))}
+                onChange={setPageFormat}
+              />
+            </div>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12, marginTop: 6 }}>
               <span style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Safe-area inset</span>
+                <span>
+                  <MoritzLabel text="Safe area inset" size={11} />
+                </span>
                 <span style={{ color: 'var(--mz-text-mute)', fontVariantNumeric: 'tabular-nums' }}>
                   {Math.round(border.inset)}px
                 </span>
@@ -418,50 +455,22 @@ export function TypeSetter(): JSX.Element {
               disabled={blocks.length === 0}
               style={{ flex: 1 }}
             >
-              Export SVG
+              <MoritzLabel text="Export SVG" size={12} />
             </button>
             <button
               onClick={() => exportPage(exportResolveFont, blocks, pageW, pageH, 'png', bubbleFont)}
               disabled={blocks.length === 0}
               style={{ flex: 1 }}
             >
-              Export PNG
+              <MoritzLabel text="Export PNG" size={12} />
             </button>
           </div>
-          <Section title="Blocks">
-            {blocks.length === 0 ? (
-              <p style={{ margin: 0, fontSize: 12, color: 'var(--mz-text-mute)' }}>
-                No text blocks yet.
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {blocks.map((b, i) => {
-                  const sel = b.id === selectedBlockId;
-                  return (
-                    <button
-                      key={b.id}
-                      onClick={() => selectBlock(b.id)}
-                      style={{
-                        textAlign: 'left',
-                        padding: '6px 8px',
-                        background: sel ? 'var(--mz-bg)' : 'transparent',
-                        border: `1px solid ${sel ? 'var(--mz-accent)' : 'var(--mz-line)'}`,
-                        borderRadius: 4,
-                        cursor: 'pointer',
-                        fontSize: 12,
-                        color: 'var(--mz-text)',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      <span style={{ color: 'var(--mz-text-mute)', marginRight: 6 }}>{i + 1}.</span>
-                      {b.text || <em style={{ color: 'var(--mz-text-faint)' }}>(empty)</em>}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+          <Section title="Objects">
+            <TypeSetterCObjectOutliner
+              input={cObjectInput}
+              selection={cObjectSelection}
+              onSelect={selectCObject}
+            />
           </Section>
           {selected && (
             <Section title={isEditingSelected ? 'Edit bubble' : 'Block'}>
@@ -496,7 +505,7 @@ export function TypeSetter(): JSX.Element {
             </Section>
           )}
         </div>
-      </FloatingWindow>
+      </MgLeftBar>
 
       {/* Stage — paper page sits directly on the workspace raster.
           No drop-shadowed mini-page-on-stage; the page itself IS the
@@ -536,9 +545,11 @@ export function TypeSetter(): JSX.Element {
               title="Fit page to view"
               style={{ padding: '0 6px', fontSize: 11 }}
             >
-              Fit
+              <MoritzLabel text="Fit" size={11} />
             </button>
-            <span>Zoom</span>
+            <span>
+              <MoritzLabel text="Zoom" size={11} />
+            </span>
             <input
               type="range"
               min={0.05}
@@ -636,17 +647,9 @@ export function TypeSetter(): JSX.Element {
       </div>
 
       {/* Attributes — style controls (identical position across modules) */}
-      <FloatingWindow
+      <MgRightBar
         id="moritz.attrs"
         title="Style"
-        mod="stylesetter"
-        initial={{
-          x: typeof window !== 'undefined' ? window.innerWidth - 320 - 16 : 800,
-          y: 16,
-          w: 320,
-          h: 560,
-        }}
-        dock={dockAttrs(layout)}
       >
         <div className="mz-mod--stylesetter">
           <StyleControls
@@ -655,7 +658,7 @@ export function TypeSetter(): JSX.Element {
             original={loadedStyleSettings}
           />
         </div>
-      </FloatingWindow>
+      </MgRightBar>
     </div>
   );
 }
@@ -1031,7 +1034,7 @@ function BubbleEditPanel(props: {
             color: 'var(--mz-text-mute)',
           }}
         >
-          Layers
+          <MoritzLabel text="Layers" size={11} />
         </div>
         {bubble.layers.map((l) => (
           <div
@@ -1066,7 +1069,7 @@ function BubbleEditPanel(props: {
                 color: 'inherit',
               }}
             >
-              {l.name || l.id}
+              <MoritzLabel text={l.name || l.id} size={11} />
             </button>
             <button
               onClick={() => onRemoveLayer(l.id)}
@@ -1079,7 +1082,9 @@ function BubbleEditPanel(props: {
             </button>
           </div>
         ))}
-        <button onClick={onAddLayer} style={{ padding: '4px 8px', fontSize: 12 }}>+ Layer</button>
+        <button onClick={onAddLayer} style={{ padding: '4px 8px', fontSize: 12 }}>
+          <MoritzLabel text="Add layer" size={12} />
+        </button>
       </div>
       {layer && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -1091,14 +1096,24 @@ function BubbleEditPanel(props: {
               color: 'var(--mz-text-mute)',
             }}
           >
-            Active layer
+            <MoritzLabel text="Active layer" size={11} />
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            <button onClick={onAddStroke} style={{ padding: '4px 8px', fontSize: 12 }}>+ Stroke</button>
-            <button onClick={onAddAnchor} style={{ padding: '4px 8px', fontSize: 12 }}>+ Anchor</button>
-            <button onClick={onRemoveAnchor} style={{ padding: '4px 8px', fontSize: 12 }}>− Anchor</button>
-            <button onClick={onFlipH} style={{ padding: '4px 8px', fontSize: 12 }}>Flip H</button>
-            <button onClick={onFlipV} style={{ padding: '4px 8px', fontSize: 12 }}>Flip V</button>
+            <button onClick={onAddStroke} style={{ padding: '4px 8px', fontSize: 12 }}>
+              <MoritzLabel text="Add stroke" size={12} />
+            </button>
+            <button onClick={onAddAnchor} style={{ padding: '4px 8px', fontSize: 12 }}>
+              <MoritzLabel text="Add anchor" size={12} />
+            </button>
+            <button onClick={onRemoveAnchor} style={{ padding: '4px 8px', fontSize: 12 }}>
+              <MoritzLabel text="Remove anchor" size={12} />
+            </button>
+            <button onClick={onFlipH} style={{ padding: '4px 8px', fontSize: 12 }}>
+              <MoritzLabel text="Flip H" size={12} />
+            </button>
+            <button onClick={onFlipV} style={{ padding: '4px 8px', fontSize: 12 }}>
+              <MoritzLabel text="Flip V" size={12} />
+            </button>
             <button
               onClick={onToggleFill}
               style={{
@@ -1108,7 +1123,7 @@ function BubbleEditPanel(props: {
                 color: fillOn ? 'var(--mz-bg)' : undefined,
               }}
             >
-              Fill: {fillOn ? 'on' : 'off'}
+              <MoritzLabel text={fillOn ? 'Fill on' : 'Fill off'} size={12} />
             </button>
           </div>
         </div>
@@ -1119,10 +1134,10 @@ function BubbleEditPanel(props: {
           disabled={!props.presetId || !props.dirty}
           style={{ padding: '6px 8px' }}
         >
-          Save to preset
+          <MoritzLabel text="Save to preset" size={12} />
         </button>
         <button onClick={props.onSaveAs} style={{ padding: '6px 8px' }}>
-          Save as new preset…
+          <MoritzLabel text="Save as new preset" size={12} />
         </button>
         <button
           onClick={props.onReset}
@@ -1130,7 +1145,7 @@ function BubbleEditPanel(props: {
           className="mz-btn--warn"
           style={{ padding: '6px 8px' }}
         >
-          Reset to preset
+          <MoritzLabel text="Reset to preset" size={12} />
         </button>
       </div>
     </div>
@@ -1465,6 +1480,56 @@ function BlockAnchorGizmo(props: {
   );
 }
 
+function TypeSetterCObjectOutliner(props: {
+  input: TypeSetterCObjectInput;
+  selection: {
+    readonly root: CObject | null;
+    readonly selected: CObject | null;
+  };
+  onSelect: (id: string) => void;
+}): JSX.Element {
+  const root = props.selection.root;
+  if (!root) {
+    return (
+      <p style={{ margin: 0, fontSize: 12, color: 'var(--mz-text-mute)' }}>
+        <MoritzLabel text="No page objects" size={12} />
+      </p>
+    );
+  }
+  return (
+    <MgOutliner
+      nodes={[typeSetterCObjectToTreeNode(props.input, root)]}
+      selectedId={props.selection.selected?.id ?? null}
+      onSelect={props.onSelect}
+    />
+  );
+}
+
+function typeSetterCObjectToTreeNode(input: TypeSetterCObjectInput, node: CObject): MgTreeNode {
+  const meta = moritzTypeSetterCObjectMetaFromId(input, node.id);
+  return {
+    id: node.id,
+    label: meta?.label ?? cObjectFallbackLabel(node.id),
+    kind: meta?.role ?? node.kind,
+    selected: node.selected === true,
+    tone:
+      meta?.role === 'page'
+        ? 'relevant'
+        : meta?.role === 'bubbleLayer'
+          ? 'generate'
+          : 'neutral',
+    importance: node.selected ? 5 : meta?.role === 'page' ? 3 : 1,
+    ...(node.children.length > 0
+      ? { children: node.children.map((child) => typeSetterCObjectToTreeNode(input, child)) }
+      : {}),
+  };
+}
+
+function cObjectFallbackLabel(id: string): string {
+  const parts = id.split('.');
+  return parts[parts.length - 1] || id;
+}
+
 function BlockInspector(props: {
   block: TextBlock;
   onChange: (p: Partial<TextBlock>) => void;
@@ -1502,7 +1567,7 @@ function BlockInspector(props: {
       />
     );
   }
-  // Encoded as `${setId}::${bubbleIdx}` so a single <select> can express
+  // Encoded as `${setId}::${bubbleIdx}` so a single menu can express
   // "pick a set + a bubble within it" without React state of its own.
   const onPickPreset = (encoded: string) => {
     if (!encoded) return;
@@ -1511,34 +1576,56 @@ function BlockInspector(props: {
     const bubble = set?.bubbles[Number(idxStr)];
     if (bubble) onChange({ text: bubble.text });
   };
+  const presetTextOptions = [
+    { value: '', label: 'load preset' },
+    ...textPresetSets.flatMap((set) => [
+      { value: `set:${set.id}`, label: set.name, disabled: true },
+      ...set.bubbles.map((b, i) => ({
+        value: `${set.id}::${i}`,
+        label: b.label,
+      })),
+    ]),
+  ];
+  const fontOptions = [
+    { value: '', label: 'Active font' },
+    ...builtInFonts.map((f) => ({ value: f.id, label: f.name })),
+  ];
+  const styleOptions = [
+    { value: '', label: 'Active style' },
+    ...builtInStyles.map((s) => ({ value: s.id, label: s.name })),
+  ];
+  const bubbleValue =
+    block.shape === 'preset' && block.bubblePresetId
+      ? `preset:${block.bubblePresetId}`
+      : block.shape === 'none'
+        ? 'none'
+        : (() => {
+            const aliased = LEGACY_SHAPE_TO_PRESET[block.shape] ?? block.shape;
+            return bubbleFont.bubbles[aliased]
+              ? `preset:${aliased}`
+              : 'none';
+          })();
+  const bubbleOptions = [
+    { value: 'none', label: 'None text only' },
+    ...Object.values(bubbleFont.bubbles).map((b) => ({
+      value: `preset:${b.id}`,
+      label: b.name,
+    })),
+  ];
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span>Preset text</span>
-        <select
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span>
+          <MoritzLabel text="Preset text" size={11} />
+        </span>
+        <MoritzSelect
           value=""
-          onChange={(e) => {
-            onPickPreset(e.target.value);
-            // Reset to the placeholder so the same preset can be picked
-            // again to re-load (useful after editing the textarea).
-            e.target.value = '';
-          }}
-          style={{ padding: 4 }}
-        >
-          <option value="">— load preset —</option>
-          {textPresetSets.map((set) => (
-            <optgroup key={set.id} label={set.name}>
-              {set.bubbles.map((b, i) => (
-                <option key={`${set.id}::${i}`} value={`${set.id}::${i}`}>
-                  {b.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </label>
+          options={presetTextOptions}
+          onChange={onPickPreset}
+        />
+      </div>
       <label style={{ display: 'flex', flexDirection: 'column' }}>
-        Text
+        <MoritzLabel text="Text" size={11} />
         <textarea
           value={block.text}
           onChange={(e) => onChange({ text: e.target.value })}
@@ -1546,72 +1633,40 @@ function BlockInspector(props: {
           style={{ fontSize: 14, padding: 4 }}
         />
       </label>
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span>Font</span>
-        <select
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span>
+          <MoritzLabel text="Font" size={11} />
+        </span>
+        <MoritzSelect
           value={block.fontId ?? ''}
-          onChange={(e) => onChange({ fontId: e.target.value || undefined })}
-          style={{ padding: 4 }}
-        >
-          <option value="">Active font</option>
-          {builtInFonts.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span>Style</span>
-        <select
+          options={fontOptions}
+          onChange={(value) => onChange({ fontId: value || undefined })}
+        />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span>
+          <MoritzLabel text="Style" size={11} />
+        </span>
+        <MoritzSelect
           value={block.styleId ?? ''}
-          onChange={(e) => onChange({ styleId: e.target.value || undefined })}
-          style={{ padding: 4 }}
-        >
-          <option value="">Active style</option>
-          {builtInStyles.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span>Bubble (from “{bubbleFont.name}”)</span>
-        <select
-          value={
-            block.shape === 'preset' && block.bubblePresetId
-              ? `preset:${block.bubblePresetId}`
-              : block.shape === 'none'
-                ? 'none'
-                : // Legacy values ('speech','cloud','rect') from older
-                  // pages: surface them as the matching preset if the
-                  // active font has one with the same / aliased id.
-                  (() => {
-                    const aliased = LEGACY_SHAPE_TO_PRESET[block.shape] ?? block.shape;
-                    return bubbleFont.bubbles[aliased]
-                      ? `preset:${aliased}`
-                      : 'none';
-                  })()
-          }
-          onChange={(e) => {
-            const v = e.target.value;
-            if (v === 'none') {
+          options={styleOptions}
+          onChange={(value) => onChange({ styleId: value || undefined })}
+        />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <MoritzLabel text={`Bubble from ${bubbleFont.name}`} size={11} />
+        <MoritzSelect
+          value={bubbleValue}
+          options={bubbleOptions}
+          onChange={(value) => {
+            if (value === 'none') {
               onChange({ shape: 'none', bubblePresetId: undefined });
-            } else if (v.startsWith('preset:')) {
-              onChange({ shape: 'preset', bubblePresetId: v.slice(7) });
+            } else if (value.startsWith('preset:')) {
+              onChange({ shape: 'preset', bubblePresetId: value.slice(7) });
             }
           }}
-          style={{ padding: 4 }}
-        >
-          <option value="none">None (text only)</option>
-          {Object.values(bubbleFont.bubbles).map((b) => (
-            <option key={b.id} value={`preset:${b.id}`}>
-              {b.name}
-            </option>
-          ))}
-        </select>
-      </label>
+        />
+      </div>
       {block.shape !== 'none' && (
         <>
           <NumberRow
@@ -1665,7 +1720,7 @@ function BlockInspector(props: {
         onChange={(v) => onChange({ italic: v })}
       />
       <button onClick={props.onDelete} className="mz-btn--warn" style={{ marginTop: 12 }}>
-        Delete block
+        <MoritzLabel text="Delete block" size={12} />
       </button>
     </div>
   );
@@ -1682,7 +1737,9 @@ function NumberRow(props: {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <span style={{ display: 'flex', justifyContent: 'space-between' }}>
-        <span>{props.label}</span>
+        <span>
+          <MoritzLabel text={props.label} size={11} />
+        </span>
         <span style={{ color: 'var(--mz-text-mute)', fontVariantNumeric: 'tabular-nums' }}>
           {props.value.toFixed(2)}
         </span>

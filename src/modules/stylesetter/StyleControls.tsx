@@ -18,6 +18,8 @@ import {
   type TriMode,
 } from '../../core/types.js';
 import { defaultFont } from '../../data/defaultFont.js';
+import { MoritzLabel } from '../../ui/MoritzText.js';
+import { MoritzSelect, type MoritzSelectOption } from '../../ui/MoritzSelect.js';
 
 const FALLBACK_BASELINE: StyleSettings = defaultFont.style;
 const EFFECT_SECTIONS: readonly SectionId[] = [
@@ -33,6 +35,12 @@ const CAP_OPTIONS = [
   { value: 'flat', label: 'flat' },
   { value: 'tapered', label: 'tapered' },
 ] as const;
+
+const EFFECT_SCOPE_OPTIONS: readonly MoritzSelectOption[] = [
+  { value: 'instance', label: 'instance' },
+  { value: 'glyph', label: 'glyph' },
+  { value: 'text', label: 'text' },
+];
 
 export type StyleControlsProps = {
   style: StyleSettings;
@@ -461,7 +469,7 @@ export function StyleControls(props: StyleControlsProps): JSX.Element {
                   checked={ribbonSpineLengthAwareOf(style)}
                   onChange={(e) => setStyle({ ribbonSpineLengthAware: e.target.checked })}
                 />
-                Length-aware spine
+                <MoritzLabel text="Length aware spine" size={11} />
               </label>
               <Slider
                 label="Shape subdiv"
@@ -860,12 +868,13 @@ function BulkResetBar(props: {
           flex: 1,
         }}
       >
-        {label}
+        <MoritzLabel text={label} size={11} />
       </span>
       <button
         type="button"
         onClick={reset.onClick}
         disabled={!reset.modified}
+        aria-label={`Reset ${label.toLowerCase()}`}
         title={reset.modified ? `Reset ${label.toLowerCase()} to default` : 'Nothing to reset'}
         style={{
           border: '1px solid',
@@ -878,7 +887,7 @@ function BulkResetBar(props: {
           borderRadius: 4,
         }}
       >
-        ↻ Reset {label.toLowerCase()}
+        <MoritzLabel text={`Reset ${label.toLowerCase()}`} size={11} />
       </button>
     </div>
   );
@@ -909,7 +918,9 @@ export function Section(props: {
         <span aria-hidden style={{ fontSize: 10, width: 10, display: 'inline-block' }}>
           {open ? '▾' : '▸'}
         </span>
-        <span style={{ flex: 1 }}>{props.title}</span>
+        <span style={{ flex: 1 }}>
+          <MoritzLabel text={props.title} size={12} />
+        </span>
         {reset && (
           <button
             type="button"
@@ -938,7 +949,7 @@ export function Section(props: {
   );
 }
 
-type SelectOption = { value: string; label: string };
+type SelectOption = MoritzSelectOption;
 
 export function InlineSelect(props: {
   label: string;
@@ -951,24 +962,21 @@ export function InlineSelect(props: {
   const modified =
     props.defaultValue !== undefined && props.value !== props.defaultValue;
   return (
-    <label
+    <div
       title={props.tooltip}
       className={modified ? 'mz-modified' : undefined}
       style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}
     >
-      <span style={{ width: 90, flexShrink: 0 }}>{props.label}</span>
-      <select
+      <span style={{ width: 90, flexShrink: 0 }}>
+        <MoritzLabel text={props.label} size={11} />
+      </span>
+      <MoritzSelect
         value={props.value}
-        onChange={(e) => props.onChange(e.target.value)}
-        style={{ flex: 1, padding: '1px 4px', minWidth: 0 }}
-      >
-        {props.options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </label>
+        options={props.options}
+        onChange={props.onChange}
+        style={{ flex: 1, minWidth: 0 }}
+      />
+    </div>
   );
 }
 
@@ -986,13 +994,13 @@ export function Slider(props: {
     props.defaultValue !== undefined &&
     Math.abs(props.value - props.defaultValue) > 1e-9;
   return (
-    <label
+    <div
       title={props.tooltip}
       className={modified ? 'mz-modified' : undefined}
       style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}
     >
       <span style={{ width: 90, flexShrink: 0, color: 'inherit' }}>
-        {props.label}
+        <MoritzLabel text={props.label} size={11} />
       </span>
       <input
         type="range"
@@ -1021,7 +1029,7 @@ export function Slider(props: {
           padding: '1px 2px',
         }}
       />
-    </label>
+    </div>
   );
 }
 
@@ -1041,22 +1049,21 @@ export function EffectScopePicker(props: {
   const modified =
     props.defaultValue !== undefined && props.value !== props.defaultValue;
   return (
-    <label
+    <div
       title={props.tooltip}
       className={modified ? 'mz-modified' : undefined}
       style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}
     >
-      <span style={{ width: 90, flexShrink: 0 }}>{props.label}</span>
-      <select
+      <span style={{ width: 90, flexShrink: 0 }}>
+        <MoritzLabel text={props.label} size={11} />
+      </span>
+      <MoritzSelect
         value={props.value}
-        onChange={(e) => props.onChange(e.target.value as EffectScope)}
-        style={{ flex: 1, padding: '1px 4px' }}
-      >
-        <option value="instance">instance</option>
-        <option value="glyph">glyph</option>
-        <option value="text">text</option>
-      </select>
-    </label>
+        options={EFFECT_SCOPE_OPTIONS}
+        onChange={(value) => props.onChange(value as EffectScope)}
+        style={{ flex: 1, minWidth: 0 }}
+      />
+    </div>
   );
 }
 

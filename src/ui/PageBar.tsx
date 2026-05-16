@@ -18,6 +18,8 @@ import {
   singleEntryLibrary,
 } from '../core/page.js';
 import type { Page, Style } from '../core/types.js';
+import { MoritzLabel } from './MoritzText.js';
+import { MoritzSelect } from './MoritzSelect.js';
 
 /**
  * Save / load / import / export the active Page (the TypeSetter scene).
@@ -155,46 +157,52 @@ export function PageBar(): JSX.Element {
 
   const options: { id: string; label: string; disabled?: boolean }[] = [];
   if (savedIds.length === 0) {
-    options.push({ id: '__h_empty', label: '— No saved pages —', disabled: true });
+    options.push({ id: '__h_empty', label: 'No saved pages', disabled: true });
   } else {
-    options.push({ id: '__h_saved', label: '— Saved —', disabled: true });
+    options.push({ id: '__h_saved', label: 'Saved', disabled: true });
     for (const id of savedIds) options.push({ id, label: id });
   }
   if (!options.some((o) => o.id === activeId)) {
-    options.push({ id: '__h_unsaved', label: '— Unsaved —', disabled: true });
+    options.push({ id: '__h_unsaved', label: 'Unsaved', disabled: true });
     options.push({ id: activeId, label: `${name} (unsaved)` });
   }
 
   return (
     <div className="mz-fontbar mz-pagebar" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-      <select
+      <MoritzSelect
         value={activeId}
-        onChange={(e) => onLoad(e.target.value)}
+        options={options.map((o) => ({
+          value: o.id,
+          label: o.label,
+          disabled: o.disabled,
+        }))}
+        onChange={onLoad}
         title="Switch page"
         style={{ minWidth: 140 }}
-      >
-        {options.map((o) => (
-          <option key={o.id} value={o.id} disabled={o.disabled}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+      />
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
         style={{ padding: '4px 6px', width: 120 }}
         placeholder="Page name"
       />
-      <button className="mz-btn--warn" onClick={onSave} title="Save the active page (image + blocks).">Save</button>
+      <button className="mz-btn--warn" onClick={onSave} aria-label="Save" title="Save the active page (image + blocks).">
+        <MoritzLabel text="Save" size={12} />
+      </button>
       <button
         className="mz-btn--warn"
         onClick={onDeleteCurrent}
         disabled={!savedIds.includes(activeId)}
+        aria-label="Delete"
       >
-        Delete
+        <MoritzLabel text="Delete" size={12} />
       </button>
-      <button onClick={onExport} title="Download a .page.moritz.json file.">Export</button>
-      <button onClick={() => fileInput.current?.click()} title="Load a .page.moritz.json file.">Import</button>
+      <button onClick={onExport} aria-label="Export" title="Download a .page.moritz.json file.">
+        <MoritzLabel text="Export" size={12} />
+      </button>
+      <button onClick={() => fileInput.current?.click()} aria-label="Import" title="Load a .page.moritz.json file.">
+        <MoritzLabel text="Import" size={12} />
+      </button>
       <input
         ref={fileInput}
         type="file"

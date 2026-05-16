@@ -88,6 +88,8 @@ function moritzFiles(): Plugin {
 export default defineConfig({
   plugins: [react(), moritzFiles()],
   server: {
+    port: 5181,
+    strictPort: true,
     watch: {
       // Saving writes into `src/data/{fonts,styles,pages}/<id>.json`. We
       // don't want that to trigger HMR / a full reload — it would yank

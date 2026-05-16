@@ -22,6 +22,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { CObject } from '@christof/sigrid-geometry';
 import { effectiveStyleForGlyph, outlineStroke, redistributePolygonEvenly, widthAt } from '../../core/stroke.js';
 import {
   closestPointT,
@@ -73,15 +74,29 @@ import {
   ribbonSpineSubdivOf,
   type Font,
   type Glyph,
+  type GlyphAnimatorComponent,
   type Stroke,
   type StyleSettings,
   type Vec2,
+  type Vertex,
   type WidthProfile,
 } from '../../core/types.js';
+import { animateGlyphWithAnimator } from '../../core/glyphAnimator.js';
+import {
+  moritzGlyphCObjectId,
+  moritzGlyphCObjectMetaFromId,
+  moritzGlyphCObjectSelection,
+  moritzGlyphObjectSelectionFromCObjectId,
+  type GlyphObjectSelection,
+  type MoritzCObjectMeta,
+  type MoritzGlyphCObjectSelection,
+} from '../../core/moritzCObjects.js';
 import type { GuideSettings } from './guides.js';
 import { useAppStore } from '../../state/store.js';
 import { StyleControls } from '../stylesetter/StyleControls.js';
-import { FloatingWindow, useSiftLayout, dockOutliner, dockAttrs, dockItemAttrs } from '../../sift/index.js';
+import { MoritzLabel } from '../../ui/MoritzText.js';
+import { MoritzSelect } from '../../ui/MoritzSelect.js';
+import { MgLeftBar, MgRightBar, MgCOptions, MgOutliner, type MgTreeNode } from '@christof/magdalena/react';
 
 // Module-level clipboard for copied strokes. Persists across glyph switches
 // (the GlyphEditor remounts when `selectedGlyph` changes) and even module
@@ -188,11 +203,7 @@ function extractKerningFromReference(
   return out;
 }
 
-export type Selection =
-  | { kind: 'none' }
-  | { kind: 'stroke'; strokeIdx: number }
-  | { kind: 'anchor'; strokeIdx: number; vIdx: number }
-  | { kind: 'multi'; strokeIdxs: readonly number[] };
+export type Selection = GlyphObjectSelection;
 
 type Drag =
   | { kind: 'anchor'; strokeIdx: number; vIdx: number }
@@ -204,47 +215,57 @@ type Drag =
   | { kind: 'pan'; startClientX: number; startClientY: number; startPanX: number; startPanY: number };
 
 export function GlyphSetter(): JSX.Element {
-  const layout = useSiftLayout();
+  const font = useAppStore((s) => s.font);
+  const selectedChar = useAppStore((s) => s.selectedGlyph);
+  const [selection, setSelection] = useState<Selection>({ kind: 'none' });
+  const cObjectSelection = useMemo(
+    () => moritzGlyphCObjectSelection(font, selectedChar, selection),
+    [font, selectedChar, selection],
+  );
+  useEffect(() => {
+    setSelection({ kind: 'none' });
+  }, [selectedChar]);
+
   return (
     <>
-      <GlyphSetterStage />
-      <FloatingWindow
+      <GlyphSetterStage
+        selection={selection}
+        onSelectionChange={setSelection}
+      />
+      <MgLeftBar
         id="moritz.outliner"
         title="Glyphs"
-        mod="glyphsetter"
-        initial={{ x: 16, y: 360, w: 320, h: 480 }}
-        dock={dockOutliner(layout)}
       >
-        <GlyphSetterOutliner />
-      </FloatingWindow>
-      <FloatingWindow
-        id="moritz.itemattrs"
-        bare
-        mod="glyphsetter"
-        initial={{ x: 320, y: 132, w: 280, h: 320 }}
-        dock={dockItemAttrs(layout)}
-      >
-        <GlyphSetterItemAttrs />
-      </FloatingWindow>
-      <FloatingWindow
+        <GlyphSetterOutliner
+          cObjectSelection={cObjectSelection}
+          onSelectionChange={setSelection}
+        />
+      </MgLeftBar>
+      {cObjectSelection.selected ? (
+        <MgCOptions
+          id="moritz.itemattrs"
+          title={cObjectSelection.meta?.label}
+        >
+          <GlyphSetterItemAttrs
+            cObjectSelection={cObjectSelection}
+            onSelectionChange={setSelection}
+          />
+        </MgCOptions>
+      ) : null}
+      <MgRightBar
         id="moritz.attrs"
         title="Style"
-        mod="stylesetter"
-        initial={{
-          x: typeof window !== 'undefined' ? window.innerWidth - 320 - 16 : 800,
-          y: 16,
-          w: 320,
-          h: 560,
-        }}
-        dock={dockAttrs(layout)}
       >
         <GlyphSetterAttrs />
-      </FloatingWindow>
+      </MgRightBar>
     </>
   );
 }
 
-export function GlyphSetterStage(): JSX.Element {
+export function GlyphSetterStage(props: {
+  selection: Selection;
+  onSelectionChange: (selection: Selection) => void;
+}): JSX.Element {
   const font = useAppStore((s) => s.font);
   const selectedChar = useAppStore((s) => s.selectedGlyph);
   const updateSelectedGlyph = useAppStore((s) => s.updateSelectedGlyph);
@@ -279,6 +300,8 @@ export function GlyphSetterStage(): JSX.Element {
             view={view}
             setView={setGlyphView}
             font={font}
+            selection={props.selection}
+            onSelectionChange={props.onSelectionChange}
           />
         ) : (
           <p style={{ padding: 16 }}>No glyph selected.</p>
@@ -288,7 +311,10 @@ export function GlyphSetterStage(): JSX.Element {
   );
 }
 
-export function GlyphSetterOutliner(): JSX.Element {
+export function GlyphSetterOutliner(props: {
+  cObjectSelection: MoritzGlyphCObjectSelection;
+  onSelectionChange: (selection: Selection) => void;
+}): JSX.Element {
   const font = useAppStore((s) => s.font);
   const selectedChar = useAppStore((s) => s.selectedGlyph);
   const selectGlyph = useAppStore((s) => s.selectGlyph);
@@ -303,13 +329,21 @@ export function GlyphSetterOutliner(): JSX.Element {
       <LeftTabBar value={leftTab} onChange={setLeftTab} />
       <div style={{ marginTop: 'var(--sf-pad-tight)' }}>
         {leftTab === 'glyphs' ? (
-          <GlyphGrid
-            chars={Object.keys(font.glyphs)}
-            selected={selectedChar}
-            onSelect={selectGlyph}
-            font={font}
-            view={view}
-          />
+          <>
+            <GlyphGrid
+              chars={Object.keys(font.glyphs)}
+              selected={selectedChar}
+              onSelect={selectGlyph}
+              font={font}
+              view={view}
+            />
+            <GlyphCObjectOutliner
+              font={font}
+              selectedChar={selectedChar}
+              cObjectSelection={props.cObjectSelection}
+              onSelectionChange={props.onSelectionChange}
+            />
+          </>
         ) : leftTab === 'kerning' ? (
           <KerningList
             font={font}
@@ -344,9 +378,11 @@ export function GlyphSetterAttrs(): JSX.Element {
   );
 }
 
-/** Per-item (per-glyph) attributes panel — content of the floating
- *  "Glyph" window. Same slot across every workspace (see `dockItemAttrs`). */
-export function GlyphSetterItemAttrs(): JSX.Element {
+/** Per-item attributes panel in the cOptions region. */
+export function GlyphSetterItemAttrs(props: {
+  cObjectSelection: MoritzGlyphCObjectSelection;
+  onSelectionChange: (selection: Selection) => void;
+}): JSX.Element {
   const font = useAppStore((s) => s.font);
   const selectedChar = useAppStore((s) => s.selectedGlyph);
   const view = useAppStore((s) => s.glyphView);
@@ -355,16 +391,450 @@ export function GlyphSetterItemAttrs(): JSX.Element {
   const glyph = font.glyphs[selectedChar];
   if (!glyph) return <p style={{ color: 'var(--mz-text-mute)', fontSize: 12 }}>No glyph selected.</p>;
   return (
-    <GlyphMetricsPanel
-      glyph={glyph}
-      view={view}
-      updateGlyph={updateSelectedGlyph}
-      updateAllGlyphs={updateAllGlyphs}
-    />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <CObjectSelectionHeader meta={props.cObjectSelection.meta} />
+      {props.cObjectSelection.meta?.role === 'anchor' ? (
+        <AnchorInstancePanel
+          glyph={glyph}
+          meta={props.cObjectSelection.meta}
+          updateGlyph={updateSelectedGlyph}
+        />
+      ) : props.cObjectSelection.meta?.role === 'stroke' ? (
+        <StrokeInstancePanel
+          glyph={glyph}
+          meta={props.cObjectSelection.meta}
+        />
+      ) : props.cObjectSelection.meta?.role === 'multi' ? (
+        <MultiStrokePanel meta={props.cObjectSelection.meta} />
+      ) : props.cObjectSelection.meta?.role === 'animator' ? (
+        <AnimatorInstancePanel
+          glyph={glyph}
+          updateGlyph={updateSelectedGlyph}
+          onSelectionChange={props.onSelectionChange}
+        />
+      ) : (
+        <GlyphMetricsPanel
+          glyph={glyph}
+          view={view}
+          updateGlyph={updateSelectedGlyph}
+          updateAllGlyphs={updateAllGlyphs}
+          onSelectAnimator={() => props.onSelectionChange({ kind: 'animator' })}
+        />
+      )}
+    </div>
+  );
+}
+
+function CObjectSelectionHeader(props: {
+  meta: MoritzCObjectMeta | null;
+}): JSX.Element | null {
+  if (!props.meta) return null;
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+        paddingBottom: 4,
+        borderBottom: '1px solid var(--mz-line)',
+      }}
+    >
+      <span
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          color: 'var(--mz-text)',
+        }}
+      >
+        <MoritzLabel text={props.meta.label} size={11} />
+      </span>
+      <span
+        style={{
+          fontSize: 10,
+          color: 'var(--mz-text-faint)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
+        title={props.meta.id}
+      >
+        <MoritzLabel text={selectionRoleLabel(props.meta.role)} size={10} />
+      </span>
+    </div>
+  );
+}
+
+function selectionRoleLabel(role: MoritzCObjectMeta['role']): string {
+  switch (role) {
+    case 'glyph':
+      return 'Glyph selection';
+    case 'animator':
+      return 'Animator component';
+    case 'stroke':
+      return 'Stroke selection';
+    case 'anchor':
+      return 'Anchor selection';
+    case 'multi':
+      return 'Multi-stroke selection';
+    case 'font':
+      return 'Font selection';
+    case 'handle':
+      return 'Handle selection';
+    default:
+      return 'Object selection';
+  }
+}
+
+function AnchorInstancePanel(props: {
+  glyph: Glyph;
+  meta: MoritzCObjectMeta;
+  updateGlyph: (fn: (g: Glyph) => Glyph) => void;
+}): JSX.Element {
+  const strokeIdx = props.meta.strokeIdx ?? -1;
+  const vIdx = props.meta.vIdx ?? -1;
+  const anchor = props.glyph.strokes[strokeIdx]?.vertices[vIdx];
+  if (!anchor) {
+    return <p style={{ color: 'var(--mz-text-mute)', fontSize: 12 }}>Anchor no longer exists.</p>;
+  }
+  const updateAnchor = (fn: (anchor: Vertex) => Vertex): void => {
+    props.updateGlyph((glyph) => {
+      const stroke = glyph.strokes[strokeIdx];
+      if (!stroke || !stroke.vertices[vIdx]) return glyph;
+      return {
+        ...glyph,
+        strokes: glyph.strokes.map((s, si) =>
+          si === strokeIdx
+            ? {
+                ...s,
+                vertices: s.vertices.map((v, vi) => (vi === vIdx ? fn(v) : v)),
+              }
+            : s,
+        ),
+      };
+    });
+  };
+  const coordRange = Math.max(props.glyph.box.w, props.glyph.box.h, 100);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <NumSlider
+        label="X"
+        min={-coordRange}
+        max={props.glyph.box.w + coordRange}
+        step={1}
+        value={anchor.p.x}
+        onChange={(x) => updateAnchor((v) => ({ ...v, p: { ...v.p, x } }))}
+      />
+      <NumSlider
+        label="Y"
+        min={-coordRange}
+        max={props.glyph.box.h + coordRange}
+        step={1}
+        value={anchor.p.y}
+        onChange={(y) => updateAnchor((v) => ({ ...v, p: { ...v.p, y } }))}
+      />
+      <NumSlider
+        label="In X"
+        min={-coordRange}
+        max={coordRange}
+        step={1}
+        value={anchor.inHandle.x}
+        onChange={(x) => updateAnchor((v) => ({ ...v, inHandle: { ...v.inHandle, x } }))}
+      />
+      <NumSlider
+        label="In Y"
+        min={-coordRange}
+        max={coordRange}
+        step={1}
+        value={anchor.inHandle.y}
+        onChange={(y) => updateAnchor((v) => ({ ...v, inHandle: { ...v.inHandle, y } }))}
+      />
+      <NumSlider
+        label="Out X"
+        min={-coordRange}
+        max={coordRange}
+        step={1}
+        value={anchor.outHandle.x}
+        onChange={(x) => updateAnchor((v) => ({ ...v, outHandle: { ...v.outHandle, x } }))}
+      />
+      <NumSlider
+        label="Out Y"
+        min={-coordRange}
+        max={coordRange}
+        step={1}
+        value={anchor.outHandle.y}
+        onChange={(y) => updateAnchor((v) => ({ ...v, outHandle: { ...v.outHandle, y } }))}
+      />
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          fontSize: 12,
+          color: 'var(--mz-text-mute)',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={anchor.breakTangent === true}
+          onChange={(e) => updateAnchor((v) => ({ ...v, breakTangent: e.target.checked }))}
+        />
+        <MoritzLabel text="Break tangent" size={11} />
+      </label>
+    </div>
+  );
+}
+
+function StrokeInstancePanel(props: {
+  glyph: Glyph;
+  meta: MoritzCObjectMeta;
+}): JSX.Element {
+  const strokeIdx = props.meta.strokeIdx ?? -1;
+  const stroke = props.glyph.strokes[strokeIdx];
+  if (!stroke) {
+    return <p style={{ color: 'var(--mz-text-mute)', fontSize: 12 }}>Stroke no longer exists.</p>;
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+      <div style={{ color: 'var(--mz-text-mute)' }}>
+        <MoritzLabel text={`Anchors ${stroke.vertices.length}`} size={12} />
+      </div>
+    </div>
+  );
+}
+
+function MultiStrokePanel(props: {
+  meta: MoritzCObjectMeta;
+}): JSX.Element {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+      <div style={{ color: 'var(--mz-text-mute)' }}>
+        <MoritzLabel text={`Selected strokes ${props.meta.selectedIds?.length ?? 0}`} size={12} />
+      </div>
+    </div>
+  );
+}
+
+function AnimatorInstancePanel(props: {
+  glyph: Glyph;
+  updateGlyph: (fn: (g: Glyph) => Glyph) => void;
+  onSelectionChange: (selection: Selection) => void;
+}): JSX.Element {
+  const animator = props.glyph.animator;
+  if (!animator) {
+    return (
+      <p style={{ color: 'var(--mz-text-mute)', fontSize: 12 }}>
+        <MoritzLabel text="No animator" size={12} />
+      </p>
+    );
+  }
+  const updateAnimator = (fn: (animator: GlyphAnimatorComponent) => GlyphAnimatorComponent): void => {
+    props.updateGlyph((glyph) => {
+      if (!glyph.animator) return glyph;
+      return { ...glyph, animator: fn(glyph.animator) };
+    });
+  };
+  const symbolText = animator.symbols.map((symbol) => symbol.id).join(', ');
+  const selectedStrokeId =
+    animator.strokeIds && animator.strokeIds.length === 1 ? animator.strokeIds[0] : '';
+  const strokeOptions = [
+    { value: '', label: 'All strokes' },
+    ...props.glyph.strokes.map((stroke, index) => ({
+      value: stroke.id,
+      label: `Stroke ${index + 1}`,
+    })),
+  ];
+  const easingOptions = [
+    { value: 'linear', label: 'Linear' },
+    { value: 'smoothstep', label: 'Smoothstep' },
+  ];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
+      <label style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ color: 'var(--mz-text-mute)' }}>
+          <MoritzLabel text="Symbols" size={11} />
+        </span>
+        <input
+          value={symbolText}
+          onChange={(event) => {
+            const symbols = event.target.value
+              .split(',')
+              .map((part) => part.trim())
+              .filter(Boolean)
+              .map((id) => ({ id }));
+            updateAnimator((cur) => ({ ...cur, symbols }));
+          }}
+          style={{
+            minWidth: 0,
+            padding: '2px 4px',
+            background: 'var(--mz-bg)',
+            color: 'var(--mz-text)',
+            border: '1px solid var(--mz-line)',
+            borderRadius: 4,
+          }}
+        />
+      </label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ color: 'var(--mz-text-mute)' }}>
+          <MoritzLabel text="Stroke" size={11} />
+        </span>
+        <MoritzSelect
+          value={selectedStrokeId ?? ''}
+          options={strokeOptions}
+          onChange={(strokeId) => {
+            updateAnimator((cur) => ({
+              ...cur,
+              strokeIds: strokeId ? [strokeId] : undefined,
+            }));
+          }}
+          style={{ minWidth: 0 }}
+        />
+      </div>
+      <NumSlider
+        label="Phase"
+        min={-1}
+        max={1}
+        step={0.01}
+        value={animator.phase ?? 0}
+        onChange={(phase) => updateAnimator((cur) => ({ ...cur, phase }))}
+      />
+      <NumSlider
+        label="Speed"
+        min={-2}
+        max={2}
+        step={0.01}
+        value={animator.speed ?? 0}
+        onChange={(speed) => updateAnimator((cur) => ({ ...cur, speed }))}
+      />
+      <NumSlider
+        label="Spacing"
+        min={0}
+        max={1}
+        step={0.01}
+        value={animator.spacing ?? 0}
+        onChange={(spacing) => updateAnimator((cur) => ({ ...cur, spacing }))}
+      />
+      <NumSlider
+        label="Samples"
+        min={2}
+        max={64}
+        step={1}
+        value={animator.samplesPerSegment ?? 16}
+        onChange={(samplesPerSegment) =>
+          updateAnimator((cur) => ({
+            ...cur,
+            samplesPerSegment: Math.max(2, Math.round(samplesPerSegment)),
+          }))
+        }
+      />
+      <label
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          color: 'var(--mz-text-mute)',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={animator.loop === true}
+          onChange={(event) => updateAnimator((cur) => ({ ...cur, loop: event.target.checked }))}
+        />
+        <MoritzLabel text="Loop" size={11} />
+      </label>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={{ color: 'var(--mz-text-mute)' }}>
+          <MoritzLabel text="Easing" size={11} />
+        </span>
+        <MoritzSelect
+          value={animator.easing ?? 'linear'}
+          options={easingOptions}
+          onChange={(value) =>
+            updateAnimator((cur) => ({
+              ...cur,
+              easing: value === 'smoothstep' ? 'smoothstep' : 'linear',
+            }))
+          }
+          style={{ minWidth: 0 }}
+        />
+      </div>
+      <button
+        type="button"
+        aria-label="Remove animator"
+        title="Remove the animator component from this glyph."
+        onClick={() => {
+          props.updateGlyph((glyph) => {
+            const { animator: _animator, ...rest } = glyph;
+            return rest;
+          });
+          props.onSelectionChange({ kind: 'none' });
+        }}
+      >
+        <MoritzLabel text="Remove animator" size={12} />
+      </button>
+    </div>
   );
 }
 
 // ---------- Sidebar: glyph grid --------------------------------------------
+
+function GlyphCObjectOutliner(props: {
+  font: Font;
+  selectedChar: string;
+  cObjectSelection: MoritzGlyphCObjectSelection;
+  onSelectionChange: (selection: Selection) => void;
+}): JSX.Element | null {
+  const nodes = useMemo(() => {
+    const root = props.cObjectSelection.root;
+    if (!root) return [];
+    const glyphId = moritzGlyphCObjectId(props.font.id, props.selectedChar);
+    const glyphNode = root.children.find((node) => node.id === glyphId);
+    return glyphNode
+      ? [cObjectToMgTreeNode(props.font, props.selectedChar, glyphNode)]
+      : [];
+  }, [props.cObjectSelection.root, props.font, props.selectedChar]);
+
+  if (nodes.length === 0) return null;
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        paddingTop: 8,
+        borderTop: '1px solid var(--mz-line)',
+      }}
+    >
+      <MgOutliner
+        nodes={nodes}
+        selectedId={props.cObjectSelection.selected?.id ?? null}
+        onSelect={(id) =>
+          props.onSelectionChange(
+            moritzGlyphObjectSelectionFromCObjectId(props.font, props.selectedChar, id),
+          )
+        }
+      />
+    </div>
+  );
+}
+
+function cObjectToMgTreeNode(font: Font, selectedChar: string, node: CObject): MgTreeNode {
+  const meta = moritzGlyphCObjectMetaFromId(font, selectedChar, node.id);
+  return {
+    id: node.id,
+    label: meta?.label ?? cObjectFallbackLabel(node.id),
+    kind: meta?.role ?? node.kind,
+    selected: node.selected === true,
+    tone: meta?.role === 'glyph' ? 'relevant' : meta?.role === 'animator' ? 'generate' : 'neutral',
+    importance: node.selected ? 5 : meta?.role === 'glyph' ? 3 : 1,
+    ...(node.children.length > 0
+      ? { children: node.children.map((child) => cObjectToMgTreeNode(font, selectedChar, child)) }
+      : {}),
+  };
+}
+
+function cObjectFallbackLabel(id: string): string {
+  const parts = id.split('.');
+  const tail = parts[parts.length - 1];
+  return tail ? tail : id;
+}
 
 /** Pixels per font unit in the grid thumbnails. Fixed so all glyphs render at
  *  the same zoom level â€” the grid wraps and tiles take their natural size. */
@@ -499,6 +969,8 @@ export function GlyphEditor(props: {
   view: GlyphViewOptions;
   setView: (patch: Partial<GlyphViewOptions>) => void;
   font: Font;
+  selection?: Selection;
+  onSelectionChange?: (selection: Selection) => void;
   /** Extra toolbar slot (e.g. BubbleSetter's "Fill" button). Rendered
    *  inline at the right end of the toolbar, before the help button. */
   extraToolbar?: React.ReactNode;
@@ -529,7 +1001,15 @@ export function GlyphEditor(props: {
   };
 }): JSX.Element {
   const { char, glyph, onChange, view, font, extraToolbar } = props;
-  const [selection, setSelection] = useState<Selection>({ kind: 'none' });
+  const [localSelection, setLocalSelection] = useState<Selection>({ kind: 'none' });
+  const selection = props.selection ?? localSelection;
+  const setSelection = useCallback(
+    (next: Selection) => {
+      if (props.onSelectionChange) props.onSelectionChange(next);
+      else setLocalSelection(next);
+    },
+    [props.onSelectionChange],
+  );
   // Live marquee rectangle while the user drags from empty canvas. In
   // glyph-coord units; null when not marqueeing. Kept in React state so
   // the visualization re-renders each frame.
@@ -554,6 +1034,37 @@ export function GlyphEditor(props: {
     [glyph, font.style, char],
   );
   const gStyle = useMemo(() => effectiveStyleForGlyph(font.style, glyph), [font.style, glyph]);
+  const [animatorTime, setAnimatorTime] = useState(0);
+  useEffect(() => {
+    if (!glyph.animator) {
+      setAnimatorTime(0);
+      return;
+    }
+    let frame = 0;
+    let lastPaint = 0;
+    const start = performance.now();
+    const tick = (now: number): void => {
+      if (now - lastPaint >= 33) {
+        setAnimatorTime((now - start) / 1000);
+        lastPaint = now;
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [glyph.animator]);
+  const animatorFrames = useMemo(
+    () =>
+      glyph.animator
+        ? animateGlyphWithAnimator(glyph, glyph.animator, { time: animatorTime })
+            .animations.flatMap((animation) =>
+              animation.frames
+                .filter((frame) => frame.visible)
+                .map((frame) => ({ ...frame, strokeId: animation.strokeId })),
+            )
+        : [],
+    [glyph, animatorTime],
+  );
 
   // SVG fills the wrapper; the glyph is centred inside that. The wrapper
   // can be any size, including much larger than the glyph itself, so the
@@ -1002,7 +1513,9 @@ export function GlyphEditor(props: {
             zIndex: 5,
           }}
         >
-          <button onClick={onAddStroke}>+ Stroke</button>
+          <button onClick={onAddStroke} aria-label="Add stroke" title="Add stroke">
+            <MoritzLabel text="Add stroke" size={12} />
+          </button>
           <button
             onClick={() => {
               // Pick a target stroke + segment to split. Prefer the segment
@@ -1034,25 +1547,33 @@ export function GlyphEditor(props: {
             }}
             disabled={selection.kind !== 'anchor' && selection.kind !== 'stroke'}
             title="Insert a new anchor at the midpoint of the segment after the selected anchor (or in the middle of the selected stroke). Tip: alt-click a stroke to insert at the click point."
+            aria-label="Add anchor"
           >
-            + Anchor
+            <MoritzLabel text="Add anchor" size={12} />
           </button>
-          <button onClick={onDeleteSelected} disabled={selectedStrokeIdxs.length === 0 && selection.kind !== 'anchor'}>
-            âˆ’ Delete selected
+          <button
+            onClick={onDeleteSelected}
+            disabled={selectedStrokeIdxs.length === 0 && selection.kind !== 'anchor'}
+            aria-label="Delete selected"
+            title="Delete selected"
+          >
+            <MoritzLabel text="Delete selected" size={12} />
           </button>
           <button
             onClick={onFlipH}
             disabled={selectedStrokeIdxs.length === 0}
             title="Mirror the selected stroke(s) around the glyph box's vertical centre line"
+            aria-label="Flip horizontal"
           >
-            Flip H
+            <MoritzLabel text="Flip H" size={12} />
           </button>
           <button
             onClick={onFlipV}
             disabled={selectedStrokeIdxs.length === 0}
             title="Mirror the selected stroke(s) around the glyph box's horizontal centre line"
+            aria-label="Flip vertical"
           >
-            Flip V
+            <MoritzLabel text="Flip V" size={12} />
           </button>
           {/* Reserved slot for the per-anchor 'Break tangent' control so
               the bar layout doesn't shift when an anchor is selected. */}
@@ -1081,7 +1602,7 @@ export function GlyphEditor(props: {
                 );
               }}
             />
-            Break tangent
+            <MoritzLabel text="Break tangent" size={11} />
           </label>
           {extraToolbar}
           <span
@@ -1435,6 +1956,38 @@ export function GlyphEditor(props: {
                   char,
                 }, glyph.box.h);
                 return <path key={`o${i}`} d={trianglesD(polygon, triangles)} />;
+              })}
+            </g>
+          )}
+          {animatorFrames.length > 0 && (
+            <g transform={xform} pointerEvents="none">
+              {animatorFrames.map((frame) => {
+                const r = 5 / SCALE;
+                const fontPx = 8 / SCALE;
+                const label = frame.id.slice(0, 1).toUpperCase();
+                return (
+                  <g
+                    key={`${frame.strokeId}.${frame.id}.${frame.index}`}
+                    transform={`translate(${frame.p.x} ${frame.p.y}) rotate(${frame.angle * 180 / Math.PI})`}
+                  >
+                    <circle
+                      r={r}
+                      fill="var(--mz-glyph-accent)"
+                      stroke="var(--mz-glyph-bg)"
+                      strokeWidth={1.2 / SCALE}
+                    />
+                    <text
+                      x={0}
+                      y={fontPx * 0.35}
+                      fontSize={fontPx}
+                      textAnchor="middle"
+                      fill="var(--mz-glyph-bg)"
+                      style={{ userSelect: 'none' }}
+                    >
+                      {label}
+                    </text>
+                  </g>
+                );
               })}
             </g>
           )}
@@ -1853,6 +2406,7 @@ function GlyphMetricsPanel(props: {
   view: GlyphViewOptions;
   updateGlyph: (fn: (g: Glyph) => Glyph) => void;
   updateAllGlyphs: (fn: (g: Glyph, char: string) => Glyph) => void;
+  onSelectAnimator: () => void;
 }): JSX.Element {
   const { glyph, view, updateGlyph, updateAllGlyphs } = props;
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -1900,8 +2454,9 @@ function GlyphMetricsPanel(props: {
                 ? "Set this glyph's box width and side bearings from the reference font."
                 : 'Pick a Reference font in the View section first.'
             }
+            aria-label="Import metrics this glyph"
           >
-            Import metrics (this glyph)
+            <MoritzLabel text="Import metrics" size={12} />
           </button>
           <button
             type="button"
@@ -1912,8 +2467,10 @@ function GlyphMetricsPanel(props: {
               updateAllGlyphs((g, char) => importGlyphMetrics(g, char, view.refFontFamily));
               setActionsOpen(false);
             }}
+            aria-label="Import metrics all glyphs"
+            title="Import metrics for every glyph from the reference font."
           >
-            Import metrics (all glyphs)
+            <MoritzLabel text="Import all" size={12} />
           </button>
           <button
             type="button"
@@ -1922,8 +2479,25 @@ function GlyphMetricsPanel(props: {
               updateAllGlyphs((g) => ({ ...g, sidebearings: { left: 0, right: 0 } }));
               setActionsOpen(false);
             }}
+            aria-label="Zero all bearings"
+            title="Set left and right side bearings to 0 for every glyph."
           >
-            Zero all bearings
+            <MoritzLabel text="Zero bearings" size={12} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              updateGlyph((g) => ({
+                ...g,
+                animator: g.animator ?? defaultGlyphAnimator(g),
+              }));
+              props.onSelectAnimator();
+              setActionsOpen(false);
+            }}
+            aria-label={glyph.animator ? 'Select animator' : 'Add animator'}
+            title={glyph.animator ? 'Select the glyph animator cObject.' : 'Add an animator component to this glyph.'}
+          >
+            <MoritzLabel text={glyph.animator ? 'Select animator' : 'Add animator'} size={12} />
           </button>
         </ActionsPopover>
       )}
@@ -2038,6 +2612,19 @@ function GlyphMetricsPanel(props: {
   );
 }
 
+function defaultGlyphAnimator(glyph: Glyph): GlyphAnimatorComponent {
+  return {
+    id: 'animator',
+    kind: 'symbol-along-stroke',
+    symbols: [{ id: 'dot' }],
+    ...(glyph.strokes[0] ? { strokeIds: [glyph.strokes[0].id] } : {}),
+    samplesPerSegment: 16,
+    speed: 0.12,
+    loop: true,
+    easing: 'linear',
+  };
+}
+
 /** Compact popover for secondary actions. Closes on outside click or Esc. */
 function ActionsPopover(props: {
   onClose: () => void;
@@ -2108,8 +2695,10 @@ function LeftTabBar(props: {
           borderBottom: active ? '2px solid var(--mz-accent)' : '2px solid transparent',
           cursor: 'pointer',
         }}
+        aria-label={label}
+        title={label}
       >
-        {label}
+        <MoritzLabel text={label} size={11} />
       </button>
     );
   };
@@ -2503,15 +3092,15 @@ function Section(props: {
         <strong
           style={{
             fontSize: 12,
-            textTransform: 'uppercase',
-            letterSpacing: 0.6,
             color: isStyle || isFont ? 'var(--mz-accent)' : 'var(--mz-text)',
           }}
         >
-          {props.title}
+          <MoritzLabel text={props.title} size={12} />
         </strong>
         {props.subtitle && (
-          <span style={{ fontSize: 11, color: 'var(--mz-text-mute)' }}>{props.subtitle}</span>
+          <span style={{ fontSize: 11, color: 'var(--mz-text-mute)' }}>
+            <MoritzLabel text={props.subtitle} size={11} />
+          </span>
         )}
       </header>
       {open && props.children}
@@ -2535,7 +3124,7 @@ function Check(props: {
         checked={props.checked}
         onChange={(e) => props.onChange(e.target.checked)}
       />
-      {props.label}
+      <MoritzLabel text={props.label} size={11} />
     </label>
   );
 }
@@ -2549,14 +3138,14 @@ const REF_FONTS: readonly { label: string; family: string }[] = [
   { label: 'Verdana', family: 'Verdana, Geneva, sans-serif' },
   { label: 'Tahoma', family: 'Tahoma, sans-serif' },
   { label: 'Trebuchet MS', family: '"Trebuchet MS", sans-serif' },
-  { label: 'Calibri / Segoe UI', family: 'Calibri, "Segoe UI", sans-serif' },
-  { label: 'Futura / Avenir', family: 'Futura, "Avenir Next", Avenir, sans-serif' },
-  { label: 'Times / Serif', family: '"Times New Roman", Times, serif' },
+  { label: 'Calibri Segoe UI', family: 'Calibri, "Segoe UI", sans-serif' },
+  { label: 'Futura Avenir', family: 'Futura, "Avenir Next", Avenir, sans-serif' },
+  { label: 'Times Serif', family: '"Times New Roman", Times, serif' },
   { label: 'Georgia', family: 'Georgia, serif' },
   { label: 'Garamond', family: 'Garamond, "Apple Garamond", serif' },
-  { label: 'Didot / Bodoni', family: 'Didot, "Bodoni MT", serif' },
-  { label: 'Courier (mono)', family: '"Courier New", Courier, monospace' },
-  { label: 'Consolas (mono)', family: 'Consolas, "Lucida Console", monospace' },
+  { label: 'Didot Bodoni', family: 'Didot, "Bodoni MT", serif' },
+  { label: 'Courier mono', family: '"Courier New", Courier, monospace' },
+  { label: 'Consolas mono', family: 'Consolas, "Lucida Console", monospace' },
   { label: 'Comic Sans', family: '"Comic Sans MS", "Chalkboard SE", cursive' },
   { label: 'Impact', family: 'Impact, "Arial Black", sans-serif' },
 ];
@@ -2571,21 +3160,23 @@ function RefFontPicker(props: {
       style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 4 }}
       title="Trace a real system font behind the glyph for reference. Pick from a curated set; the chosen font's matching character is rendered faintly behind your strokes."
     >
-      <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ width: 80, color: 'var(--mz-text-mute)' }}>Reference</span>
-        <select
+      <div style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ width: 80, color: 'var(--mz-text-mute)' }}>
+          <MoritzLabel text="Reference" size={11} />
+        </span>
+        <MoritzSelect
           value={props.family}
-          onChange={(e) => props.onChange({ refFontFamily: e.target.value })}
-          style={{ flex: 1, fontSize: 12 }}
-        >
-          <option value="">â€” none â€”</option>
-          {REF_FONTS.map((f) => (
-            <option key={f.family} value={f.family} style={{ fontFamily: f.family }}>
-              {f.label}
-            </option>
-          ))}
-        </select>
-      </label>
+          options={[
+            { value: '', label: 'none' },
+            ...REF_FONTS.map((font) => ({
+              value: font.family,
+              label: font.label,
+            })),
+          ]}
+          onChange={(refFontFamily) => props.onChange({ refFontFamily })}
+          style={{ flex: 1 }}
+        />
+      </div>
       {props.family && (
         <NumSlider
           label="Ref opacity"
@@ -2617,7 +3208,9 @@ function NumSlider(props: {
       title={props.tooltip}
       style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}
     >
-      <span style={{ color: 'var(--mz-text-mute)', width: 80, flexShrink: 0 }}>{props.label}</span>
+      <span style={{ color: 'var(--mz-text-mute)', width: 80, flexShrink: 0 }}>
+        <MoritzLabel text={props.label} size={11} />
+      </span>
       <input
         type="range"
         min={props.min}

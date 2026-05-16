@@ -29,6 +29,8 @@ import {
   type GuideSettings,
 } from './guides.js';
 import { measureFontMetrics } from './fontMetrics.js';
+import { MoritzLabel } from '../../ui/MoritzText.js';
+import { MoritzSelect } from '../../ui/MoritzSelect.js';
 
 type Props = {
   value: GuideSettings;
@@ -38,16 +40,16 @@ type Props = {
 
 const PRESETS: { label: string; make: () => GuideLayer }[] = [
   { label: 'Calligraphy lines', make: presetCalligraphy },
-  { label: 'Golden φ (x)', make: () => presetGolden('x', 3) },
-  { label: 'Golden φ (y)', make: () => presetGolden('y', 3) },
-  { label: 'Columns × 4', make: () => presetSubdivisions(4, 'x') },
-  { label: 'Columns × 8', make: () => presetSubdivisions(8, 'x') },
-  { label: 'Rows × 4', make: () => presetSubdivisions(4, 'y') },
-  { label: 'Rows × 8', make: () => presetSubdivisions(8, 'y') },
-  { label: 'Diagonals ×', make: () => presetDiagonals(true) },
-  { label: 'Slant 12°', make: () => presetSlant(12, 10) },
-  { label: 'Slant 20°', make: () => presetSlant(20, 8) },
-  { label: 'Rings × 4', make: () => presetRings(4, 0.2) },
+  { label: 'Golden phi x', make: () => presetGolden('x', 3) },
+  { label: 'Golden phi y', make: () => presetGolden('y', 3) },
+  { label: 'Columns 4', make: () => presetSubdivisions(4, 'x') },
+  { label: 'Columns 8', make: () => presetSubdivisions(8, 'x') },
+  { label: 'Rows 4', make: () => presetSubdivisions(4, 'y') },
+  { label: 'Rows 8', make: () => presetSubdivisions(8, 'y') },
+  { label: 'Diagonals', make: () => presetDiagonals(true) },
+  { label: 'Slant 12 deg', make: () => presetSlant(12, 10) },
+  { label: 'Slant 20 deg', make: () => presetSlant(20, 8) },
+  { label: 'Rings 4', make: () => presetRings(4, 0.2) },
   { label: 'Dot grid', make: () => presetDots(10, 0.6) },
 ];
 
@@ -73,7 +75,9 @@ export function GuidesPanel(props: Props): JSX.Element {
           checked={value.enabled}
           onChange={(e) => onChange({ ...value, enabled: e.target.checked })}
         />
-        <strong>Guides</strong>
+        <strong>
+          <MoritzLabel text="Guides" size={12} />
+        </strong>
         <button
           type="button"
           className="mz-btn--warn"
@@ -81,7 +85,7 @@ export function GuidesPanel(props: Props): JSX.Element {
           title="Reset all guide layers to the built-in defaults (calligraphy + golden + columns)."
           style={{ marginLeft: 'auto', fontSize: 10, padding: '0 6px' }}
         >
-          Reset all
+          <MoritzLabel text="Reset all" size={10} />
         </button>
       </label>
       <button
@@ -95,29 +99,25 @@ export function GuidesPanel(props: Props): JSX.Element {
         }
         style={{ fontSize: 11, padding: '2px 6px' }}
       >
-        Align to reference font
+        <MoritzLabel text="Align to reference font" size={11} />
       </button>
-      <select
-        defaultValue=""
-        style={{ fontSize: 12 }}
-        onChange={(e) => {
-          const idx = Number(e.target.value);
+      <MoritzSelect
+        value=""
+        options={[
+          { value: '', label: 'Add guide', disabled: true },
+          ...PRESETS.map((preset, index) => ({
+            value: String(index),
+            label: preset.label,
+          })),
+        ]}
+        onChange={(selected) => {
+          const idx = Number(selected);
           if (!Number.isFinite(idx) || idx < 0) return;
           const p = PRESETS[idx];
           if (!p) return;
           onChange(addLayer(value, p.make()));
-          e.currentTarget.value = '';
         }}
-      >
-        <option value="" disabled>
-          + Add guide…
-        </option>
-        {PRESETS.map((p, i) => (
-          <option key={p.label} value={i}>
-            {p.label}
-          </option>
-        ))}
-      </select>
+      />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {value.layers.map((l, idx) => (
           <LayerRow
@@ -132,7 +132,7 @@ export function GuidesPanel(props: Props): JSX.Element {
         ))}
         {value.layers.length === 0 && (
           <div style={{ fontSize: 11, color: 'var(--mz-text-mute)', fontStyle: 'italic' }}>
-            No guide layers — add one above.
+            <MoritzLabel text="No guide layers add one above" size={11} />
           </div>
         )}
       </div>
@@ -177,7 +177,7 @@ function LayerRow(props: {
           title="Color"
         />
         <span style={{ fontSize: 11, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {layer.label}
+          <MoritzLabel text={layer.label} size={11} />
         </span>
         <button
           type="button"
@@ -217,7 +217,9 @@ function LayerRow(props: {
         </button>
       </div>
       <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
-        <span style={{ width: 50 }}>opacity</span>
+        <span style={{ width: 50 }}>
+          <MoritzLabel text="opacity" size={10} />
+        </span>
         <input
           type="range"
           min={0}
@@ -329,7 +331,7 @@ function KindEditor(props: {
                 checked={kind.spiral ?? true}
                 onChange={(e) => onChange({ ...kind, spiral: e.target.checked })}
               />
-              spiral
+              <MoritzLabel text="spiral" size={10} />
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 11 }}>
               <input
@@ -337,7 +339,7 @@ function KindEditor(props: {
                 checked={kind.splits ?? false}
                 onChange={(e) => onChange({ ...kind, splits: e.target.checked })}
               />
-              splits
+              <MoritzLabel text="splits" size={10} />
             </label>
           </Row>
         </>
@@ -493,7 +495,9 @@ function KindEditor(props: {
 function Row(props: { label: string; children: React.ReactNode }): JSX.Element {
   return (
     <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
-      <span style={{ width: 50 }}>{props.label}</span>
+      <span style={{ width: 50 }}>
+        <MoritzLabel text={props.label} size={10} />
+      </span>
       {props.children}
     </label>
   );
