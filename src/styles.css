@@ -167,58 +167,6 @@ button:disabled {
   cursor: not-allowed;
 }
 
-/* Module tabs in the top toolbar — each button always wears its own
- * module's accent. Active = solid accent fill on dark text; inactive =
- * outline only, accent text. The whole bar therefore tells you at a
- * glance which colour means which module. */
-.mz-modtab {
-  font: inherit;
-  padding: 4px 10px;
-  border: 1px solid var(--mz-accent);
-  background: transparent;
-  color: var(--mz-accent);
-  border-radius: 3px;
-  cursor: pointer;
-  line-height: 1.2;
-  font-weight: 500;
-}
-.mz-modtab:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--mz-accent) 18%, transparent);
-}
-.mz-modtab--active {
-  background: var(--mz-accent);
-  color: var(--mz-bg);
-  font-weight: 700;
-}
-.mz-modtab--active:hover:not(:disabled) {
-  background: var(--mz-accent);
-}
-
-/* Compact icon button — square, transparent, accent on hover. Used for
- * gear / dev / settings affordances inside toolbars. */
-.mz-iconbtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4px;
-  width: 26px;
-  height: 26px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--mz-text-mute);
-  border-radius: 3px;
-  cursor: pointer;
-}
-.mz-iconbtn:hover:not(:disabled) {
-  color: var(--mz-accent);
-  border-color: var(--mz-line);
-  background: color-mix(in srgb, var(--mz-accent) 12%, transparent);
-}
-.mz-iconbtn:focus {
-  outline: 1px solid var(--mz-accent);
-  outline-offset: -1px;
-}
-
 select,
 input[type='text'],
 input[type='number'],
@@ -347,16 +295,6 @@ input[type='range']::-moz-range-thumb {
 
 /* ---------- App chrome --------------------------------------------------- */
 
-.mz-app__header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--mz-line);
-  background: var(--mz-panel);
-  color: var(--mz-text);
-}
-
 .mz-app__main {
   flex: 1;
   min-width: 0;
@@ -366,41 +304,7 @@ input[type='range']::-moz-range-thumb {
   color: var(--mz-text);
 }
 
-/* ---------- Workbench shell --------------------------------------------- *
- * The three modules share this layout so switching tabs feels like turning
- * to a different set of tools on the same desk: a fixed-width left drawer,
- * a paper-white work surface in the centre, a fixed-width right drawer.
- * Each module fills the drawers with its own contents but the proportions
- * stay constant.                                                            */
-:root {
-  --mz-drawer-w: 340px;
-  --mz-bench-pad: 0;
-}
-
-.mz-workbench {
-  display: grid;
-  grid-template-columns: var(--mz-drawer-w) 1fr var(--mz-drawer-w);
-  height: 100%;
-  min-height: 0;
-  width: 100%;
-  overflow: hidden;
-  background: var(--mz-bg);
-}
-
-.mz-workbench__drawer {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
-  background: var(--mz-panel);
-  color: var(--mz-text);
-}
-.mz-workbench__drawer--left  { border-right: 1px solid var(--mz-line); }
-.mz-workbench__drawer--right { border-left:  1px solid var(--mz-line); }
-
-/* Standard drawer header — slim strip mirroring the editor toolbar so all
-   three modules share the same vertical rhythm. Houses tabs / titles. */
+/* Slim strip used by remaining Moritz-owned tab strips until they move to Mg. */
 .mz-workbench__drawer-header {
   display: flex;
   align-items: center;
@@ -411,59 +315,6 @@ input[type='range']::-moz-range-thumb {
   background: var(--mz-bg);
   color: var(--mz-text);
   font-size: 12px;
-}
-
-.mz-workbench__drawer-body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.mz-workbench__drawer-body--flush {
-  padding: 0;
-  gap: 0;
-}
-
-.mz-workbench__bench {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  overflow: hidden;
-  background: var(--mz-paper);
-}
-
-/* Bench toolbar — same height/feel as the drawer header so the three
-   columns line up across the top. */
-.mz-workbench__toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  min-height: 32px;
-  border-bottom: 1px solid var(--mz-line);
-  background: var(--mz-bg);
-  color: var(--mz-text);
-  font-size: 12px;
-  flex-wrap: wrap;
-}
-
-/* The actual paper-white surface where work happens. Always white,
-   regardless of theme. */
-.mz-workbench__surface {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  overflow: auto;
-  background: var(--mz-paper);
-  color: var(--mz-ink);
-  padding: var(--mz-bench-pad);
-}
-.mz-workbench__surface--flush {
-  padding: 0;
 }
 
 /* ---------- Universal canvas (Illustrator-like infinite workspace) -------- *
@@ -532,32 +383,6 @@ input[type='range']::-moz-range-thumb {
   background: var(--mz-paper);
   outline: 1px solid var(--mz-line);
 }
-
-/* Tabs — each carries its module's accent colour even when inactive. */
-.mz-tab {
-  padding: 6px 12px;
-  border: 1px solid var(--mz-line);
-  border-radius: 4px;
-  background: var(--mz-bg);
-  color: var(--mz-text);
-  cursor: pointer;
-}
-.mz-tab--glyphsetter        { color: var(--mz-glyph-accent); border-color: var(--mz-glyph-line); }
-.mz-tab--bubblesetter       { color: var(--mz-bubble-accent); border-color: var(--mz-bubble-line); }
-.mz-tab--stylesetter        { color: var(--mz-style-accent); border-color: var(--mz-style-line); }
-.mz-tab--typesetter         { color: var(--mz-type-accent);  border-color: var(--mz-type-line); }
-.mz-tab--glyphsetter.mz-tab--active { background: var(--mz-glyph-panel); border-color: var(--mz-glyph-accent); }
-.mz-tab--bubblesetter.mz-tab--active { background: var(--mz-bubble-panel); border-color: var(--mz-bubble-accent); }
-.mz-tab--stylesetter.mz-tab--active { background: var(--mz-style-panel); border-color: var(--mz-style-accent); }
-.mz-tab--typesetter.mz-tab--active  { background: var(--mz-type-panel);  border-color: var(--mz-type-accent); }
-
-/* Each tab also re-declares the local module palette so child styles
-   tied to `--mz-bg / --mz-accent` (e.g. button hovers, focus rings)
-   read as that module's colour even before the tab becomes active. */
-.mz-tab--glyphsetter  { --mz-bg: var(--mz-glyph-bg);  --mz-panel: var(--mz-glyph-panel);  --mz-line: var(--mz-glyph-line);  --mz-accent: var(--mz-glyph-accent); }
-.mz-tab--bubblesetter { --mz-bg: var(--mz-bubble-bg); --mz-panel: var(--mz-bubble-panel); --mz-line: var(--mz-bubble-line); --mz-accent: var(--mz-bubble-accent); }
-.mz-tab--stylesetter  { --mz-bg: var(--mz-style-bg);  --mz-panel: var(--mz-style-panel);  --mz-line: var(--mz-style-line);  --mz-accent: var(--mz-style-accent); }
-.mz-tab--typesetter   { --mz-bg: var(--mz-type-bg);   --mz-panel: var(--mz-type-panel);   --mz-line: var(--mz-type-line);   --mz-accent: var(--mz-type-accent); }
 
 @keyframes mzKernPulse {
   0%   { box-shadow: 0 0 0 0 rgba(240, 160, 32, 0.7); }

@@ -84,7 +84,8 @@ inspectors migrate. The legacy Moritz colour-scheme picker (`themeStore` +
 `SettingsModal`) has been deleted; Magdalena dev settings own shell theme/debug
 controls.
 Bundle: 795 KB → 792 KB. CSS asset: 55.30 KB → 50.42 KB after deleting
-the unreachable alternate `data-theme` palettes.
+the unreachable alternate `data-theme` palettes, then 50.42 KB → 46.72 KB
+after deleting dead legacy shell selectors.
 
 ### V3. Local interface library `src/sift/` (CONTRIBUTING-AS-CONSUMER → "must never do" #4) — resolved 2026-05-16
 
