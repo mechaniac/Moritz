@@ -69,6 +69,8 @@ regions.
   label, so the shell no longer imports Sift controls.
 - The old `src/sift` interface library has been deleted; Magdalena now owns the
   workbench root, debug settings, shell regions, buttons, and outliner surface.
+- The GlyphSetter left-column tab strip keeps Moritz-font labels, but now
+  registers through `useMgElement` and uses Magdalena tokens for its chrome.
 - Repo-owned menus in `src/modules` and `src/ui` now render their trigger and
   menu item captions through `MoritzSelect`, which uses `MoritzLabel` rather
   than native `<select>/<option>` text. Its chrome now uses Magdalena tokens;

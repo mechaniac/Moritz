@@ -96,7 +96,7 @@ import { useAppStore } from '../../state/store.js';
 import { StyleControls } from '../stylesetter/StyleControls.js';
 import { MoritzLabel } from '../../ui/MoritzText.js';
 import { MoritzSelect } from '../../ui/MoritzSelect.js';
-import { MgLeftBar, MgRightBar, MgCOptions, MgOutliner, type MgTreeNode } from '@christof/magdalena/react';
+import { MgLeftBar, MgRightBar, MgCOptions, MgOutliner, useMgElement, type MgTreeNode } from '@christof/magdalena/react';
 
 // Module-level clipboard for copied strokes. Persists across glyph switches
 // (the GlyphEditor remounts when `selectedGlyph` changes) and even module
@@ -2676,12 +2676,20 @@ function LeftTabBar(props: {
   value: 'glyphs' | 'kerning' | 'settings';
   onChange: (v: 'glyphs' | 'kerning' | 'settings') => void;
 }): JSX.Element {
+  const bind = useMgElement({
+    id: 'moritz.glyphsetter.leftTabs',
+    role: 'tabs',
+    label: 'GlyphSetter left tabs',
+    tone: 'relevant',
+    importance: 1,
+    closeness: 'controlInternal',
+  });
   const tab = (id: 'glyphs' | 'kerning' | 'settings', label: string): JSX.Element => {
     const active = props.value === id;
     return (
       <button
         type="button"
-        className={`mz-glyphsetter__tab${active ? ' mz-glyphsetter__tab--active' : ''}`}
+        data-active={active ? 'true' : 'false'}
         data-tab={id}
         onClick={() => props.onChange(id)}
         style={{
@@ -2689,10 +2697,10 @@ function LeftTabBar(props: {
           padding: '6px 8px',
           fontSize: 12,
           fontWeight: active ? 600 : 400,
-          background: active ? 'var(--mz-bg)' : 'transparent',
-          color: active ? 'var(--mz-accent)' : 'var(--mz-text-mute)',
+          background: active ? 'color-mix(in srgb, var(--mg-tone-relevant) 12%, transparent)' : 'transparent',
+          color: active ? 'var(--mg-tone-relevant)' : 'var(--mg-text-muted)',
           border: 'none',
-          borderBottom: active ? '2px solid var(--mz-accent)' : '2px solid transparent',
+          borderBottom: active ? '2px solid var(--mg-tone-relevant)' : '2px solid transparent',
           cursor: 'pointer',
         }}
         aria-label={label}
@@ -2704,8 +2712,18 @@ function LeftTabBar(props: {
   };
   return (
     <div
-      className="mz-glyphsetter__tabs mz-workbench__drawer-header"
-      style={{ padding: 0, gap: 0 }}
+      {...bind}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 0,
+        padding: 0,
+        minHeight: 32,
+        borderBottom: '1px solid var(--mg-line)',
+        background: 'var(--mg-surface-0)',
+        color: 'var(--mg-text)',
+        fontSize: 12,
+      }}
     >
       {tab('glyphs', 'Glyphs')}
       {tab('kerning', 'Kerning')}

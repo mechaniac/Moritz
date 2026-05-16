@@ -304,19 +304,6 @@ input[type='range']::-moz-range-thumb {
   color: var(--mz-text);
 }
 
-/* Slim strip used by remaining Moritz-owned tab strips until they move to Mg. */
-.mz-workbench__drawer-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  min-height: 32px;
-  border-bottom: 1px solid var(--mz-line);
-  background: var(--mz-bg);
-  color: var(--mz-text);
-  font-size: 12px;
-}
-
 /* ---------- Universal canvas (Illustrator-like infinite workspace) -------- *
  * Every module's work area uses `.mz-canvas`: a paper-white scrollable
  * surface with a subtle dot raster, content centred via CSS grid. The
