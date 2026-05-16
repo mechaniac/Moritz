@@ -71,8 +71,9 @@ regions.
   workbench root, debug settings, shell regions, buttons, and outliner surface.
 - Repo-owned menus in `src/modules` and `src/ui` now render their trigger and
   menu item captions through `MoritzSelect`, which uses `MoritzLabel` rather
-  than native `<select>/<option>` text. This is a temporary app-side bridge
-  until Magdalena can render selectable labels as cObjects.
+  than native `<select>/<option>` text. Its chrome now uses Magdalena tokens;
+  it remains a temporary app-side bridge until Magdalena can render selectable
+  labels as cObjects.
 - BubbleFont and live TypeSetter pages now have cObject adapters too:
   `bubbleFont -> bubble -> layer -> glyph -> strokes` and
   `page -> block -> text/bubble -> layer -> glyph -> strokes`. BubbleSetter

@@ -227,7 +227,7 @@ Current app-side bridge:
   active Moritz font.
 - [src/ui/MoritzSelect.tsx](src/ui/MoritzSelect.tsx) renders repo-owned menu
   triggers and menu items through Moritz glyphs rather than native
-  `<select>/<option>` text.
+  `<select>/<option>` text, while its chrome uses Magdalena tokens.
 
 Still planned:
 

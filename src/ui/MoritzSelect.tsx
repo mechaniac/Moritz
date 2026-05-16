@@ -71,10 +71,10 @@ export function MoritzSelect(props: {
           gap: 8,
           minHeight: 24,
           padding: '2px 7px',
-          border: '1px solid var(--mz-line)',
+          border: '1px solid var(--mg-line)',
           borderRadius: 4,
-          background: 'var(--mz-bg)',
-          color: 'inherit',
+          background: 'color-mix(in srgb, var(--mg-input) var(--mg-input-bg-mix), var(--mg-surface-3))',
+          color: 'var(--mg-input-text)',
           cursor: 'pointer',
           overflow: 'hidden',
         }}
@@ -89,7 +89,7 @@ export function MoritzSelect(props: {
             height: 0,
             borderLeft: '4px solid transparent',
             borderRight: '4px solid transparent',
-            borderTop: '5px solid var(--mz-text-mute)',
+            borderTop: '5px solid var(--mg-control-mark)',
             flexShrink: 0,
           }}
         />
@@ -106,9 +106,9 @@ export function MoritzSelect(props: {
             maxHeight: 220,
             overflowY: 'auto',
             padding: 3,
-            border: '1px solid var(--mz-line)',
+            border: '1px solid var(--mg-line)',
             borderRadius: 4,
-            background: 'var(--mz-panel)',
+            background: 'var(--mg-surface-1)',
             boxShadow: '0 8px 24px rgba(0,0,0,.22)',
           }}
         >
@@ -135,9 +135,9 @@ export function MoritzSelect(props: {
                   border: 'none',
                   borderRadius: 3,
                   background: active
-                    ? 'color-mix(in srgb, var(--mz-accent) 18%, transparent)'
+                    ? 'color-mix(in srgb, var(--mg-tone-relevant) 18%, transparent)'
                     : 'transparent',
-                  color: option.disabled ? 'var(--mz-text-faint)' : 'inherit',
+                  color: option.disabled ? 'var(--mg-text-faint)' : 'var(--mg-text)',
                   cursor: option.disabled ? 'default' : 'pointer',
                   textAlign: 'left',
                 }}
