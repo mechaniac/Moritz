@@ -17,6 +17,55 @@ describe('glyph animator', () => {
     expect(universal.strokes[0]?.vertices).toHaveLength(2);
   });
 
+  it('keeps renderer-only Moritz fields on the Moritz side of the donation boundary', () => {
+    const glyph: Glyph = {
+      ...lineGlyph,
+      sidebearings: { left: 1, right: 2 },
+      baselineOffset: -3,
+      worldAngleOffset: 0.25,
+      worldContractAngleOffset: -0.125,
+      animator: {
+        id: 'runner',
+        kind: 'symbol-along-stroke',
+        symbols: [{ id: 'dot' }],
+      },
+      strokes: [{
+        ...lineGlyph.strokes[0]!,
+        width: { samples: [{ t: 0, width: 2 }, { t: 1, width: 6 }] },
+        capStart: 'tapered',
+        capEnd: { kind: 'custom', path: [vertex(0, 0), vertex(1, 0)] },
+        vertices: [
+          {
+            ...vertex(0, 0),
+            breakTangent: true,
+            normalOverride: { x: 0, y: 3 },
+          },
+          vertex(10, 0),
+        ],
+      }],
+    };
+
+    const universal = glyphToUniversalGlyph(glyph);
+    const universalRecord = universal as unknown as Record<string, unknown>;
+    const strokeRecord = universal.strokes[0] as unknown as Record<string, unknown>;
+
+    expect(universal).toMatchObject({
+      char: 'A',
+      sidebearings: { left: 1, right: 2 },
+      baselineOffset: -3,
+    });
+    expect(universalRecord).not.toHaveProperty('worldAngleOffset');
+    expect(universalRecord).not.toHaveProperty('worldContractAngleOffset');
+    expect(universalRecord).not.toHaveProperty('animator');
+    expect(strokeRecord).not.toHaveProperty('width');
+    expect(strokeRecord).not.toHaveProperty('capStart');
+    expect(strokeRecord).not.toHaveProperty('capEnd');
+    expect(universal.strokes[0]?.vertices[0]).toMatchObject({
+      breakTangent: true,
+      normalOverride: { x: 0, y: 3 },
+    });
+  });
+
   it('animates symbols along a glyph stroke', () => {
     const result = animateGlyphWithAnimator(lineGlyph, {
       id: 'crawl',

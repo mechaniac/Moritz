@@ -55,6 +55,8 @@ The preferred path is ownership loss only.
    - open-stroke bubble fill,
    - multi-layer bubble render,
    - glyph animator path frames.
+   Current first fixture: `tests/core/glyphAnimator.test.ts` verifies the
+   Moritz-to-Sigrid glyph adapter boundary.
 2. For each fixture, adopt the upstream Sigrid/Magdalena equivalent first.
 3. Delete the Moritz-local implementation only after the fixture passes through
    the upstream path.
