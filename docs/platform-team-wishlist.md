@@ -77,6 +77,11 @@ specific gap (importance/tone vocabulary that maps cleanly to the four
 Moritz workspaces) is filed as wishlist entry W3 if and only if Moritz
 cannot express what it needs with the existing tone vocabulary.
 
+Progress 2026-05-16: the top-bar module switcher now uses `MgButton` tone /
+importance only; it no longer applies `mz-mod--<id>` palette classes to shell
+buttons. Module work areas still use `mz-mod--<id>` while their internal
+inspectors migrate.
+
 ### V3. Local interface library `src/sift/` (CONTRIBUTING-AS-CONSUMER → "must never do" #4) — resolved 2026-05-16
 
 Deleted files: `src/sift/` — `SiftRoot`, `Workbench`,

@@ -78,7 +78,6 @@ function AppShell(): JSX.Element {
                         type="button"
                         tone={active ? 'relevant' : 'neutral'}
                         importance={active ? 3 : 1}
-                        className={`mz-mod--${t.id}`}
                         aria-label={t.label}
                         title={t.label}
                         onClick={() => setModule(t.id)}
