@@ -93,7 +93,9 @@ GlyphSetter left-column tab strip keeps Moritz-font labels, registers with
 and range sliders now use `--mg-*` chrome tokens with `--mz-*` fallbacks
 (CSS asset 47.10 KB with fallback-rich rules). `mz-section` cards and
 `mz-modified` markers now use Magdalena surface / changed tokens, leaving
-`mz-btn--warn` red until Magdalena exposes a danger tone. CSS asset: 47.40 KB.
+`mz-btn--warn` red until Magdalena exposes a danger tone. StyleSetter inline
+reset and unmodified-number controls now use the same Mg changed/muted token
+fallbacks. CSS asset: 47.40 KB.
 
 ### V3. Local interface library `src/sift/` (CONTRIBUTING-AS-CONSUMER → "must never do" #4) — resolved 2026-05-16
 

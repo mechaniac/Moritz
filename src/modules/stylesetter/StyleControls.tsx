@@ -864,7 +864,7 @@ function BulkResetBar(props: {
           fontWeight: 600,
           letterSpacing: '0.06em',
           textTransform: 'uppercase',
-          color: 'var(--mz-text-mute)',
+          color: 'var(--mg-text-muted, var(--mz-text-mute))',
           flex: 1,
         }}
       >
@@ -878,9 +878,13 @@ function BulkResetBar(props: {
         title={reset.modified ? `Reset ${label.toLowerCase()} to default` : 'Nothing to reset'}
         style={{
           border: '1px solid',
-          borderColor: reset.modified ? 'var(--mz-modified)' : 'var(--mz-line)',
+          borderColor: reset.modified
+            ? 'var(--mg-tone-changed, var(--mz-modified))'
+            : 'var(--mg-line, var(--mz-line))',
           background: 'transparent',
-          color: reset.modified ? 'var(--mz-modified)' : 'var(--mz-text-faint)',
+          color: reset.modified
+            ? 'var(--mg-tone-changed, var(--mz-modified))'
+            : 'var(--mg-text-faint, var(--mz-text-faint))',
           cursor: reset.modified ? 'pointer' : 'default',
           fontSize: 11,
           padding: '2px 8px',
@@ -933,7 +937,9 @@ export function Section(props: {
             style={{
               border: 'none',
               background: 'transparent',
-              color: reset.modified ? 'var(--mz-modified)' : 'var(--mz-text-faint)',
+              color: reset.modified
+                ? 'var(--mg-tone-changed, var(--mz-modified))'
+                : 'var(--mg-text-faint, var(--mz-text-faint))',
               cursor: reset.modified ? 'pointer' : 'default',
               fontSize: 13,
               lineHeight: 1,
@@ -1025,7 +1031,7 @@ export function Slider(props: {
           width: 44,
           textAlign: 'right',
           fontVariantNumeric: 'tabular-nums',
-          color: modified ? 'inherit' : 'var(--mz-text-mute)',
+          color: modified ? 'inherit' : 'var(--mg-text-muted, var(--mz-text-mute))',
           padding: '1px 2px',
         }}
       />
