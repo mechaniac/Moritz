@@ -14,7 +14,6 @@ import { MoritzLabel } from './ui/MoritzText.js';
 import { MgButton, MgWorkbench, MgViewportLayer, MgTopBar } from '@christof/magdalena/react';
 import {
   SiftRoot,
-  Slider,
   ImportanceDebugLayer,
 } from './sift/index.js';
 
@@ -117,17 +116,19 @@ function AppShell(): JSX.Element {
                         }}
                       >
                         <MoritzLabel text="Zoom" size={12} />
-                        <Slider
+                        <input
+                          type="range"
                           min={1}
                           max={30}
                           step={0.5}
                           value={editorScale}
-                          onChange={(value) =>
+                          onChange={(event) =>
                             setGlyphView({
-                              editorScale: value,
+                              editorScale: Number(event.target.value),
                             })
                           }
                           className="mz-shell__zoom-slider"
+                          style={{ width: 120 }}
                         />
                       </label>
                       <FontBar />

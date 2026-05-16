@@ -65,6 +65,8 @@ regions.
   `MoritzLabel`.
 - The top-bar module buttons and legacy-theme command now use Magdalena
   `MgButton` while keeping `MoritzLabel` children.
+- The top-bar zoom slider is a local native range input with a Moritz glyph
+  label, so the shell no longer imports Sift controls.
 - Repo-owned menus in `src/modules` and `src/ui` now render their trigger and
   menu item captions through `MoritzSelect`, which uses `MoritzLabel` rather
   than native `<select>/<option>` text. This is a temporary app-side bridge
