@@ -61,8 +61,6 @@
   --mz-text-faint:   #707888;
 
   --mz-modified:      var(--mz-warn);
-  --mz-modified-soft: var(--mz-warn-soft);
-
   /* The rendered glyphs are always real ink on real paper. */
   --mz-paper:        #ffffff;
   --mz-ink:          #000000;
@@ -252,16 +250,20 @@ input[type='range']::-moz-range-thumb {
 
 /* ---------- Modified-from-default marker --------------------------------- */
 
-.mz-modified { color: var(--mz-modified); }
-.mz-modified input[type='range'] { accent-color: var(--mz-modified); }
-.mz-modified input[type='range']::-webkit-slider-thumb { background: var(--mz-modified); }
-.mz-modified input[type='range']::-moz-range-thumb { background: var(--mz-modified); }
-.mz-modified input[type='range']::-webkit-slider-runnable-track { background: var(--mz-modified-soft); }
-.mz-modified input[type='range']::-moz-range-track { background: var(--mz-modified-soft); }
+.mz-modified { color: var(--mg-tone-changed, var(--mz-modified)); }
+.mz-modified input[type='range'] { accent-color: var(--mg-tone-changed, var(--mz-modified)); }
+.mz-modified input[type='range']::-webkit-slider-thumb { background: var(--mg-tone-changed, var(--mz-modified)); }
+.mz-modified input[type='range']::-moz-range-thumb { background: var(--mg-tone-changed, var(--mz-modified)); }
+.mz-modified input[type='range']::-webkit-slider-runnable-track {
+  background: color-mix(in srgb, var(--mg-tone-changed, var(--mz-modified)) 26%, transparent);
+}
+.mz-modified input[type='range']::-moz-range-track {
+  background: color-mix(in srgb, var(--mg-tone-changed, var(--mz-modified)) 26%, transparent);
+}
 
 .mz-modified-input {
-  border-color: var(--mz-modified) !important;
-  color: var(--mz-modified);
+  border-color: var(--mg-tone-changed, var(--mz-modified)) !important;
+  color: var(--mg-tone-changed, var(--mz-modified));
 }
 
 /* ---------- Warn / undo buttons ------------------------------------------ *
@@ -292,9 +294,9 @@ input[type='range']::-moz-range-thumb {
   flex-direction: column;
   gap: 6px;
   padding: 8px 10px 10px;
-  border: 1px solid var(--mz-line);
+  border: 1px solid var(--mg-line, var(--mz-line));
   border-radius: 6px;
-  background: var(--mz-panel);
+  background: color-mix(in srgb, var(--mg-surface-1, var(--mz-panel)) 72%, transparent);
 }
 .mz-section__title {
   margin: 0 0 2px;
@@ -302,7 +304,7 @@ input[type='range']::-moz-range-thumb {
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--mz-text-mute);
+  color: var(--mg-text-muted, var(--mz-text-mute));
 }
 
 /* ---------- App chrome --------------------------------------------------- */
