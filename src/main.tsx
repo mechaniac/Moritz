@@ -22,10 +22,8 @@ if (!el) throw new Error('Missing #root');
 createRoot(el).render(
   <React.StrictMode>
     {/*
-      Pilot Magdalena adoption (see docs/platform-team-wishlist.md):
-      wrap the Sift-owned app in MagdalenaProvider so .mg-root exists
-      and Magdalena components (starting with MgDevSettingsWindow) can
-      render alongside Sift while we migrate surface-by-surface.
+      Magdalena owns the shell root and dev settings. Moritz still keeps
+      app-local module styling while it migrates the remaining UI tokens.
     */}
     <MagdalenaProvider
       appId="moritz"

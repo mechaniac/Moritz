@@ -67,6 +67,8 @@ regions.
   `MgButton` while keeping `MoritzLabel` children.
 - The top-bar zoom slider is a local native range input with a Moritz glyph
   label, so the shell no longer imports Sift controls.
+- The old `src/sift` interface library has been deleted; Magdalena now owns the
+  workbench root, debug settings, shell regions, buttons, and outliner surface.
 - Repo-owned menus in `src/modules` and `src/ui` now render their trigger and
   menu item captions through `MoritzSelect`, which uses `MoritzLabel` rather
   than native `<select>/<option>` text. This is a temporary app-side bridge

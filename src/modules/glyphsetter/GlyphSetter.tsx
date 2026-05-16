@@ -327,7 +327,7 @@ export function GlyphSetterOutliner(props: {
   return (
     <>
       <LeftTabBar value={leftTab} onChange={setLeftTab} />
-      <div style={{ marginTop: 'var(--sf-pad-tight)' }}>
+      <div style={{ marginTop: 'calc(var(--mg-pad) * 0.5)' }}>
         {leftTab === 'glyphs' ? (
           <>
             <GlyphGrid

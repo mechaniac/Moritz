@@ -12,10 +12,6 @@ import { PageBar } from './ui/PageBar.js';
 import { SettingsModal } from './ui/SettingsModal.js';
 import { MoritzLabel } from './ui/MoritzText.js';
 import { MgButton, MgWorkbench, MgViewportLayer, MgTopBar } from '@christof/magdalena/react';
-import {
-  SiftRoot,
-  ImportanceDebugLayer,
-} from './sift/index.js';
 
 const tabs: { id: ModuleId; label: string }[] = [
   { id: 'glyphsetter', label: 'Glyph' },
@@ -27,16 +23,12 @@ const tabs: { id: ModuleId; label: string }[] = [
 export function App(): JSX.Element {
   const theme = useThemeStore((s) => s.theme);
   // Keep the legacy Moritz scheme on <html> so existing module-internal
-  // styles still resolve while we port them to Sift.
+  // styles still resolve while we port them to Magdalena tokens.
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
-  return (
-    <SiftRoot>
-      <AppShell />
-    </SiftRoot>
-  );
+  return <AppShell />;
 }
 
 function AppShell(): JSX.Element {
@@ -50,7 +42,7 @@ function AppShell(): JSX.Element {
     <MgWorkbench>
       <MgViewportLayer>
         <div
-          className={`mz-app mz-mod--${module} mz-app--sift`}
+          className={`mz-app mz-mod--${module} mz-app--mg`}
           style={{ width: '100%', height: '100%' }}
         >
           <main
@@ -73,7 +65,7 @@ function AppShell(): JSX.Element {
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 'var(--sf-gap)',
+                  gap: 'var(--mg-gap)',
                 }}
               >
                 <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -100,19 +92,19 @@ function AppShell(): JSX.Element {
                   style={{
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: 'var(--sf-pad-tight)',
-                    paddingTop: 'var(--sf-pad-tight)',
-                    borderTop: '1px solid var(--sf-line)',
+                    gap: 'calc(var(--mg-pad) * 0.5)',
+                    paddingTop: 'calc(var(--mg-pad) * 0.5)',
+                    borderTop: '1px solid var(--mg-line)',
                   }}
                 >
                   {module === 'glyphsetter' && (
                     <>
                       <label
-                        className="sf-attrs__label"
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           gap: 6,
+                          color: 'var(--mg-text-muted)',
                         }}
                       >
                         <MoritzLabel text="Zoom" size={12} />
@@ -142,8 +134,8 @@ function AppShell(): JSX.Element {
                   style={{
                     display: 'flex',
                     gap: 4,
-                    paddingTop: 'var(--sf-pad-tight)',
-                    borderTop: '1px solid var(--sf-line)',
+                    paddingTop: 'calc(var(--mg-pad) * 0.5)',
+                    borderTop: '1px solid var(--mg-line)',
                     alignItems: 'center',
                   }}
                 >
@@ -159,7 +151,6 @@ function AppShell(): JSX.Element {
                 </div>
               </div>
             </MgTopBar>
-      <ImportanceDebugLayer />
     </MgWorkbench>
   );
 }

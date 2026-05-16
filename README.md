@@ -203,8 +203,8 @@ The detailed queue and wishlist live in
 
 ## Magdalena Integration
 
-Magdalena is the active UI shell direction. Moritz no longer treats `src/sift`
-as the future interface system.
+Magdalena is the active UI shell direction. Moritz has deleted the old
+`src/sift` interface library.
 
 Already adopted:
 
@@ -215,7 +215,9 @@ Already adopted:
 - `MgOutliner` for cObject trees.
 - `MgButton` for the top-bar module and settings commands.
 - The top-bar zoom slider is now a local native range input with a Moritz
-  glyph label, so the app shell no longer consumes Sift controls.
+  glyph label.
+- The old Sift root, debug overlay, controls, floating window, outliner, attrs,
+  layout, tokens, and CSS files have been removed.
 
 Current app-side bridge:
 
@@ -229,7 +231,6 @@ Still planned:
 
 - Replace remaining hand-rolled inspectors and local controls with Magdalena
   mObject or Mg controls.
-- Delete `src/sift/` once every old consumer is gone.
 - Replace app-local `--mz-*` palette/chrome with Magdalena `--mg-*` tokens and
   tone/importance vocabulary.
 - Replace direct React shell composition with an mObject tree once the direct
@@ -248,7 +249,6 @@ src/
   state/         Zustand stores and current persistence wrappers
   modules/       workspace-specific React payloads for the Magdalena shell
   ui/            Moritz-specific UI bridges such as MoritzText/MoritzSelect
-  sift/          legacy local interface system, pending deletion
   app.tsx        Magdalena-hosted app shell and workspace routing
 ```
 
@@ -309,14 +309,13 @@ Current baseline after the cObject shell work:
 
 ```text
 typecheck: clean
-tests: 150 passed
+tests: 151 passed
 build: clean, with Vite's existing large chunk warning
-bundle: about 799 KB minified JS
+bundle: about 795 KB minified JS
 ```
 
 ## Known Technical Debt
 
-- `src/sift/` still exists as legacy code and must be deleted.
 - App-local `mz-*` styling still coexists with Magdalena `mg-*` shell styling.
 - Persistence has not yet moved to `SigridProjectFile`.
 - TypeSetter live state still uses legacy `TextBlock` data.

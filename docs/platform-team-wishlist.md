@@ -77,9 +77,9 @@ specific gap (importance/tone vocabulary that maps cleanly to the four
 Moritz workspaces) is filed as wishlist entry W3 if and only if Moritz
 cannot express what it needs with the existing tone vocabulary.
 
-### V3. Local interface library `src/sift/` (CONTRIBUTING-AS-CONSUMER → "must never do" #4)
+### V3. Local interface library `src/sift/` (CONTRIBUTING-AS-CONSUMER → "must never do" #4) — resolved 2026-05-16
 
-Files: [src/sift/](../src/sift/) — `SiftRoot`, `Workbench`,
+Deleted files: `src/sift/` — `SiftRoot`, `Workbench`,
 `FloatingWindow`, `Tree`, `Attrs` / `AttrSection` / `AttrRow`, `inputs`
 (`Button`, `Slider`, `TextInput`, `NumberInput`, `Checkbox`, `Select`),
 `DevSettings`, `ImportanceDebugLayer`, `Imp`, `ClosenessGroup`,
@@ -88,14 +88,10 @@ Files: [src/sift/](../src/sift/) — `SiftRoot`, `Workbench`,
 Charter: "Build a workbench, outliner, panel, control, gizmo, or dev
 window from scratch. They live in `@christof/magdalena`."
 
-**Remediation:** delete `src/sift/` in full. Every consumer migrates to
-`@christof/magdalena/react`. In progress (one consumer migrated so far,
-see *Recently Adopted*). The migration order in *Adoption Queue* row
-[W7](#adoption-queue) is normative. There is no "Sift parity gap"
-wishlist entry — the gap is Moritz's, not Magdalena's. If Magdalena
-does not yet expose the surface Moritz needs, Moritz lives without that
-surface or files a properly-templated wishlist entry naming three apps
-that would use it.
+**Remediation:** done 2026-05-16. `src/sift/` was deleted in full after every
+live consumer moved to `@christof/magdalena/react` or to a small local native
+control that preserves Moritz-font labels. There is no "Sift parity gap"
+wishlist entry — the gap was Moritz's, not Magdalena's.
 
 ### V4. Rule-of-Three drift in `src/core/`
 
@@ -375,18 +371,18 @@ Where it would live: `@christof/magdalena/react` (already ships
 `MgButton`, `MgSlider`, `MgTextInput`, `MgNumberInput`, `MgSelect`,
 `MgToggle`, `MgAttrs`, `MgAttrSection`, `MgAttrRow`, `MgOutliner`,
 `useMgElement`).
-Replaces locally: [src/sift/](../src/sift/) (deletion target).
+Replaces locally: deleted `src/sift/`.
 Priority: **P0** — V3 violation tracking. This is not a request for
 the platform to add features. It is the migration log for deleting
 `src/sift/`. Sub-steps in deletion order:
 
 1. ~~`MgWorkbench` + `MgViewportLayer` host the stage in [src/app.tsx](../src/app.tsx).~~ **Done 2026-05-14.**
 2. ~~`MgDevSettingsWindow` auto-mounted by `MagdalenaProvider` in place of local `<DevSettingsWindow>`.~~ **Done 2026-05-14.**
-3. `MgFloatingWindow` replaces `FloatingWindow` in `app.tsx` and the four module shells. Per V2: the `mod={...}` palette-inheritance prop is **deleted, not replaced** — `--mz-*` palette is going away. Per V3: `initial={x,y,w,h}` undocked bounds are **deleted, not replaced** — windows mount at their docked bounds and the toolbar undocks via the user's drag. If Magdalena's eventual answer differs, Moritz adopts it; until then, no upstream feature request.
-4. `MgButton` / `MgSlider` / `MgTextInput` / `MgNumberInput` / `MgSelect` / `MgToggle` replace Sift inputs. Per the `id` + `label` requirement, every call site grows `id` and `label` props (≈80 sites). No shim layer that strips those props — the charter does not let Moritz hide the Magdalena contract behind a Sift-shaped wrapper. **Started 2026-05-16:** the top-bar module buttons and legacy-theme command now use `MgButton`; the top-bar zoom slider is now a local native range input with a Moritz glyph label. The app shell no longer consumes Sift controls, though it still imports `SiftRoot` / `ImportanceDebugLayer` for the legacy debug bridge and CSS-token wrapper.
-5. `MgOutliner` replaces Sift `Tree` in module shells.
-6. `MgAttrs` / `MgAttrSection` / `MgAttrRow` replace Sift equivalents in module shells.
-7. `MagdalenaProvider` context (`useMagdalena`, `useMgElement`) replaces `SiftRoot` context (`useSift`, `useSiftLayout`, `useImportance`, `Imp`, `ClosenessGroup`). `src/sift/` is deleted. Done.
+3. ~~`MgFloatingWindow` replaces `FloatingWindow` in `app.tsx` and the four module shells.~~ **Done 2026-05-14 / superseded by the four-region shell on 2026-05-15.**
+4. ~~`MgButton` / `MgSlider` / `MgTextInput` / `MgNumberInput` / `MgSelect` / `MgToggle` replace Sift inputs.~~ **Done 2026-05-16 for all live Sift consumers.** The top-bar module buttons and legacy-theme command use `MgButton`; the top-bar zoom slider is a local native range input with a Moritz glyph label.
+5. ~~`MgOutliner` replaces Sift `Tree` in module shells.~~ **Done 2026-05-15.**
+6. ~~`MgAttrs` / `MgAttrSection` / `MgAttrRow` replace Sift equivalents in module shells.~~ **Done 2026-05-16 by deletion; no live Sift attrs consumer remained.**
+7. ~~`MagdalenaProvider` context (`useMagdalena`, `useMgElement`) replaces `SiftRoot` context (`useSift`, `useSiftLayout`, `useImportance`, `Imp`, `ClosenessGroup`). `src/sift/` is deleted.~~ **Done 2026-05-16.**
 
 Why this generalises: not a generalisation entry. This is the V3
 remediation log. Listed under wishlist for visibility only.
@@ -425,6 +421,7 @@ Local code Moritz has actually deleted in favour of an upstream symbol.
 
 | Date | Upstream symbol | What we deleted locally |
 |---|---|---|
+| 2026-05-16 | `MagdalenaProvider`, `MgDevSettingsWindow`, `MgWorkbench`, `MgTopBar`, `MgLeftBar`, `MgRightBar`, `MgCOptions`, `MgButton`, `MgOutliner` from `@christof/magdalena/react` | Deleted `src/sift/` in full: local `SiftRoot`, workbench, floating window, attrs, tree, inputs, dev settings, importance overlay, layout, tokens, and CSS. The app shell now relies on Magdalena for root/debug settings and shell regions; the remaining zoom slider is a tiny native range input with a Moritz glyph label. 151/151 tests green. Bundle: 800 KB → 795 KB. |
 | 2026-05-15 | `cObject`, `cMarkSelection`, `cPrimarySelectedObject`, `cSelectedObjects` from `@christof/sigrid-geometry`; `animateGlyphSymbolsAlongStroke2d` from `@christof/sigrid-curves`; `MgOutliner` from `@christof/magdalena/react` | Added the Moritz cObject adapter in [src/core/moritzCObjects.ts](../src/core/moritzCObjects.ts): `font -> glyph -> animator? -> stroke -> anchor -> handles`, plus `bubbleFont -> bubble -> layer -> glyph -> strokes` and `page -> block -> text/bubble -> layer -> glyph -> strokes`. `Glyph` is now explicitly the nuclear drawable unit and can carry a pure-data `GlyphAnimatorComponent`, bridged by [src/core/glyphAnimator.ts](../src/core/glyphAnimator.ts). GlyphSetter, BubbleSetter, and TypeSetter left bars now show cObject trees; TypeSetter's cObject tree now consumes canonical `Block` / `TextRun` data at the shell boundary. `MgCOptions` follows selected glyph cObjects. Plan recorded in [docs/moritz-cobject-plan.md](moritz-cobject-plan.md). 150/150 tests green. Bundle: 801 KB. |
 | 2026-05-15 | `MgTopBar` / `MgLeftBar` / `MgRightBar` / `MgCOptions` from `@christof/magdalena/react` (the new mandatory four-region shell from [BECOME-A-CHILD.md → Mandatory shell](../../Luise/docs/BECOME-A-CHILD.md#mandatory-shell-the-four-regions)) | Every `MgFloatingWindow dock={mgDock.toolbar/outliner/attributes/instance}` call site (1 toolbar in [src/app.tsx](../src/app.tsx), 3 windows in [src/modules/glyphsetter/GlyphSetter.tsx](../src/modules/glyphsetter/GlyphSetter.tsx), 2 windows × 3 in stylesetter / bubblesetter / typesetter). Region semantics now declared at the call site instead of via dock-preset selection. The selection-driven `MgCOptions` replaces the GlyphSetter `itemattrs` window and now only mounts while a glyph cObject is selected. 135/135 tests green. Bundle: 768 KB → 768 KB. |
 | 2026-05-14 | `MgFloatingWindow` + `mgDock.{toolbar,outliner,attributes,instance}` from `@christof/magdalena/react` | Every Sift `<FloatingWindow>` call site (1 in [src/app.tsx](../src/app.tsx), 3 in [src/modules/glyphsetter/GlyphSetter.tsx](../src/modules/glyphsetter/GlyphSetter.tsx), 2 in [src/modules/stylesetter/StyleSetter.tsx](../src/modules/stylesetter/StyleSetter.tsx), 2 in [src/modules/bubblesetter/BubbleSetter.tsx](../src/modules/bubblesetter/BubbleSetter.tsx), 2 in [src/modules/typesetter/TypeSetter.tsx](../src/modules/typesetter/TypeSetter.tsx)). The `mod={...}` palette-inheritance prop and the `initial={x,y,w,h}` undocked-bounds prop are **deleted, not replaced** (V2 / V7 sub-step 3 deliberate feature loss). The bare-window `bare` prop becomes "no `title`" + `dock={mgDock.instance}` per Mg's auto-detection. `useSiftLayout()` + the `dockToolbar/dockOutliner/dockAttrs/dockItemAttrs` helpers are no longer called; their imports stripped from each shell. Local `src/sift/FloatingWindow.tsx` + `src/sift/layout.ts` are now dead code reachable only via `src/sift/index.ts` re-exports. Bundle: 772 KB → 768 KB. 135/135 tests green. Sub-step 3 of W7. |
