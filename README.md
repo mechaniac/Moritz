@@ -1,11 +1,9 @@
 # Moritz
 
-Moritz is a **font, bubble, style, and page generator for comic-book
-lettering**. It is a browser-based WYSIWYG editor where the user can design
-stroke-based glyphs, speech-bubble libraries, rendering styles, and final comic
-pages, then export the result as SVG or transparent PNG.
+Moritz is a browser-based editor for comic lettering systems: stroke-based
+fonts, speech-bubble libraries, rendering styles, and final page overlays.
 
-The product goal is a funnel:
+The current product funnel is:
 
 ```text
 Glyphs + Bubbles + Styles + Images
@@ -17,105 +15,244 @@ Glyphs + Bubbles + Styles + Images
        Render / Export
 ```
 
-Moritz is opinionated, not blank-slate. New fonts, bubbles, and pages start
-from useful built-in defaults. The user edits, swaps, adds, and combines parts
-instead of starting from zero. A page is intended to become a self-contained
-package: the page layout, background image, referenced fonts, styles, bubble
-libraries, and per-element overrides should all travel together.
-
----
+Moritz is not meant to become a large standalone platform. It is becoming a
+thin editor shell that arranges domain objects on a page while the shared
+Christof platform owns the workbench, object model, geometry primitives, and
+project-file direction.
 
 ## Quick Start
 
+Moritz currently consumes sibling packages from `../Luise`:
+
+```json
+"@christof/magdalena": "file:../Luise/packages/magdalena",
+"@christof/sigrid": "file:../Luise/packages/sigrid",
+"@christof/sigrid-curves": "file:../Luise/packages/sigrid-curves",
+"@christof/sigrid-geometry": "file:../Luise/packages/sigrid-geometry"
+```
+
+Install and run:
+
 ```bash
-npm install
+npm install --ignore-scripts
 npm run dev
 npm run typecheck
 npm test
 npm run build
 ```
 
-The Vite dev server defaults to:
+`--ignore-scripts` avoids the current `file:` consumer issue where upstream
+workspace packages try to run their `prepare` build outside the Luise monorepo.
+The Vite dev server is pinned to:
 
 ```text
-http://localhost:5173
+http://localhost:5181
 ```
 
 Tested with Node 20+.
 
----
+## Current Workspaces
 
-## Current Product Shape
+Moritz has four main workspaces, hosted in the mandatory Magdalena shell
+regions:
 
-Moritz currently has four main workspaces:
+- `topBar`: app/module/project controls.
+- `leftBar`: contents and cObject outliners.
+- `rightBar`: class-wide settings for the active workspace.
+- `cOptions`: per-instance options for the selected cObject.
 
-1. **GlyphSetter**
-   Edits individual glyphs as variable-width cubic-Bezier strokes. It supports
-   anchor editing, handles, fill preview, triangulation/debug overlays,
-   reference font tracing, metrics import, kerning, and per-font guide settings.
+### GlyphSetter
 
-2. **BubbleSetter**
-   Edits bubble presets. A bubble is a multi-layer composition where each layer
-   uses glyph-like stroke geometry, plus layer placement, scale, rotation, fill,
-   visibility, and role metadata.
+Edits individual glyphs as variable-width cubic Bezier strokes. It supports
+anchor editing, handles, fill preview, triangulation/debug overlays, reference
+font tracing, metrics import, kerning, per-font guides, and a glyph-level
+animator component.
 
-3. **StyleSetter**
-   Edits the active rendering style: slant, scale, stroke width, cap behavior,
-   ribbon triangulation, world/tangent normal blending, spacing, and procedural
-   effects such as jitter, wiggle, and taper.
+### BubbleSetter
 
-4. **TypeSetter**
-   Composes final pages. The page contains blocks; blocks contain bubble and
-   text data. TypeSetter loads a background image, places text/bubble blocks,
-   supports per-block font/style selection, allows in-place bubble editing, and
-   exports the final overlay.
+Edits bubble presets. A bubble is a multi-layer composition where every layer
+contains glyph-shaped stroke geometry plus placement, scale, rotation, fill,
+visibility, and role metadata.
 
-The intended architecture is that these are not separate apps. They are lenses
-over the same kind of editor: a fullscreen vector workspace with floating
-elements, shared camera behavior, shared selection rules, shared handles, and
-shared inspector/outliner concepts. When behavior can be shared, it should be
-shared.
+### StyleSetter
 
----
+Edits reusable rendering styles: slant, scale, stroke width, cap behavior,
+ribbon triangulation, world/tangent normal blending, spacing, and procedural
+effects such as jitter, wiggle, and taper.
 
-## User Workflow
+### TypeSetter
 
-The intended user workflow is:
+Composes final pages. A page contains text/bubble blocks over an optional
+background image, supports per-block font/style selection, allows in-place
+bubble editing, and exports SVG or PNG overlays.
 
-1. Start from a built-in font, bubble library, style, and page preset.
-2. Adjust glyphs in GlyphSetter.
-3. Adjust bubble presets in BubbleSetter.
-4. Tune the visual style in StyleSetter.
-5. Compose blocks on a page in TypeSetter.
-6. Assign fonts/styles per text element and styles per bubble.
-7. Edit bubbles directly on the page when needed.
-8. Save/export the page as a portable package and render SVG/PNG output.
+## Naming And Domain Model
 
-Exports are vector-first. SVG is the canonical output; PNG is a rasterization
-of that SVG.
+The nuclear element of a Moritz font is a `Glyph`.
 
----
+A `Font` is a collection container: metrics, style defaults, kerning, guides,
+and a `glyphs` record. A `Glyph` is the smallest universal drawable unit that
+can be edited, arranged, rendered, and animated.
 
-## Core Architecture
+Core JSON data types live in [src/core/types.ts](src/core/types.ts):
 
-The code follows a functional-core / imperative-shell split.
+- `Font`: named glyph collection plus style defaults and optional kerning/guides.
+- `Glyph`: character, editing box, strokes, and optional animator component.
+- `Stroke`: cubic Bezier path with vertices, handles, width/cap data, and normal
+  overrides.
+- `Style`: reusable rendering settings.
+- `BubbleFont`: named library of bubble presets.
+- `Bubble`: multi-layer drawing.
+- `BubbleLayer`: one placed glyph-shaped drawing inside a bubble.
+- `Page`: portable scene with dimensions, optional background, blocks, and a
+  local library snapshot.
+- `Block`: positioned page frame with optional bubble and text runs.
+- `TextRun`: text plus font/style references and local modulations.
+
+The current TypeSetter runtime still uses the older flat `TextBlock` shape and
+converts at persistence boundaries. Moving live state to canonical
+`Page -> Block -> TextRun` is the next major data-model cleanup.
+
+## cObjects
+
+Moritz now exposes its domain objects as Sigrid cObjects through
+[src/core/moritzCObjects.ts](src/core/moritzCObjects.ts).
+
+Current trees:
+
+```text
+font
+  glyph
+    animator?
+    stroke
+      anchor
+        in handle
+        out handle
+
+bubbleFont
+  bubble
+    layer
+      glyph
+        stroke
+          anchor
+            handles
+
+page
+  block
+    text
+    bubble
+      layer
+        glyph
+          stroke
+            anchor
+              handles
+```
+
+Upstream `CKind` currently supports `group` and `extrude`, so Moritz uses
+semantic `group` nodes with Moritz-specific metadata in the adapter layer. When
+Sigrid grows typed glyph/page/bubble cKinds, this adapter is the intended switch
+point.
+
+Selection is already cObject-driven in the visible shell:
+
+- GlyphSetter shows the selected glyph tree in `leftBar`.
+- GlyphSetter `cOptions` follows glyph, animator, stroke, anchor, and
+  multi-stroke selection.
+- BubbleSetter shows `bubble -> layer -> glyph -> strokes` in `leftBar`.
+- TypeSetter shows `page -> block -> text/bubble -> layer -> glyph -> strokes`
+  in `leftBar`.
+
+## Glyph Animation
+
+Animation belongs to the glyph, not to the font container.
+
+`Glyph.animator` is pure data. The current runtime bridge is
+[src/core/glyphAnimator.ts](src/core/glyphAnimator.ts), which maps Moritz glyphs
+to Sigrid-style universal glyph strokes and uses upstream Sigrid curve animation
+helpers. React components can preview animation, but animation is not stored as
+React state.
+
+## Sigrid Integration
+
+Moritz currently depends on these Sigrid packages:
+
+- `@christof/sigrid`: project-file and platform direction.
+- `@christof/sigrid-geometry`: cObject helpers such as `cObject`,
+  `cMarkSelection`, `cPrimarySelectedObject`, and `cSelectedObjects`.
+- `@christof/sigrid-curves`: shared 2D geometry helpers.
+
+Already adopted:
+
+- `triangulateSimplePolygon2d` is used through the local triangulation shim.
+- Sigrid cubic segment helpers replaced local Bezier segment construction,
+  evaluation, and tangent math.
+- Sigrid affine/glyph transform helpers replaced local transform math.
+- cObjects now describe fonts, bubbles, and pages.
+- glyph symbol animation uses Sigrid curve animation helpers.
+
+Still planned:
+
+- Replace bespoke Moritz persistence envelopes with `SigridProjectFile`.
+- Continue deleting local 2D geometry helpers when upstream equivalents are
+  accepted.
+- Move project identity and cross-document references into Sigrid documents
+  instead of app-local JSON envelopes.
+
+The detailed queue and wishlist live in
+[docs/platform-team-wishlist.md](docs/platform-team-wishlist.md).
+
+## Magdalena Integration
+
+Magdalena is the active UI shell direction. Moritz no longer treats `src/sift`
+as the future interface system.
+
+Already adopted:
+
+- `MagdalenaProvider`.
+- `MgWorkbench` and `MgViewportLayer`.
+- `MgDevSettingsWindow`.
+- `MgTopBar`, `MgLeftBar`, `MgRightBar`, and `MgCOptions`.
+- `MgOutliner` for cObject trees.
+
+Current app-side bridge:
+
+- [src/ui/MoritzText.tsx](src/ui/MoritzText.tsx) renders labels through the
+  active Moritz font.
+- [src/ui/MoritzSelect.tsx](src/ui/MoritzSelect.tsx) renders repo-owned menu
+  triggers and menu items through Moritz glyphs rather than native
+  `<select>/<option>` text.
+
+Still planned:
+
+- Replace remaining hand-rolled inspectors and local controls with Magdalena
+  mObject or Mg controls.
+- Delete `src/sift/` once every old consumer is gone.
+- Replace app-local `--mz-*` palette/chrome with Magdalena `--mg-*` tokens and
+  tone/importance vocabulary.
+- Replace direct React shell composition with an mObject tree once the direct
+  shell is stable.
+
+`MAGDALENA_INTEGRATION_README.md` is now only a pointer to canonical Luise docs
+and the Moritz wishlist. The source of truth for current platform state is
+[docs/platform-team-wishlist.md](docs/platform-team-wishlist.md).
+
+## Code Layout
 
 ```text
 src/
-  core/          pure geometry, layout, rendering, data types
-  data/          built-in fonts, styles, bubbles, presets
-  state/         Zustand stores and persistence wrappers
-  modules/       workspace-specific React shells
-  editor/        shared editor overlays and interaction pieces
-  ui/            older shared UI utilities
-  sift/          extractable interface system
-  app.tsx        app shell and workspace routing
+  core/          pure geometry, layout, rendering, data types, cObject adapters
+  data/          built-in fonts, styles, bubbles, text presets
+  state/         Zustand stores and current persistence wrappers
+  modules/       workspace-specific React payloads for the Magdalena shell
+  ui/            Moritz-specific UI bridges such as MoritzText/MoritzSelect
+  sift/          legacy local interface system, pending deletion
+  app.tsx        Magdalena-hosted app shell and workspace routing
 ```
 
-Everything in `src/core/` should be pure: no DOM, no React, no browser storage,
-no randomness without an explicit seed, and no hidden side effects.
+Everything in `src/core/` should stay pure: no DOM, no React, no browser
+storage, no implicit randomness, and no hidden side effects.
 
-The current rendering pipeline is:
+The core rendering path remains:
 
 ```text
 Font + StyleSettings + text
@@ -133,289 +270,29 @@ outline / ribbon triangulation
 render to SVG / canvas / PNG
 ```
 
-The critical rule is that style transforms are applied to the glyph control
-points before re-outlining. Moritz does not warp the already-rendered shape for
-slant or scale changes; it re-evaluates the geometry so stroke thickness and
-curvature stay natural.
+Style transforms are applied to glyph control points before re-outlining.
+Moritz does not warp already-rendered outlines for slant or scale changes.
 
----
+## Persistence State
 
-## Domain Model
+Current persistence is still transitional:
 
-The canonical data types live in [src/core/types.ts](src/core/types.ts).
-Everything is plain immutable JSON-serializable data.
+- fonts save as Moritz font envelopes
+- styles save as Moritz style envelopes
+- bubble fonts save as Moritz bubble-library envelopes
+- pages save as Moritz page envelopes
+- pages carry a local library snapshot so exported pages can be portable
 
-Important domain concepts:
+Target persistence:
 
-- **Font**
-  A named set of glyphs plus default style data and optional kerning/guides.
+- `SigridProjectFile` is the only saved project format.
+- Moritz facets use app-namespaced document kinds such as `moritz.font`,
+  `moritz.style`, `moritz.bubble-font`, and `moritz.page`.
+- Legacy Moritz envelopes are read once at load boundaries and upgraded in
+  memory.
+- Save paths write Sigrid project files, not dual formats.
 
-- **Glyph**
-  A character with an editing box and a list of strokes.
-
-- **Stroke**
-  A cubic-Bezier path with vertices, handles, optional width profile, caps, and
-  normal overrides.
-
-- **Style**
-  A named rendering settings object. Styles are intended to be reusable across
-  fonts, bubbles, and page elements.
-
-- **BubbleFont**
-  A named library of bubble presets.
-
-- **Bubble**
-  A multi-layer drawing. Each layer contains glyph-like vector geometry and
-  placement/rendering metadata.
-
-- **Page**
-  A self-contained scene: dimensions, optional background image, blocks, and a
-  local library snapshot of referenced fonts, styles, and bubble fonts.
-
-- **Block**
-  A positioned frame on a page. It may contain a bubble and one or more text
-  runs.
-
-- **TextRun**
-  Text plus font/style references and local modulations such as size, bold
-  factor, slant delta, and alignment.
-
-The target hierarchy is:
-
-```text
-Page
-  blocks[]
-    bubble?
-      styleId
-      preset reference or per-instance override
-    texts[]
-      text
-      fontId
-      styleId
-      local text settings
-  library
-    fonts
-    styles
-    bubbleFonts
-```
-
-Some runtime code still uses legacy flat `TextBlock` data for TypeSetter and
-converts to/from the canonical page shape during persistence. That migration is
-in progress.
-
----
-
-## Interface Module: Sift
-
-Moritz has an extractable interface module in [src/sift](src/sift). This is the
-home for the app's opinionated UI system. It is intended to become reusable in
-other projects, so generic interface behavior belongs in `src/sift/`, while
-Moritz-specific composition belongs in `src/app.tsx`, `src/modules/`, or
-Moritz-specific wrappers.
-
-### Sift Principles
-
-Sift is based on a small set of strict visual and interaction principles:
-
-- The interface is almost monochromatic.
-- The main theme axis moves from cold/dark night to warm/bright day.
-- Pure black and pure white are avoided except at deliberate extremes.
-- Local contrast should be low: nearby visible parts should have nearby colors.
-- Color is reserved for meaning:
-  - green: generate/start
-  - yellow: annotation/help
-  - orange: currently important/relevant
-  - red: changed/save/overwrite/destructive
-- Changed controls should change themselves; avoid unrelated warning outlines.
-- The app is fullscreen.
-- Interface elements live as floating/dockable windows.
-- Main windows have sensible locked positions but can be unpinned.
-- Importance is a first-class UI property: important things become bigger,
-  brighter, heavier, or higher contrast.
-- Debug mode should expose importance and eventually relationship overlays.
-- No Tailwind or generic UI kit. Sift is the UI kit.
-
-### Sift Files
-
-```text
-src/sift/
-  index.ts             public exports and module summary
-  SiftRoot.tsx         context, token injection, debug state, importance state
-  tokens.ts            day/night theme and semantic token generation
-  layout.ts            dock positions for toolbar/outliner/attrs windows
-  Workbench.tsx        fullscreen app shell
-  FloatingWindow.tsx   docked/free floating panels
-  Tree.tsx             generic collapsible outliner
-  Attrs.tsx            generic right-side inspector layout
-  inputs.tsx           Sift buttons, inputs, sliders, checkboxes, selects
-  DevSettings.tsx      live theme/layout/debug/importance tooling
-  sift.css             base stylesheet for all Sift primitives
-```
-
-### Current Sift State
-
-Implemented today:
-
-- `SiftRoot` wraps the app and injects generated CSS tokens.
-- `Workbench` provides the fullscreen stage/window/overlay structure.
-- `FloatingWindow` supports docked windows, dragged floating windows, and pinning
-  back to docked positions.
-- `layout.ts` defines shared dock positions for:
-  - top toolbar
-  - left outliner
-  - right attributes inspector
-  - item attributes
-- `tokens.ts` generates:
-  - cold/dark to warm/bright theme colors
-  - low-contrast surface ramps
-  - semantic accents
-  - importance scales
-  - spacing/radius/animation tokens
-- `DevSettingsWindow` exposes live theme and layout sliders.
-- `ImportanceDebugLayer` allows right-click importance editing in debug mode for
-  wrapped Sift targets.
-- `Tree` provides a generic collapsible outliner.
-- `Attrs`, `AttrSection`, and `AttrRow` provide a generic attributes inspector.
-- Sift controls exist for buttons, text inputs, number inputs, sliders,
-  checkboxes, and selects.
-- The main app shell now uses Sift for the global workbench, toolbar, dev
-  settings, and importance overlay.
-- GlyphSetter, BubbleSetter, and StyleSetter now expose Sift outliner and
-  attributes windows from their workspace shells.
-- TypeSetter already uses Sift floating windows for page/outliner and style
-  attributes.
-
-### Current Gaps
-
-Sift is real, but it is not yet fully applied everywhere.
-
-Remaining gaps:
-
-- Many module internals still use legacy `mz-*` styles and inline styles.
-- The old theme picker still exists beside Sift's day/night token system.
-- Native/legacy controls still appear in module panels.
-- Sift outliners are currently structural summaries; they are not yet the full
-  source of truth for all selection and scene hierarchy behavior.
-- TypeSetter still uses some legacy block data internally.
-- Debug mode does not yet "show all controls" globally.
-- Importance is per wrapped element, but class-level/global importance behavior
-  is not yet configurable.
-- Closeness is represented by tokens and CSS conventions, but not yet measured or
-  audited across every visible sub-element.
-- Selected-node child overlays and spline connection overlays are planned but not
-  implemented as a shared Sift/Moritz shell feature.
-- Sift is designed to be extractable, but there is still coupling to Moritz
-  palette variables in some CSS while migration is ongoing.
-
-### Sift Plan
-
-The interface migration plan is:
-
-1. Make Sift the single shell for all workspaces.
-2. Move all top-level panels to Sift `FloatingWindow`s.
-3. Replace legacy drawers with docked Sift windows.
-4. Render every workspace hierarchy through Sift `Tree`.
-5. Render every primary inspector through Sift `Attrs`.
-6. Replace legacy/native inputs with Sift controls.
-7. Bridge or retire the old theme store.
-8. Move module-specific inline styles into named `mz-*` composition classes or
-   generic `sf-*` Sift classes.
-9. Add class-level importance configuration.
-10. Expand debug mode so the developer can reveal hidden controls, inspect
-    importance, inspect closeness, and view relationship overlays.
-11. Add selected-node child overlays and connection splines as shared shell
-    features.
-12. Extract Sift cleanly enough that it can be copied into another project with
-    minimal Moritz-specific code.
-
----
-
-## Workspace Architecture Plan
-
-The long-term editor architecture is one base editor presented through several
-workspace lenses.
-
-Shared editor capabilities should include:
-
-- infinite vector workspace
-- pan/zoom camera
-- stable grid system
-- selection
-- marquee selection
-- anchor and handle editing
-- shared stroke overlay rendering
-- outliner selection
-- attributes inspector
-- debug overlays
-- snapping/guides
-- import/export hooks
-
-Workspace-specific behavior should mainly be configuration:
-
-- which objects are shown
-- which grid is active
-- which tools are enabled
-- which inspector sections appear
-- which save/load target is active
-- which export action is primary
-
-The goal is that a change to anchor editing, stroke display, selection, or
-importance/debug behavior is made once and appears everywhere.
-
----
-
-## Persistence
-
-Moritz persists data in two ways:
-
-- Browser storage for normal app usage.
-- Dev-only repo writes for some save flows during local development.
-
-The persistence direction is:
-
-- fonts save as complete font packages
-- styles save as complete reusable style packages
-- bubble fonts save as complete bubble libraries
-- pages save as self-contained packages
-
-A final page package should include:
-
-- page dimensions
-- block layout
-- page background image as data URL
-- referenced fonts
-- referenced styles
-- referenced bubble fonts
-- per-block/per-run assignments
-- per-instance overrides
-
----
-
-## Rendering and Geometry Notes
-
-Moritz supports both filled polygon rendering and ribbon-style triangulation.
-
-Key geometry concepts:
-
-- cubic-Bezier sampling
-- tangent-based normals
-- world-angle normals
-- blend between tangent and world normals
-- world contraction
-- miter/bevel/round/tapered caps
-- per-anchor normal overrides
-- width profiles
-- deterministic effects
-- ribbon subdivision
-- arc-length-aware subdivision
-- seeded procedural variation
-
-The renderer should stay deterministic: the same data and seed should produce
-the same SVG.
-
----
-
-## Testing and Verification
+## Verification
 
 Useful commands:
 
@@ -425,53 +302,35 @@ npm test
 npm run build
 ```
 
-Guidelines:
+Current baseline after the cObject shell work:
 
-- Changes in `src/core/` should have tests.
-- UI shell changes should at least pass typecheck and build.
-- Shared behavior should be tested at the lowest pure layer possible.
-- Avoid testing visual details through brittle snapshots unless the visual
-  contract is the feature being protected.
+```text
+typecheck: clean
+tests: 150 passed
+build: clean, with Vite's existing large chunk warning
+bundle: about 799 KB minified JS
+```
 
----
+## Known Technical Debt
 
-## Coding Rules
+- `src/sift/` still exists as legacy code and must be deleted.
+- App-local `mz-*` styling still coexists with Magdalena `mg-*` shell styling.
+- Persistence has not yet moved to `SigridProjectFile`.
+- TypeSetter live state still uses legacy `TextBlock` data.
+- Several pure 2D helpers in `src/core/` are still Rule-of-Three candidates for
+  Sigrid/Sigrid-curves.
+- Some inspectors still use hand-rolled React/inline styles rather than Mg
+  controls.
+- The app depends on local `file:` packages from `../Luise`, so the sibling repo
+  layout matters during development.
 
-Short version:
+## Docs
 
-- Keep `src/core/` pure.
-- Use immutable JSON data.
-- Prefer shared editor/Sift abstractions over per-module duplication.
-- Keep workspace modules thin.
-- Use TypeScript strictness.
-- Avoid `any`.
-- Avoid non-null assertions unless the boundary is genuinely known.
-- Do not add heavyweight dependencies casually.
-- Do not add Tailwind.
-- Keep `.github/copilot-instructions.md` and `CLAUDE.md` in sync.
-
-Full conventions live in:
-
+- [docs/moritz-cobject-plan.md](docs/moritz-cobject-plan.md)
+- [docs/platform-team-wishlist.md](docs/platform-team-wishlist.md)
+- [MAGDALENA_INTEGRATION_README.md](MAGDALENA_INTEGRATION_README.md)
 - [.github/copilot-instructions.md](.github/copilot-instructions.md)
 - [CLAUDE.md](CLAUDE.md)
-
----
-
-## Current Known Technical Debt
-
-- Sift and legacy `mz-*` CSS currently coexist.
-- The README, docs, and runtime were previously out of sync; this README now
-  describes the intended architecture and current migration state.
-- TypeSetter still has legacy runtime block structures.
-- Some module inspectors still contain inline styles and native controls.
-- Some app state is split across focused stores, which is useful locally but
-  will need clearer scene/project composition for portable project packages.
-- The page/project package model exists in the domain direction but is not yet
-  the only runtime source of truth.
-- Some generated/dev-save files may be present during local development and
-  should be reviewed before committing.
-
----
 
 ## License
 
