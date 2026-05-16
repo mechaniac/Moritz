@@ -199,7 +199,9 @@ Still planned:
   instead of app-local JSON envelopes.
 
 The detailed queue and wishlist live in
-[docs/platform-team-wishlist.md](docs/platform-team-wishlist.md).
+[docs/platform-team-wishlist.md](docs/platform-team-wishlist.md). The no-loss
+map for donating Moritz glyph/vector behavior to Sigrid and Magdalena lives in
+[docs/glyph-system-donation-map.md](docs/glyph-system-donation-map.md).
 
 ## Magdalena Integration
 

@@ -12,6 +12,9 @@ Authority: bound by [BECOME-A-CHILD.md](../../Luise/docs/BECOME-A-CHILD.md),
 Related Moritz docs:
 - [.github/copilot-instructions.md](../.github/copilot-instructions.md) — Moritz product principles & domain model
 - [CLAUDE.md](../CLAUDE.md) — mirror of the above for Claude Code
+- [glyph-system-donation-map.md](glyph-system-donation-map.md) — no-loss
+  migration map for donating Moritz glyph/vector behavior to Sigrid and
+  Magdalena
 
 ## Prime Directive acknowledgement
 
@@ -148,6 +151,12 @@ the platform is the contract; if Moritz currently renders things the
 platform cannot, Moritz stops rendering them. Properly-templated
 wishlist entries (W4 below) are the only legitimate way to reverse
 that.
+
+Operational donation map: [glyph-system-donation-map.md](glyph-system-donation-map.md).
+The preferred outcome is that Moritz loses ownership of general glyph/vector
+features, not that the product loses visible behavior. Local deletion should
+happen after an upstream equivalent lands, or after the director explicitly
+accepts the regression named in the relevant wishlist entry.
 
 ---
 

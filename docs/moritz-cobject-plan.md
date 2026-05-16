@@ -3,6 +3,8 @@
 Status: active
 Date: 2026-05-15
 
+Related: [Glyph System Donation Map](glyph-system-donation-map.md)
+
 ## Naming Decision
 
 The nuclear element of a Moritz font is a `Glyph`.
@@ -88,12 +90,14 @@ regions.
 
 ## Next Slices
 
-1. Promote TypeSetter's live legacy `TextBlock` state to the canonical
+1. Add renderer equivalence fixtures for the glyph-system donation candidates
+   in [glyph-system-donation-map.md](glyph-system-donation-map.md).
+2. Promote TypeSetter's live legacy `TextBlock` state to the canonical
    `Page -> Block -> TextRun` runtime model so the cObject tree no longer needs
    a compatibility adapter.
-2. Replace remaining hand-rolled left/right panel controls with Magdalena mObject
+3. Replace remaining hand-rolled left/right panel controls with Magdalena mObject
    or Mg controls.
-3. Move persistence to `SigridProjectFile`, storing font/glyph cObject identity
+4. Move persistence to `SigridProjectFile`, storing font/glyph cObject identity
    rather than app-local envelopes.
-4. Replace shell call sites with an mObject tree once the current direct React
+5. Replace shell call sites with an mObject tree once the current direct React
    shell is stable.
