@@ -80,7 +80,10 @@ cannot express what it needs with the existing tone vocabulary.
 Progress 2026-05-16: the top-bar module switcher now uses `MgButton` tone /
 importance only; it no longer applies `mz-mod--<id>` palette classes to shell
 buttons. Module work areas still use `mz-mod--<id>` while their internal
-inspectors migrate.
+inspectors migrate. The legacy Moritz colour-scheme picker (`themeStore` +
+`SettingsModal`) has been deleted; Magdalena dev settings own shell theme/debug
+controls.
+Bundle: 795 KB → 792 KB.
 
 ### V3. Local interface library `src/sift/` (CONTRIBUTING-AS-CONSUMER → "must never do" #4) — resolved 2026-05-16
 

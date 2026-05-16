@@ -216,6 +216,8 @@ Already adopted:
 - `MgButton` for the top-bar module and settings commands.
 - The top-bar zoom slider is now a local native range input with a Moritz
   glyph label.
+- The legacy Moritz colour-scheme picker has been removed; Magdalena dev
+  settings now own shell theme/debug controls.
 - The old Sift root, debug overlay, controls, floating window, outliner, attrs,
   layout, tokens, and CSS files have been removed.
 
@@ -311,7 +313,7 @@ Current baseline after the cObject shell work:
 typecheck: clean
 tests: 151 passed
 build: clean, with Vite's existing large chunk warning
-bundle: about 795 KB minified JS
+bundle: about 792 KB minified JS
 ```
 
 ## Known Technical Debt

@@ -1,15 +1,12 @@
-import { useEffect } from 'react';
 import { GlyphSetter } from './modules/glyphsetter/GlyphSetter.js';
 import { BubbleSetter } from './modules/bubblesetter/BubbleSetter';
 import { StyleSetter } from './modules/stylesetter/StyleSetter.js';
 import { TypeSetter } from './modules/typesetter/TypeSetter.js';
 import { useAppStore, type ModuleId } from './state/store.js';
-import { useThemeStore } from './state/themeStore.js';
 import { FontBar } from './ui/FontBar.js';
 import { BubbleBar } from './ui/BubbleBar.js';
 import { StyleBar } from './ui/StyleBar.js';
 import { PageBar } from './ui/PageBar.js';
-import { SettingsModal } from './ui/SettingsModal.js';
 import { MoritzLabel } from './ui/MoritzText.js';
 import { MgButton, MgWorkbench, MgViewportLayer, MgTopBar } from '@christof/magdalena/react';
 
@@ -21,13 +18,6 @@ const tabs: { id: ModuleId; label: string }[] = [
 ];
 
 export function App(): JSX.Element {
-  const theme = useThemeStore((s) => s.theme);
-  // Keep the legacy Moritz scheme on <html> so existing module-internal
-  // styles still resolve while we port them to Magdalena tokens.
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
-
   return <AppShell />;
 }
 
@@ -36,7 +26,6 @@ function AppShell(): JSX.Element {
   const setModule = useAppStore((s) => s.setModule);
   const editorScale = useAppStore((s) => s.glyphView.editorScale);
   const setGlyphView = useAppStore((s) => s.setGlyphView);
-  const openSettings = useThemeStore((s) => s.openSettings);
 
   return (
     <MgWorkbench>
@@ -54,7 +43,6 @@ function AppShell(): JSX.Element {
             {module === 'stylesetter' && <StyleSetter />}
             {module === 'typesetter' && <TypeSetter />}
           </main>
-          <SettingsModal />
         </div>
       </MgViewportLayer>
       <MgTopBar
@@ -128,25 +116,6 @@ function AppShell(): JSX.Element {
                   {module === 'bubblesetter' && <BubbleBar />}
                   {module === 'stylesetter' && <StyleBar />}
                   {module === 'typesetter' && <PageBar />}
-                </div>
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 4,
-                    paddingTop: 'calc(var(--mg-pad) * 0.5)',
-                    borderTop: '1px solid var(--mg-line)',
-                    alignItems: 'center',
-                  }}
-                >
-                  <MgButton
-                    id="moritz.toolbar.legacyTheme"
-                    onClick={openSettings}
-                    importance={0}
-                    aria-label="legacy theme"
-                    title="legacy theme"
-                  >
-                    <MoritzLabel text="legacy theme" size={12} />
-                  </MgButton>
                 </div>
               </div>
             </MgTopBar>
