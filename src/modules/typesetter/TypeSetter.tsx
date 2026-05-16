@@ -395,7 +395,7 @@ export function TypeSetter(): JSX.Element {
 
   return (
     <div
-      className="mz-typesetter mz-typesetter--sift"
+      className="mz-typesetter mz-typesetter--mg"
       style={{ position: 'absolute', inset: 0 }}
     >
       {/* Outliner — page source + block list */}

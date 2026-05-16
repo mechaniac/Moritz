@@ -274,7 +274,7 @@ export function GlyphSetterStage(props: {
   const glyph = font.glyphs[selectedChar];
   return (
     <div
-      className="mz-glyphsetter mz-glyphsetter--sift"
+      className="mz-glyphsetter mz-glyphsetter--mg"
       style={{
         position: 'absolute',
         inset: 0,

@@ -419,7 +419,7 @@ export function BubbleSetterStage(): JSX.Element {
     onGlyphChange, fillButton, underlay } = useBubbleSetterState();
   return (
     <div
-      className="mz-bubblesetter mz-bubblesetter--sift"
+      className="mz-bubblesetter mz-bubblesetter--mg"
       style={{
         position: 'absolute',
         inset: 0,

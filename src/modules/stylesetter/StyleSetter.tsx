@@ -110,7 +110,7 @@ export function StyleSetterStage(): JSX.Element {
 
   return (
     <div
-      className="mz-stylesetter mz-stylesetter--sift"
+      className="mz-stylesetter mz-stylesetter--mg"
       style={{ position: 'absolute', inset: 0 }}
     >
       <div
