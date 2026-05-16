@@ -1,10 +1,9 @@
 import {
   animateGlyphSymbolsAlongStroke2d,
-  type Glyph2d,
-  type GlyphSplineStroke,
   type GlyphSymbolAnimation2d,
   type GlyphSymbolFrame2d,
 } from '@christof/sigrid-curves';
+import type { Glyph2d, GlyphSplineStroke } from '@christof/sigrid/glyph';
 import type { Glyph, GlyphAnimatorComponent, Stroke } from './types.js';
 
 export type UniversalGlyph = Glyph2d;

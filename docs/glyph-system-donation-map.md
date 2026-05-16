@@ -10,6 +10,11 @@ target is not to remove capability from the product; it is to move capability
 to Sigrid or Magdalena and leave Moritz as a thin editor shell for authoring
 fonts, bubbles, styles, and pages.
 
+Mother update 2026-05-16: Luise now states that glyphs are platform code.
+Moritz therefore treats `@christof/sigrid/glyph` as the canonical glyph
+vocabulary and `@christof/sigrid-curves` as behavior layered on top of those
+types.
+
 ## No-Loss Gate
 
 A Moritz-local glyph feature can be deleted only after one of these is true:
@@ -26,7 +31,7 @@ The preferred path is ownership loss only.
 
 | Area | Owner | Moritz outcome |
 |---|---|---|
-| Glyph/stroke/anchor/handle identity | Sigrid | Moritz keeps adapters until Sigrid has typed glyph cKinds. |
+| Glyph/stroke/anchor/handle identity | Sigrid (`@christof/sigrid/glyph`) | Moritz imports canonical glyph types and keeps adapters until Sigrid has typed 2D glyph cKinds. |
 | Project/file identity | Sigrid | Moritz saves `SigridProjectFile`, not app-local envelopes. |
 | Glyph geometry and transforms | Sigrid | Moritz imports upstream helpers. |
 | Stroke outline, width, jitter, relax, ribbon, fill | Sigrid curves or Sigrid paint | Moritz deletes local render math after equivalent upstream adoption. |
@@ -38,8 +43,8 @@ The preferred path is ownership loss only.
 
 | Feature | Current Moritz files | Platform target | If accepted | If rejected |
 |---|---|---|---|---|
-| Glyph as universal drawable unit | `src/core/types.ts`, `src/core/moritzCObjects.ts` | Sigrid typed glyph cKinds and project nodes | Moritz swaps adapter kinds from semantic `group` to typed cKinds. | Moritz keeps metadata adapter around generic cObjects. |
-| Pure glyph animator | `src/core/glyphAnimator.ts` | Sigrid curves animation primitives | Mostly done; Moritz keeps only authoring controls. | Moritz keeps the small bridge, but animation data stays on `Glyph`. |
+| Glyph as universal drawable unit | `src/core/types.ts`, `src/core/moritzCObjects.ts`, `src/core/glyphAnimator.ts` | `@christof/sigrid/glyph`, then typed 2D glyph cKinds and project nodes | Moritz swaps adapter kinds from semantic `group` to typed cKinds. | Moritz keeps metadata adapter around generic cObjects. |
+| Pure glyph animator | `src/core/glyphAnimator.ts` | Sigrid glyph types plus Sigrid curves animation primitives | Mostly done; Moritz imports `Glyph2d` / `GlyphSplineStroke` from `@christof/sigrid/glyph` and keeps only authoring controls. | Moritz keeps the small bridge, but animation data stays on `Glyph`. |
 | Rich stroke outline | `src/core/stroke.ts`, `src/core/widthEffects.ts`, `src/core/effects.ts`, `src/core/relax.ts`, `src/core/ribbon.ts` | W4 in `@christof/sigrid-curves` | No visible loss: custom caps, adaptive flattening, width modulation, jitter, relax, and ribbons move upstream. | Moritz adopts upstream outline as-is; tight-bend smoothing, custom caps, richer jitter/width behavior, and some ribbon richness are lost or retuned. |
 | Fill from open hand-drawn strokes | `src/core/bubbleFill.ts` | W5 in `@christof/sigrid-curves` | Cloud/organic fills keep working; loop chaining moves upstream. | Bubble outlines must be authored as closed strokes; organic cloud fills are rebuilt or removed. |
 | Bubble-layer paint | `src/core/bubble.ts`, `src/core/bubbleRender.ts` | W6 in `@christof/sigrid-curves` or `@christof/sigrid-paint` | Multi-layer offset/fill/effect primitive moves upstream; Moritz keeps BubbleSetter workflow. | Moritz either keeps a known Rule-of-Three violation or accepts a simpler bubble model. |
@@ -65,10 +70,12 @@ The preferred path is ownership loss only.
 
 ## Immediate Next Slices
 
-1. Add renderer equivalence fixtures for W4/W5/W6 candidates.
-2. Convert live TypeSetter state from legacy `TextBlock` to canonical
+1. Treat new glyph imports as a rule: canonical glyph data types come from
+   `@christof/sigrid/glyph`, not through `@christof/sigrid-curves`.
+2. Add renderer equivalence fixtures for W4/W5/W6 candidates.
+3. Convert live TypeSetter state from legacy `TextBlock` to canonical
    `Page -> Block -> TextRun`.
-3. Move persistence to `SigridProjectFile` once W1 naming is accepted or the
+4. Move persistence to `SigridProjectFile` once W1 naming is accepted or the
    opaque-document fallback is chosen.
-4. Replace remaining local 2D viewport/overlay pieces with Magdalena W2/W3 when
+5. Replace remaining local 2D viewport/overlay pieces with Magdalena W2/W3 when
    available.

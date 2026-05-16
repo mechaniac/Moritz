@@ -96,7 +96,7 @@ import { useAppStore } from '../../state/store.js';
 import { StyleControls } from '../stylesetter/StyleControls.js';
 import { MoritzLabel } from '../../ui/MoritzText.js';
 import { MoritzSelect } from '../../ui/MoritzSelect.js';
-import { MgLeftBar, MgRightBar, MgCOptions, MgOutliner, useMgElement, type MgTreeNode } from '@christof/magdalena/react';
+import { MgLeftBar, MgRightBar, MgSelectedCOptions, MgOutliner, useMgElement, type MgTreeNode } from '@christof/magdalena/react';
 
 // Module-level clipboard for copied strokes. Persists across glyph switches
 // (the GlyphEditor remounts when `selectedGlyph` changes) and even module
@@ -241,17 +241,16 @@ export function GlyphSetter(): JSX.Element {
           onSelectionChange={setSelection}
         />
       </MgLeftBar>
-      {cObjectSelection.selected ? (
-        <MgCOptions
-          id="moritz.itemattrs"
-          title={cObjectSelection.meta?.label}
-        >
-          <GlyphSetterItemAttrs
-            cObjectSelection={cObjectSelection}
-            onSelectionChange={setSelection}
-          />
-        </MgCOptions>
-      ) : null}
+      <MgSelectedCOptions
+        id="moritz.itemattrs"
+        title={cObjectSelection.meta?.label}
+        cObject={cObjectSelection.selected}
+      >
+        <GlyphSetterItemAttrs
+          cObjectSelection={cObjectSelection}
+          onSelectionChange={setSelection}
+        />
+      </MgSelectedCOptions>
       <MgRightBar
         id="moritz.attrs"
         title="Style"

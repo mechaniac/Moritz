@@ -16,6 +16,21 @@ Related Moritz docs:
   migration map for donating Moritz glyph/vector behavior to Sigrid and
   Magdalena
 
+## Mother check 2026-05-16
+
+Luise was fetched and its local `main` is ahead of `origin/main` with a new
+platform direction that matters to Moritz even before those commits are pushed.
+
+- Sigrid now owns glyph vocabulary. Moritz should import canonical glyph data
+  types from `@christof/sigrid/glyph`; `@christof/sigrid-curves` supplies curve
+  behavior on top of that vocabulary.
+- Sigrid geometry now has `mesh` and `splineGlyph3d` cKinds plus cObject-level
+  spline-glyph editor helpers. Moritz's 2D object trees can stay semantic
+  `group` adapters until typed 2D glyph/page/bubble cKinds exist.
+- Magdalena now exposes `surface: "bubble" | "outline"` and selection-driven
+  cOptions helpers. Moritz now lets `MgSelectedCOptions` own the
+  selected-cObject mount/unmount branch for GlyphSetter cOptions.
+
 ## Prime Directive acknowledgement
 
 > The platform is sovereign. Moritz is a training case, not a customer.
@@ -450,6 +465,7 @@ Local code Moritz has actually deleted in favour of an upstream symbol.
 
 | Date | Upstream symbol | What we deleted locally |
 |---|---|---|
+| 2026-05-16 | `Glyph2d` / `GlyphSplineStroke` from `@christof/sigrid/glyph`; `MgSelectedCOptions` from `@christof/magdalena/react` | Moved [src/core/glyphAnimator.ts](../src/core/glyphAnimator.ts) so canonical glyph data types come from Sigrid core rather than through `@christof/sigrid-curves`; curves now supply only the animation behavior. Replaced GlyphSetter's hand-written selected-cObject cOptions conditional with `MgSelectedCOptions` in [src/modules/glyphsetter/GlyphSetter.tsx](../src/modules/glyphsetter/GlyphSetter.tsx). 152/152 tests green. Bundle: 793.62 KB. |
 | 2026-05-16 | `MgModuleSwitcher` from `@christof/magdalena/react` | Replaced the hand-wired top-bar module button map in [src/app.tsx](../src/app.tsx). Module labels still render through `MoritzLabel`, but Magdalena now owns the module-switcher role, active-state metadata, tone, and selected importance. 151/151 tests green. Bundle: 792 KB. |
 | 2026-05-16 | `MagdalenaProvider`, `MgDevSettingsWindow`, `MgWorkbench`, `MgTopBar`, `MgLeftBar`, `MgRightBar`, `MgCOptions`, `MgButton`, `MgOutliner` from `@christof/magdalena/react` | Deleted `src/sift/` in full: local `SiftRoot`, workbench, floating window, attrs, tree, inputs, dev settings, importance overlay, layout, tokens, and CSS. The app shell now relies on Magdalena for root/debug settings and shell regions; the remaining zoom slider is a tiny native range input with a Moritz glyph label. 151/151 tests green. Bundle: 800 KB → 795 KB. |
 | 2026-05-15 | `cObject`, `cMarkSelection`, `cPrimarySelectedObject`, `cSelectedObjects` from `@christof/sigrid-geometry`; `animateGlyphSymbolsAlongStroke2d` from `@christof/sigrid-curves`; `MgOutliner` from `@christof/magdalena/react` | Added the Moritz cObject adapter in [src/core/moritzCObjects.ts](../src/core/moritzCObjects.ts): `font -> glyph -> animator? -> stroke -> anchor -> handles`, plus `bubbleFont -> bubble -> layer -> glyph -> strokes` and `page -> block -> text/bubble -> layer -> glyph -> strokes`. `Glyph` is now explicitly the nuclear drawable unit and can carry a pure-data `GlyphAnimatorComponent`, bridged by [src/core/glyphAnimator.ts](../src/core/glyphAnimator.ts). GlyphSetter, BubbleSetter, and TypeSetter left bars now show cObject trees; TypeSetter's cObject tree now consumes canonical `Block` / `TextRun` data at the shell boundary. `MgCOptions` follows selected glyph cObjects. Plan recorded in [docs/moritz-cobject-plan.md](moritz-cobject-plan.md). 150/150 tests green. Bundle: 801 KB. |
@@ -465,6 +481,9 @@ Local code Moritz has actually deleted in favour of an upstream symbol.
 
 | Date | Upstream symbol | Closes our ask |
 |---|---|---|
+| 2026-05-16 (Luise local main) | `@christof/sigrid/glyph` canonical glyph types and glyph document helpers | Turns Moritz glyph donation from proposal into platform direction; first Moritz adoption is the animator bridge type import. |
+| 2026-05-16 (Luise local main) | `mesh` / `splineGlyph3d` cKinds plus cObject spline-glyph editor helpers in `@christof/sigrid-geometry` | Establishes the cObject precedent for glyph-bearing scene objects; Moritz still waits on typed 2D glyph/page/bubble cKinds. |
+| 2026-05-16 (Luise local main) | `MgSurfaceStyle = "bubble" / "outline"` plus `MgSelectedCOptions` | Supports the outline cOptions law and lets Magdalena own selected-cObject cOptions mounting. |
 | 2026-05-14 (slice 131) | `MgAttrs`, `MgAttrSection`, `MgAttrRow`, `MgNumberInput`, `MgSelect`, `MgTabs`, `MgList`, `MgMetrics` (v0.1.x stable contract) | W7 sub-steps 4 + 6 |
 | 2026-05-14 (slice 129) | `MgDevSettingsWindow` `extraSections` + `MagdalenaDevSettingsConfig.extraSections` | W7 sub-step 2 (already adopted) |
 | 2026-05-14 (slice 126) | `prepare: npm run build` on every `@christof/*` package | None; see Bug Reports below |

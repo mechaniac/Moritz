@@ -148,10 +148,11 @@ page
               handles
 ```
 
-Upstream `CKind` currently supports `group` and `extrude`, so Moritz uses
-semantic `group` nodes with Moritz-specific metadata in the adapter layer. When
-Sigrid grows typed glyph/page/bubble cKinds, this adapter is the intended switch
-point.
+Upstream `CKind` now includes `group`, `mesh`, `extrude`, and
+`splineGlyph3d`. Moritz still represents its 2D font, page, and bubble trees as
+semantic `group` nodes with Moritz-specific metadata in the adapter layer.
+Sigrid's 3D spline-glyph cObject path is the current precedent; typed 2D
+glyph/page/bubble cKinds can replace the adapter tags at this switch point.
 
 Selection is already cObject-driven in the visible shell:
 
@@ -168,18 +169,19 @@ Animation belongs to the glyph, not to the font container.
 
 `Glyph.animator` is pure data. The current runtime bridge is
 [src/core/glyphAnimator.ts](src/core/glyphAnimator.ts), which maps Moritz glyphs
-to Sigrid-style universal glyph strokes and uses upstream Sigrid curve animation
-helpers. React components can preview animation, but animation is not stored as
-React state.
+to canonical Sigrid glyph types from `@christof/sigrid/glyph` and uses
+`@christof/sigrid-curves` for the path-animation behavior. React components can
+preview animation, but animation is not stored as React state.
 
 ## Sigrid Integration
 
 Moritz currently depends on these Sigrid packages:
 
-- `@christof/sigrid`: project-file and platform direction.
+- `@christof/sigrid`: project-file, canonical glyph vocabulary, and glyph
+  document helpers.
 - `@christof/sigrid-geometry`: cObject helpers such as `cObject`,
   `cMarkSelection`, `cPrimarySelectedObject`, and `cSelectedObjects`.
-- `@christof/sigrid-curves`: shared 2D geometry helpers.
+- `@christof/sigrid-curves`: shared 2D geometry and animation helpers.
 
 Already adopted:
 
@@ -188,7 +190,9 @@ Already adopted:
   evaluation, and tangent math.
 - Sigrid affine/glyph transform helpers replaced local transform math.
 - cObjects now describe fonts, bubbles, and pages.
-- glyph symbol animation uses Sigrid curve animation helpers.
+- the animator bridge imports `Glyph2d` / `GlyphSplineStroke` from
+  `@christof/sigrid/glyph`, while glyph symbol animation uses Sigrid curve
+  animation helpers.
 
 Still planned:
 
@@ -213,7 +217,8 @@ Already adopted:
 - `MagdalenaProvider`.
 - `MgWorkbench` and `MgViewportLayer`.
 - `MgDevSettingsWindow`.
-- `MgTopBar`, `MgLeftBar`, `MgRightBar`, and `MgCOptions`.
+- `MgTopBar`, `MgLeftBar`, `MgRightBar`, `MgCOptions`, and
+  `MgSelectedCOptions`.
 - `MgOutliner` for cObject trees.
 - `MgModuleSwitcher` for top-bar module navigation with Moritz-font labels.
 - The top-bar zoom slider is now a local native range input with a Moritz
@@ -309,13 +314,13 @@ npm test
 npm run build
 ```
 
-Current baseline after the cObject shell work:
+Current baseline after the mother-platform adoption pass:
 
 ```text
 typecheck: clean
-tests: 151 passed
+tests: 152 passed
 build: clean, with Vite's existing large chunk warning
-bundle: about 792 KB minified JS
+bundle: about 794 KB minified JS
 ```
 
 ## Known Technical Debt
