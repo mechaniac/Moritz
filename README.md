@@ -213,6 +213,7 @@ Already adopted:
 - `MgDevSettingsWindow`.
 - `MgTopBar`, `MgLeftBar`, `MgRightBar`, and `MgCOptions`.
 - `MgOutliner` for cObject trees.
+- `MgButton` for the top-bar module and settings commands.
 
 Current app-side bridge:
 
@@ -226,6 +227,8 @@ Still planned:
 
 - Replace remaining hand-rolled inspectors and local controls with Magdalena
   mObject or Mg controls.
+- Replace the remaining Sift zoom slider once Magdalena controls can preserve
+  Moritz-font labels in the shell.
 - Delete `src/sift/` once every old consumer is gone.
 - Replace app-local `--mz-*` palette/chrome with Magdalena `--mg-*` tokens and
   tone/importance vocabulary.

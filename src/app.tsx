@@ -11,10 +11,9 @@ import { StyleBar } from './ui/StyleBar.js';
 import { PageBar } from './ui/PageBar.js';
 import { SettingsModal } from './ui/SettingsModal.js';
 import { MoritzLabel } from './ui/MoritzText.js';
-import { MgWorkbench, MgViewportLayer, MgTopBar } from '@christof/magdalena/react';
+import { MgButton, MgWorkbench, MgViewportLayer, MgTopBar } from '@christof/magdalena/react';
 import {
   SiftRoot,
-  Button,
   Slider,
   ImportanceDebugLayer,
 } from './sift/index.js';
@@ -82,19 +81,19 @@ function AppShell(): JSX.Element {
                   {tabs.map((t) => {
                     const active = module === t.id;
                     return (
-                      <Button
+                      <MgButton
+                        id={`moritz.module.${t.id}`}
                         key={t.id}
                         type="button"
-                        tone={active ? 'hot' : 'default'}
-                        variant={active ? 'solid' : 'ghost'}
-                        imp={active ? 2 : 1}
+                        tone={active ? 'relevant' : 'neutral'}
+                        importance={active ? 3 : 1}
                         className={`mz-mod--${t.id}`}
                         aria-label={t.label}
                         title={t.label}
                         onClick={() => setModule(t.id)}
                       >
                         <MoritzLabel text={t.label} size={13} />
-                      </Button>
+                      </MgButton>
                     );
                   })}
                 </div>
@@ -147,9 +146,15 @@ function AppShell(): JSX.Element {
                     alignItems: 'center',
                   }}
                 >
-                  <Button onClick={openSettings} imp={0} aria-label="legacy theme" title="legacy theme">
+                  <MgButton
+                    id="moritz.toolbar.legacyTheme"
+                    onClick={openSettings}
+                    importance={0}
+                    aria-label="legacy theme"
+                    title="legacy theme"
+                  >
                     <MoritzLabel text="legacy theme" size={12} />
-                  </Button>
+                  </MgButton>
                 </div>
               </div>
             </MgTopBar>

@@ -1,7 +1,7 @@
 # Moritz — platform-team-wishlist
 
 Status: live
-Last update: 2026-05-15
+Last update: 2026-05-16
 Audience: Luise / Sigrid / Magdalena directors
 Authority: bound by [BECOME-A-CHILD.md](../../Luise/docs/BECOME-A-CHILD.md),
 [platform-charter.md → Prime Directive](../../Luise/docs/platform-charter.md#prime-directive-binding-supersedes-all-other-clauses),
@@ -383,7 +383,7 @@ the platform to add features. It is the migration log for deleting
 1. ~~`MgWorkbench` + `MgViewportLayer` host the stage in [src/app.tsx](../src/app.tsx).~~ **Done 2026-05-14.**
 2. ~~`MgDevSettingsWindow` auto-mounted by `MagdalenaProvider` in place of local `<DevSettingsWindow>`.~~ **Done 2026-05-14.**
 3. `MgFloatingWindow` replaces `FloatingWindow` in `app.tsx` and the four module shells. Per V2: the `mod={...}` palette-inheritance prop is **deleted, not replaced** — `--mz-*` palette is going away. Per V3: `initial={x,y,w,h}` undocked bounds are **deleted, not replaced** — windows mount at their docked bounds and the toolbar undocks via the user's drag. If Magdalena's eventual answer differs, Moritz adopts it; until then, no upstream feature request.
-4. `MgButton` / `MgSlider` / `MgTextInput` / `MgNumberInput` / `MgSelect` / `MgToggle` replace Sift inputs. Per the `id` + `label` requirement, every call site grows `id` and `label` props (≈80 sites). No shim layer that strips those props — the charter does not let Moritz hide the Magdalena contract behind a Sift-shaped wrapper.
+4. `MgButton` / `MgSlider` / `MgTextInput` / `MgNumberInput` / `MgSelect` / `MgToggle` replace Sift inputs. Per the `id` + `label` requirement, every call site grows `id` and `label` props (≈80 sites). No shim layer that strips those props — the charter does not let Moritz hide the Magdalena contract behind a Sift-shaped wrapper. **Started 2026-05-16:** the top-bar module buttons and legacy-theme command now use `MgButton`; the zoom slider deliberately stays on the old bridge until Magdalena controls can preserve Moritz-font labels in this shell.
 5. `MgOutliner` replaces Sift `Tree` in module shells.
 6. `MgAttrs` / `MgAttrSection` / `MgAttrRow` replace Sift equivalents in module shells.
 7. `MagdalenaProvider` context (`useMagdalena`, `useMgElement`) replaces `SiftRoot` context (`useSift`, `useSiftLayout`, `useImportance`, `Imp`, `ClosenessGroup`). `src/sift/` is deleted. Done.
