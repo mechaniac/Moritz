@@ -83,7 +83,8 @@ buttons. Module work areas still use `mz-mod--<id>` while their internal
 inspectors migrate. The legacy Moritz colour-scheme picker (`themeStore` +
 `SettingsModal`) has been deleted; Magdalena dev settings own shell theme/debug
 controls.
-Bundle: 795 KB → 792 KB.
+Bundle: 795 KB → 792 KB. CSS asset: 55.30 KB → 50.42 KB after deleting
+the unreachable alternate `data-theme` palettes.
 
 ### V3. Local interface library `src/sift/` (CONTRIBUTING-AS-CONSUMER → "must never do" #4) — resolved 2026-05-16
 
