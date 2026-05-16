@@ -77,9 +77,9 @@ specific gap (importance/tone vocabulary that maps cleanly to the four
 Moritz workspaces) is filed as wishlist entry W3 if and only if Moritz
 cannot express what it needs with the existing tone vocabulary.
 
-Progress 2026-05-16: the top-bar module switcher now uses `MgButton` tone /
-importance only; it no longer applies `mz-mod--<id>` palette classes to shell
-buttons. Module work areas still use `mz-mod--<id>` while their internal
+Progress 2026-05-16: the top-bar module switcher now uses Magdalena's
+`MgModuleSwitcher`; it no longer applies `mz-mod--<id>` palette classes to
+shell buttons. Module work areas still use `mz-mod--<id>` while their internal
 inspectors migrate. The legacy Moritz colour-scheme picker (`themeStore` +
 `SettingsModal`) has been deleted; Magdalena dev settings own shell theme/debug
 controls.
@@ -377,7 +377,7 @@ without asking; Moritz will not resist.
 
 Where it would live: `@christof/magdalena/react` (already ships
 `MgWorkbench`, `MgFloatingWindow`, `mgDock`, `MgDevSettingsWindow`,
-`MgButton`, `MgSlider`, `MgTextInput`, `MgNumberInput`, `MgSelect`,
+`MgModuleSwitcher`, `MgButton`, `MgSlider`, `MgTextInput`, `MgNumberInput`, `MgSelect`,
 `MgToggle`, `MgAttrs`, `MgAttrSection`, `MgAttrRow`, `MgOutliner`,
 `useMgElement`).
 Replaces locally: deleted `src/sift/`.
@@ -388,7 +388,7 @@ the platform to add features. It is the migration log for deleting
 1. ~~`MgWorkbench` + `MgViewportLayer` host the stage in [src/app.tsx](../src/app.tsx).~~ **Done 2026-05-14.**
 2. ~~`MgDevSettingsWindow` auto-mounted by `MagdalenaProvider` in place of local `<DevSettingsWindow>`.~~ **Done 2026-05-14.**
 3. ~~`MgFloatingWindow` replaces `FloatingWindow` in `app.tsx` and the four module shells.~~ **Done 2026-05-14 / superseded by the four-region shell on 2026-05-15.**
-4. ~~`MgButton` / `MgSlider` / `MgTextInput` / `MgNumberInput` / `MgSelect` / `MgToggle` replace Sift inputs.~~ **Done 2026-05-16 for all live Sift consumers.** The top-bar module buttons and legacy-theme command use `MgButton`; the top-bar zoom slider is a local native range input with a Moritz glyph label.
+4. ~~`MgButton` / `MgSlider` / `MgTextInput` / `MgNumberInput` / `MgSelect` / `MgToggle` replace Sift inputs.~~ **Done 2026-05-16 for all live Sift consumers.** Top-bar module navigation now uses `MgModuleSwitcher`; the top-bar zoom slider is a local native range input with a Moritz glyph label.
 5. ~~`MgOutliner` replaces Sift `Tree` in module shells.~~ **Done 2026-05-15.**
 6. ~~`MgAttrs` / `MgAttrSection` / `MgAttrRow` replace Sift equivalents in module shells.~~ **Done 2026-05-16 by deletion; no live Sift attrs consumer remained.**
 7. ~~`MagdalenaProvider` context (`useMagdalena`, `useMgElement`) replaces `SiftRoot` context (`useSift`, `useSiftLayout`, `useImportance`, `Imp`, `ClosenessGroup`). `src/sift/` is deleted.~~ **Done 2026-05-16.**
@@ -419,7 +419,7 @@ equivalent coverage). Strikethrough = adopted (see *Recently Adopted*).
 | 8 | `jitterGlyphStroke2d` / `relaxGlyphStroke2d` (slice 100) | [src/core/effects.ts](../src/core/effects.ts), [src/core/relax.ts](../src/core/relax.ts) — **adopt as-is**, delete local jitter-shape / scope variants; W4 is the only legitimate way to keep them |
 | 9 | `layoutGlyphs2d` + wrap + paragraph + line metadata (slices 93, 101, 102, 103) | [src/core/layout.ts](../src/core/layout.ts) — adopt as-is once #4/#7 above land |
 | 10 | `parseProjectFileJson` / `serializeProjectFileJson` (slice 121) + `validateSigridProjectFile` (slice 124) | V1 remediation. Pending W1 ack on document `kind` names. Read legacy once at boundary, save as `SigridProjectFile` forever. |
-| 11 | `MgWorkbench`, `MgFloatingWindow`, `mgDock`, `MgDevSettingsWindow`, Mg controls, `MgAttrs`, `MgOutliner`, `useMgElement` | V3 remediation. Tracked sub-step-by-sub-step in W7 above. |
+| 11 | `MgWorkbench`, `MgFloatingWindow`, `mgDock`, `MgDevSettingsWindow`, `MgModuleSwitcher`, Mg controls, `MgAttrs`, `MgOutliner`, `useMgElement` | V3 remediation. Tracked sub-step-by-sub-step in W7 above. |
 | 12 | (V2 remediation — `--mg-*` token migration) | [src/styles.css](../src/styles.css) and every `mz-mod--<id>` class. No upstream symbol to wait on; pure deletion + token swap. |
 
 ---
@@ -430,6 +430,7 @@ Local code Moritz has actually deleted in favour of an upstream symbol.
 
 | Date | Upstream symbol | What we deleted locally |
 |---|---|---|
+| 2026-05-16 | `MgModuleSwitcher` from `@christof/magdalena/react` | Replaced the hand-wired top-bar module button map in [src/app.tsx](../src/app.tsx). Module labels still render through `MoritzLabel`, but Magdalena now owns the module-switcher role, active-state metadata, tone, and selected importance. 151/151 tests green. Bundle: 792 KB. |
 | 2026-05-16 | `MagdalenaProvider`, `MgDevSettingsWindow`, `MgWorkbench`, `MgTopBar`, `MgLeftBar`, `MgRightBar`, `MgCOptions`, `MgButton`, `MgOutliner` from `@christof/magdalena/react` | Deleted `src/sift/` in full: local `SiftRoot`, workbench, floating window, attrs, tree, inputs, dev settings, importance overlay, layout, tokens, and CSS. The app shell now relies on Magdalena for root/debug settings and shell regions; the remaining zoom slider is a tiny native range input with a Moritz glyph label. 151/151 tests green. Bundle: 800 KB → 795 KB. |
 | 2026-05-15 | `cObject`, `cMarkSelection`, `cPrimarySelectedObject`, `cSelectedObjects` from `@christof/sigrid-geometry`; `animateGlyphSymbolsAlongStroke2d` from `@christof/sigrid-curves`; `MgOutliner` from `@christof/magdalena/react` | Added the Moritz cObject adapter in [src/core/moritzCObjects.ts](../src/core/moritzCObjects.ts): `font -> glyph -> animator? -> stroke -> anchor -> handles`, plus `bubbleFont -> bubble -> layer -> glyph -> strokes` and `page -> block -> text/bubble -> layer -> glyph -> strokes`. `Glyph` is now explicitly the nuclear drawable unit and can carry a pure-data `GlyphAnimatorComponent`, bridged by [src/core/glyphAnimator.ts](../src/core/glyphAnimator.ts). GlyphSetter, BubbleSetter, and TypeSetter left bars now show cObject trees; TypeSetter's cObject tree now consumes canonical `Block` / `TextRun` data at the shell boundary. `MgCOptions` follows selected glyph cObjects. Plan recorded in [docs/moritz-cobject-plan.md](moritz-cobject-plan.md). 150/150 tests green. Bundle: 801 KB. |
 | 2026-05-15 | `MgTopBar` / `MgLeftBar` / `MgRightBar` / `MgCOptions` from `@christof/magdalena/react` (the new mandatory four-region shell from [BECOME-A-CHILD.md → Mandatory shell](../../Luise/docs/BECOME-A-CHILD.md#mandatory-shell-the-four-regions)) | Every `MgFloatingWindow dock={mgDock.toolbar/outliner/attributes/instance}` call site (1 toolbar in [src/app.tsx](../src/app.tsx), 3 windows in [src/modules/glyphsetter/GlyphSetter.tsx](../src/modules/glyphsetter/GlyphSetter.tsx), 2 windows × 3 in stylesetter / bubblesetter / typesetter). Region semantics now declared at the call site instead of via dock-preset selection. The selection-driven `MgCOptions` replaces the GlyphSetter `itemattrs` window and now only mounts while a glyph cObject is selected. 135/135 tests green. Bundle: 768 KB → 768 KB. |

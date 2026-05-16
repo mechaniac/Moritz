@@ -213,7 +213,7 @@ Already adopted:
 - `MgDevSettingsWindow`.
 - `MgTopBar`, `MgLeftBar`, `MgRightBar`, and `MgCOptions`.
 - `MgOutliner` for cObject trees.
-- `MgButton` for the top-bar module and settings commands.
+- `MgModuleSwitcher` for top-bar module navigation with Moritz-font labels.
 - The top-bar zoom slider is now a local native range input with a Moritz
   glyph label.
 - The legacy Moritz colour-scheme picker has been removed; Magdalena dev

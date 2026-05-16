@@ -8,13 +8,13 @@ import { BubbleBar } from './ui/BubbleBar.js';
 import { StyleBar } from './ui/StyleBar.js';
 import { PageBar } from './ui/PageBar.js';
 import { MoritzLabel } from './ui/MoritzText.js';
-import { MgButton, MgWorkbench, MgViewportLayer, MgTopBar } from '@christof/magdalena/react';
+import { MgModuleSwitcher, MgWorkbench, MgViewportLayer, MgTopBar } from '@christof/magdalena/react';
 
-const tabs: { id: ModuleId; label: string }[] = [
-  { id: 'glyphsetter', label: 'Glyph' },
-  { id: 'bubblesetter', label: 'Bubble' },
-  { id: 'stylesetter', label: 'Style' },
-  { id: 'typesetter', label: 'Type' },
+const tabs: { id: ModuleId; label: JSX.Element; title: string }[] = [
+  { id: 'glyphsetter', label: <MoritzLabel text="Glyph" size={13} />, title: 'Glyph' },
+  { id: 'bubblesetter', label: <MoritzLabel text="Bubble" size={13} />, title: 'Bubble' },
+  { id: 'stylesetter', label: <MoritzLabel text="Style" size={13} />, title: 'Style' },
+  { id: 'typesetter', label: <MoritzLabel text="Type" size={13} />, title: 'Type' },
 ];
 
 export function App(): JSX.Element {
@@ -56,25 +56,14 @@ function AppShell(): JSX.Element {
                   gap: 'var(--mg-gap)',
                 }}
               >
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {tabs.map((t) => {
-                    const active = module === t.id;
-                    return (
-                      <MgButton
-                        id={`moritz.module.${t.id}`}
-                        key={t.id}
-                        type="button"
-                        tone={active ? 'relevant' : 'neutral'}
-                        importance={active ? 3 : 1}
-                        aria-label={t.label}
-                        title={t.label}
-                        onClick={() => setModule(t.id)}
-                      >
-                        <MoritzLabel text={t.label} size={13} />
-                      </MgButton>
-                    );
-                  })}
-                </div>
+                <MgModuleSwitcher
+                  id="moritz.modules"
+                  modules={tabs}
+                  activeModuleId={module}
+                  onModuleChange={setModule}
+                  importance={1}
+                  label="Moritz modules"
+                />
                 <div
                   style={{
                     display: 'flex',

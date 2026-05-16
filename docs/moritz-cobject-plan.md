@@ -63,8 +63,8 @@ regions.
   glyph action menu labels, style controls, guide controls, bubble controls,
   TypeSetter inspector controls, and the settings modal render through
   `MoritzLabel`.
-- The top-bar module buttons and legacy-theme command now use Magdalena
-  `MgButton` while keeping `MoritzLabel` children.
+- The top-bar module switcher now uses Magdalena `MgModuleSwitcher` while
+  keeping Moritz-font label nodes.
 - The top-bar zoom slider is a local native range input with a Moritz glyph
   label, so the shell no longer imports Sift controls.
 - The old `src/sift` interface library has been deleted; Magdalena now owns the
