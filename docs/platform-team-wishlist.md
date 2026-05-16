@@ -115,6 +115,13 @@ and range sliders now use `--mg-*` chrome tokens with `--mz-*` fallbacks
 reset and unmodified-number controls now use the same Mg changed/muted token
 fallbacks. CSS asset: 47.40 KB.
 
+Progress 2026-05-17: Moritz now declares one `MgSkinDefinition` per top-level
+workspace in `src/moduleSkins.ts`, wires those skin ids into
+`MgModuleSwitcher`, and wraps the active module body/top-bar payload in
+`MgSkinProvider`. The legacy `mz-mod--<id>` classes remain only as
+compatibility aliases for internals that still read `--mz-*`; Magdalena now
+owns the module skin boundary and local module skin persistence.
+
 ### V3. Local interface library `src/sift/` (CONTRIBUTING-AS-CONSUMER → "must never do" #4) — resolved 2026-05-16
 
 Deleted files: `src/sift/` — `SiftRoot`, `Workbench`,
@@ -465,6 +472,7 @@ Local code Moritz has actually deleted in favour of an upstream symbol.
 
 | Date | Upstream symbol | What we deleted locally |
 |---|---|---|
+| 2026-05-17 | `MgSkinDefinition` / `MgSkinProvider` module scopes from `@christof/magdalena` | Added [src/moduleSkins.ts](../src/moduleSkins.ts) as Moritz's single module-skin registry, attached `skinId` metadata to the top-bar `MgModuleSwitcher`, and wrapped the active workspace shell in `MgSkinProvider`. Local `mz-mod--<id>` classes are now compatibility aliases under a Magdalena-owned module skin boundary, not the source of shell skin identity. |
 | 2026-05-16 | `Glyph2d` / `GlyphSplineStroke` from `@christof/sigrid/glyph`; `MgSelectedCOptions` from `@christof/magdalena/react` | Moved [src/core/glyphAnimator.ts](../src/core/glyphAnimator.ts) so canonical glyph data types come from Sigrid core rather than through `@christof/sigrid-curves`; curves now supply only the animation behavior. Replaced GlyphSetter's hand-written selected-cObject cOptions conditional with `MgSelectedCOptions` in [src/modules/glyphsetter/GlyphSetter.tsx](../src/modules/glyphsetter/GlyphSetter.tsx). 152/152 tests green. Bundle: 793.62 KB. |
 | 2026-05-16 | `MgModuleSwitcher` from `@christof/magdalena/react` | Replaced the hand-wired top-bar module button map in [src/app.tsx](../src/app.tsx). Module labels still render through `MoritzLabel`, but Magdalena now owns the module-switcher role, active-state metadata, tone, and selected importance. 151/151 tests green. Bundle: 792 KB. |
 | 2026-05-16 | `MagdalenaProvider`, `MgDevSettingsWindow`, `MgWorkbench`, `MgTopBar`, `MgLeftBar`, `MgRightBar`, `MgCOptions`, `MgButton`, `MgOutliner` from `@christof/magdalena/react` | Deleted `src/sift/` in full: local `SiftRoot`, workbench, floating window, attrs, tree, inputs, dev settings, importance overlay, layout, tokens, and CSS. The app shell now relies on Magdalena for root/debug settings and shell regions; the remaining zoom slider is a tiny native range input with a Moritz glyph label. 151/151 tests green. Bundle: 800 KB → 795 KB. |
