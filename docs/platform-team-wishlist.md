@@ -89,7 +89,9 @@ after deleting dead legacy shell selectors. `MoritzSelect` keeps Moritz-font
 labels, but now uses `--mg-*` tokens for its local menu chrome. The remaining
 GlyphSetter left-column tab strip keeps Moritz-font labels, registers with
 `useMgElement`, and uses `--mg-*` tokens for its local chrome. CSS asset:
-46.72 KB → 46.52 KB.
+46.72 KB → 46.52 KB. Generic native buttons, text/number inputs, textareas,
+and range sliders now use `--mg-*` chrome tokens with `--mz-*` fallbacks
+(CSS asset 47.10 KB with fallback-rich rules).
 
 ### V3. Local interface library `src/sift/` (CONTRIBUTING-AS-CONSUMER → "must never do" #4) — resolved 2026-05-16
 
