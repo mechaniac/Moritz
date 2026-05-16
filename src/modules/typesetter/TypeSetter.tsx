@@ -14,7 +14,7 @@ import { renderLayoutToSvg } from '../../core/export/svg.js';
 import { svgToPng } from '../../core/export/png.js';
 import { bubbleGeometry } from '../../core/bubble.js';
 import { renderBubbleToSvgFragment } from '../../core/bubbleRender.js';
-import { legacyBlockToBlock } from '../../core/page.js';
+import { ACTIVE_PAGE_REFS, legacyBlockToBlock } from '../../core/page.js';
 import { useCanvasInput } from '../../ui/canvas/useCanvasInput.js';
 import { effectiveStyleForGlyph } from '../../core/stroke.js';
 import { transformStroke, type Affine } from '../../core/transform.js';
@@ -298,13 +298,9 @@ export function TypeSetter(): JSX.Element {
   const cObjectBlocks = useMemo(
     () =>
       blocks.map((block) =>
-        legacyBlockToBlock(block, {
-          fontId: baseFont.id,
-          styleId: 'active-style',
-          bubbleFontId: bubbleFont.id,
-        }),
+        legacyBlockToBlock(block, ACTIVE_PAGE_REFS),
       ),
-    [blocks, baseFont.id, bubbleFont.id],
+    [blocks],
   );
   const cObjectInput: TypeSetterCObjectInput = useMemo(
     () => ({

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  ACTIVE_PAGE_REFS,
   EMPTY_LIBRARY,
   blockToLegacyBlock,
   buildPage,
@@ -191,7 +192,15 @@ describe('envelope sniffers', () => {
 });
 
 describe('per-block fontId/styleId round-trip', () => {
-  const REFS_ACTIVE = { fontId: 'active-font', styleId: 'active-style', bubbleFontId: 'active-bf' };
+  const REFS_ACTIVE = ACTIVE_PAGE_REFS;
+
+  test('exports the active library sentinels from one place', () => {
+    expect(ACTIVE_PAGE_REFS).toEqual({
+      fontId: 'active-font',
+      styleId: 'active-style',
+      bubbleFontId: 'active-bubble-font',
+    });
+  });
 
   test('unset runtime fontId/styleId ? canonical TextRun gets the active sentinel', () => {
     const block = legacyBlockToBlock(LEGACY_NONE, REFS_ACTIVE);

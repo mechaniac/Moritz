@@ -37,6 +37,16 @@ export const EMPTY_LIBRARY: PageLibrary = {
   bubbleFonts: {},
 };
 
+// Synthetic ids assigned to the active globals while the TypeSetter runtime is
+// still a single-active-font/style/bubble-font editor. Canonical Page files use
+// these ids as local library keys until the live runtime stores TextRun refs
+// directly.
+export const ACTIVE_PAGE_REFS = {
+  fontId: 'active-font',
+  styleId: 'active-style',
+  bubbleFontId: 'active-bubble-font',
+} as const;
+
 /**
  * Build a one-entry library from the active globals. Used while the
  * runtime is still single-font / single-style / single-bubble-font; the

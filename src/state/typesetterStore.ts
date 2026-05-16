@@ -8,7 +8,7 @@
 
 import { create } from 'zustand';
 import type { BubbleShape } from '../core/bubble.js';
-import type { Bubble, BubbleLayer } from '../core/types.js';
+import type { Bubble, BubbleLayer, LegacyTextBlock } from '../core/types.js';
 
 export type TextBlockId = string;
 
@@ -44,37 +44,9 @@ export type PageBorder = {
   readonly stroke: number;
 };
 
-export type TextBlock = {
-  readonly id: TextBlockId;
-  readonly x: number;          // in image pixels
-  readonly y: number;
-  readonly fontSize: number;   // pixels per glyph height
-  readonly text: string;
-  readonly bold: number;       // multiplier on stroke width (1 = normal)
-  readonly italic: number;     // additional slant in radians
-  // Bubble (caption / speech / cloud). 'none' = no bubble drawn.
+export type TextBlock = Omit<LegacyTextBlock, 'shape'> & {
+  // Runtime blocks narrow the legacy string to the actual TypeSetter shapes.
   readonly shape: BubbleShape;
-  readonly bubbleW: number;    // bubble bounding box (image px), top-left = (x,y)
-  readonly bubbleH: number;
-  readonly tailX: number;      // tail tip in bubble-local coords (image px)
-  readonly tailY: number;
-  readonly bubbleStroke: number; // bubble outline width (image px)
-  readonly align?: 'left' | 'center' | 'right'; // text alignment, default 'left'
-  /** Per-block font override. When undefined the active global font is
-   *  used (legacy behaviour). When set, must match an id in the page
-   *  library (built-ins + saved). Round-trips through Page.library. */
-  readonly fontId?: string;
-  /** Per-block style override. Same resolution model as `fontId`. */
-  readonly styleId?: string;
-  /** When `shape === 'preset'`, the id of a Bubble inside the active
-   *  BubbleFont (see `useBubbleStore`). Resolved at render time so that
-   *  switching the active BubbleFont updates every block automatically. */
-  readonly bubblePresetId?: string;
-  /** Per-block instance snapshot. When set, this overrides the lookup
-   *  by `bubblePresetId` — the user has begun editing the bubble for
-   *  this block locally. The preset stays untouched until they press
-   *  "Save to preset". Cloned from the preset on first edit. */
-  readonly bubble?: Bubble;
 };
 
 type TypesetterState = {

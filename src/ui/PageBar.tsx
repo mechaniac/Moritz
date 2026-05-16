@@ -13,6 +13,7 @@ import { useTypesetterStore } from '../state/typesetterStore.js';
 import { useAppStore } from '../state/store.js';
 import { useBubbleStore } from '../state/bubbleStore.js';
 import {
+  ACTIVE_PAGE_REFS,
   blockToLegacyBlock,
   buildPage,
   singleEntryLibrary,
@@ -31,13 +32,6 @@ import { MoritzSelect } from './MoritzSelect.js';
  * The runtime store still uses the flat `TextBlock` shape; converters
  * in `core/page.ts` bridge the two at this boundary.
  */
-
-// Synthetic ids assigned to the active globals when snapshotting the
-// page library. Once the per-text font/style picker lands these get
-// replaced by real picker-driven ids and the page can mix multiple.
-const ACTIVE_FONT_ID = 'active-font';
-const ACTIVE_STYLE_ID = 'active-style';
-const ACTIVE_BUBBLE_FONT_ID = 'active-bubble-font';
 
 export function PageBar(): JSX.Element {
   const pageImage = useTypesetterStore((s) => s.pageImage);
@@ -63,23 +57,19 @@ export function PageBar(): JSX.Element {
   // call site so the snapshot reflects the live globals.
   const migrationContext = (): MigrationContext => {
     const style: Style = {
-      id: ACTIVE_STYLE_ID,
+      id: ACTIVE_PAGE_REFS.styleId,
       name: 'Active Style',
       settings: styleSettings,
     };
-    const fontSnapshot = { ...font, id: ACTIVE_FONT_ID };
-    const bubbleSnapshot = { ...bubbleFont, id: ACTIVE_BUBBLE_FONT_ID };
+    const fontSnapshot = { ...font, id: ACTIVE_PAGE_REFS.fontId };
+    const bubbleSnapshot = { ...bubbleFont, id: ACTIVE_PAGE_REFS.bubbleFontId };
     return {
       library: singleEntryLibrary({
         font: fontSnapshot,
         style,
         bubbleFont: bubbleSnapshot,
       }),
-      refs: {
-        fontId: ACTIVE_FONT_ID,
-        styleId: ACTIVE_STYLE_ID,
-        bubbleFontId: ACTIVE_BUBBLE_FONT_ID,
-      },
+      refs: ACTIVE_PAGE_REFS,
     };
   };
 
