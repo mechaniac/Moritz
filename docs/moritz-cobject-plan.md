@@ -72,6 +72,10 @@ regions.
   `page -> block -> text/bubble -> layer -> glyph -> strokes`. BubbleSetter
   and TypeSetter mount those trees through `MgOutliner`, so page blocks and
   bubble layers now share the same cObject identity path as font glyphs.
+- The TypeSetter cObject adapter now consumes canonical `Block` / `TextRun`
+  data. The workspace still stores legacy `TextBlock` data for editing, but the
+  conversion happens at the TypeSetter shell boundary instead of inside the
+  cObject adapter.
 
 ## Next Slices
 

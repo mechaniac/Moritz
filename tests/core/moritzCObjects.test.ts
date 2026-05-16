@@ -24,7 +24,7 @@ import {
   moritzTypeSetterPageCObject,
   moritzTypeSetterPageCObjectSelection,
 } from '../../src/core/moritzCObjects.js';
-import type { LegacyTextBlock } from '../../src/core/types.js';
+import type { Block } from '../../src/core/types.js';
 
 describe('moritzGlyphCObjectSelection', () => {
   it('builds the font as a cObject tree of glyph cObjects', () => {
@@ -201,7 +201,7 @@ describe('moritzTypeSetterPageCObjectSelection', () => {
     expect(root.id).toBe(moritzPageCObjectId('live'));
     expect(blockNode.id).toBe(moritzPageBlockCObjectId('live', block.id));
     expect(blockNode.children.map((node) => node.id)).toContain(
-      moritzPageBlockTextCObjectId('live', block.id),
+      moritzPageBlockTextCObjectId('live', block.id, block.texts[0]!.id),
     );
     expect(bubbleNode?.children.map((node) => node.id)).toContain(
       moritzPageBlockBubbleLayerCObjectId('live', block.id, layer.id),
@@ -244,21 +244,32 @@ function firstCharWithStroke(): string {
   return char;
 }
 
-function sampleBlock(): LegacyTextBlock {
+function sampleBlock(): Block {
   return {
     id: 'block-1',
     x: 10,
     y: 20,
-    fontSize: 32,
-    text: 'Hello Moritz',
-    bold: 1,
-    italic: 0,
-    shape: 'preset',
-    bubbleW: 200,
-    bubbleH: 140,
-    tailX: 60,
-    tailY: 120,
-    bubbleStroke: 2,
-    bubblePresetId: 'speech',
+    w: 200,
+    h: 140,
+    texts: [
+      {
+        id: 'text-1',
+        text: 'Hello Moritz',
+        fontId: 'font-1',
+        styleId: 'style-1',
+        fontSize: 32,
+      },
+    ],
+    bubble: {
+      source: {
+        kind: 'preset',
+        bubbleFontId: defaultBubbleFont.id,
+        bubbleId: 'speech',
+      },
+      styleId: 'style-1',
+      stroke: 2,
+      tailX: 60,
+      tailY: 120,
+    },
   };
 }

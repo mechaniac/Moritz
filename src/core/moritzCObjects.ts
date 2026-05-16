@@ -5,7 +5,16 @@ import {
   cSelectedObjects,
   type CObject,
 } from '@christof/sigrid-geometry';
-import type { Bubble, BubbleFont, BubbleLayer, Font, Glyph, LegacyTextBlock, Stroke } from './types.js';
+import type {
+  Block,
+  BlockBubble,
+  Bubble,
+  BubbleFont,
+  BubbleLayer,
+  Font,
+  Glyph,
+  Stroke,
+} from './types.js';
 
 export type GlyphObjectSelection =
   | { kind: 'none' }
@@ -73,7 +82,7 @@ export type TypeSetterObjectSelection =
 export type TypeSetterCObjectInput = {
   readonly pageId: string;
   readonly pageName: string;
-  readonly blocks: readonly LegacyTextBlock[];
+  readonly blocks: readonly Block[];
   readonly bubbleFont?: BubbleFont;
 };
 
@@ -353,15 +362,17 @@ export function moritzTypeSetterCObjectMetaFromId(
         blockId: block.id,
       };
     }
-    if (id === moritzPageBlockTextCObjectId(input.pageId, block.id)) {
-      return {
-        id,
-        role: 'text',
-        label: textLabel(block.text),
-        pageId: input.pageId,
-        blockId: block.id,
-        textId: 'primary',
-      };
+    for (const text of block.texts) {
+      if (id === moritzPageBlockTextCObjectId(input.pageId, block.id, text.id)) {
+        return {
+          id,
+          role: 'text',
+          label: textLabel(text.text),
+          pageId: input.pageId,
+          blockId: block.id,
+          textId: text.id,
+        };
+      }
     }
     if (id === moritzPageBlockBubbleCObjectId(input.pageId, block.id)) {
       return {
@@ -370,10 +381,10 @@ export function moritzTypeSetterCObjectMetaFromId(
         label: blockBubbleLabel(block, input.bubbleFont),
         pageId: input.pageId,
         blockId: block.id,
-        bubbleId: block.bubblePresetId,
+        bubbleId: blockBubbleId(block.bubble),
       };
     }
-    const bubble = resolveTextBlockBubble(block, input.bubbleFont);
+    const bubble = resolveBlockBubble(block.bubble, input.bubbleFont);
     if (!bubble) continue;
     const layerMeta = bubbleLayerMetaFromId({
       id,
@@ -419,8 +430,12 @@ export function moritzPageBlockCObjectId(pageId: string, blockId: string): strin
   return `${moritzPageCObjectId(pageId)}.block.${encodeIdPart(blockId)}`;
 }
 
-export function moritzPageBlockTextCObjectId(pageId: string, blockId: string): string {
-  return `${moritzPageBlockCObjectId(pageId, blockId)}.text.primary`;
+export function moritzPageBlockTextCObjectId(
+  pageId: string,
+  blockId: string,
+  textId = 'primary',
+): string {
+  return `${moritzPageBlockCObjectId(pageId, blockId)}.text.${encodeIdPart(textId)}`;
 }
 
 export function moritzPageBlockBubbleCObjectId(pageId: string, blockId: string): string {
@@ -483,12 +498,12 @@ function bubbleLayerToCObject(fontId: string, bubbleId: string, layer: BubbleLay
   ]);
 }
 
-function typeSetterBlockToCObject(input: TypeSetterCObjectInput, block: LegacyTextBlock): CObject {
-  const children: CObject[] = [
-    groupObject(moritzPageBlockTextCObjectId(input.pageId, block.id)),
-  ];
-  if (block.shape !== 'none') {
-    const bubble = resolveTextBlockBubble(block, input.bubbleFont);
+function typeSetterBlockToCObject(input: TypeSetterCObjectInput, block: Block): CObject {
+  const children: CObject[] = block.texts.map((text) =>
+    groupObject(moritzPageBlockTextCObjectId(input.pageId, block.id, text.id)),
+  );
+  if (block.bubble) {
+    const bubble = resolveBlockBubble(block.bubble, input.bubbleFont);
     children.push(
       groupObject(
         moritzPageBlockBubbleCObjectId(input.pageId, block.id),
@@ -607,7 +622,7 @@ function selectedIdsForTypeSetterSelection(
   if (!blockId) return [moritzPageCObjectId(input.pageId)];
   const block = input.blocks.find((candidate) => candidate.id === blockId);
   if (!block) return [moritzPageCObjectId(input.pageId)];
-  const bubble = resolveTextBlockBubble(block, input.bubbleFont);
+  const bubble = resolveBlockBubble(block.bubble, input.bubbleFont);
   if (
     selection.layerId &&
     bubble?.layers.some((layer) => layer.id === selection.layerId)
@@ -703,16 +718,16 @@ function bubbleLayerMetaFromId(args: {
   return null;
 }
 
-function resolveTextBlockBubble(block: LegacyTextBlock, bubbleFont: BubbleFont | undefined): Bubble | null {
-  if (block.bubble) return block.bubble;
-  if (block.shape === 'preset' && block.bubblePresetId) {
-    return bubbleFont?.bubbles[block.bubblePresetId] ?? null;
+function resolveBlockBubble(blockBubble: BlockBubble | undefined, bubbleFont: BubbleFont | undefined): Bubble | null {
+  if (!blockBubble) return null;
+  if (blockBubble.source.kind === 'preset') {
+    return blockBubble.source.override ?? bubbleFont?.bubbles[blockBubble.source.bubbleId] ?? null;
   }
   return null;
 }
 
-function blockLabel(block: LegacyTextBlock): string {
-  const text = textLabel(block.text);
+function blockLabel(block: Block): string {
+  const text = textLabel(block.texts[0]?.text ?? '');
   return text === 'Empty text' ? `Block ${block.id}` : text;
 }
 
@@ -721,11 +736,16 @@ function textLabel(text: string): string {
   return trimmed ? trimmed.slice(0, 28) : 'Empty text';
 }
 
-function blockBubbleLabel(block: LegacyTextBlock, bubbleFont: BubbleFont | undefined): string {
-  const bubble = resolveTextBlockBubble(block, bubbleFont);
+function blockBubbleLabel(block: Block, bubbleFont: BubbleFont | undefined): string {
+  const bubble = resolveBlockBubble(block.bubble, bubbleFont);
   if (bubble) return bubble.name || bubble.id;
-  if (block.shape === 'preset') return block.bubblePresetId ? `Bubble ${block.bubblePresetId}` : 'Bubble';
-  return `${block.shape} bubble`;
+  if (!block.bubble) return 'Bubble';
+  if (block.bubble.source.kind === 'preset') return `Bubble ${block.bubble.source.bubbleId}`;
+  return `${block.bubble.source.shape} bubble`;
+}
+
+function blockBubbleId(blockBubble: BlockBubble | undefined): string | undefined {
+  return blockBubble?.source.kind === 'preset' ? blockBubble.source.bubbleId : undefined;
 }
 
 function metaForGlyphSelection(
