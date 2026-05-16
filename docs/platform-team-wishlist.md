@@ -18,8 +18,8 @@ Related Moritz docs:
 
 ## Mother check 2026-05-16
 
-Luise was fetched and its local `main` is ahead of `origin/main` with a new
-platform direction that matters to Moritz even before those commits are pushed.
+Luise was fetched and its local `main` matches `origin/main`. The latest mother
+commits carry a new platform direction that matters to Moritz.
 
 - Sigrid now owns glyph vocabulary. Moritz should import canonical glyph data
   types from `@christof/sigrid/glyph`; `@christof/sigrid-curves` supplies curve
