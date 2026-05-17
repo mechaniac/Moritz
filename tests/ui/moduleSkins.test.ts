@@ -25,4 +25,18 @@ describe('moritz module skins', () => {
     expect(moritzModuleSkinFor('glyphsetter').id).toBe(moritzModuleSkinIds.glyphsetter);
     expect(moritzModuleSkinFor('typesetter').label).toBe('TypeSetter');
   });
+
+  it('keeps core module skin settings explicit for downstream controls', () => {
+    const glyph = moritzModuleSkinFor('glyphsetter');
+    const type = moritzModuleSkinFor('typesetter');
+
+    expect(glyph.settings?.theme?.contrastColorNight).toBeDefined();
+    expect(glyph.settings?.theme?.contrastColorDay).toBeDefined();
+    expect(glyph.settings?.signals?.changed?.hue).toBe(338);
+    expect(glyph.settings?.signals?.save?.hue).toBe(122);
+
+    expect(type.settings?.theme?.globalContrast).toBeGreaterThan(0);
+    expect(type.settings?.theme?.localContrast).toBeGreaterThan(0);
+    expect(type.settings?.signals?.relevant?.hue).toBe(48);
+  });
 });

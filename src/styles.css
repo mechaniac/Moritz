@@ -131,8 +131,8 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: var(--mz-bg);
-  color: var(--mz-text);
+  background: var(--mg-bg, var(--mz-bg));
+  color: var(--mg-text, var(--mz-text));
   font-family: system-ui, -apple-system, Segoe UI, sans-serif;
   font-size: 13px;
 }
@@ -314,8 +314,8 @@ input[type='range']::-moz-range-thumb {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--mz-bg);
-  color: var(--mz-text);
+  background: var(--mg-bg, var(--mz-bg));
+  color: var(--mg-text, var(--mz-text));
 }
 
 /* ---------- Universal canvas (Illustrator-like infinite workspace) -------- *
