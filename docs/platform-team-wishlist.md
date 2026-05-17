@@ -31,6 +31,35 @@ commits carry a new platform direction that matters to Moritz.
   cOptions helpers. Moritz now lets `MgSelectedCOptions` own the
   selected-cObject mount/unmount branch for GlyphSetter cOptions.
 
+## Mother check 2026-05-17
+
+Luise was fetched and checked again. Mother `main` still matches
+`origin/main` (ahead/behind `0/0`), so there are no incoming remote commits to
+pull. Moritz `main` also matches `origin/main`.
+
+The newest committed mother direction in the last 30 days is clear:
+
+- Magdalena settings are becoming explicit and user-facing (`DevSettings`,
+  graph text controls, layout defaults, contrast and labels).
+- Child update/deploy flow is hardening (self-healing deploy scripts,
+  launcher cleanup, redeploy command simplification).
+- Platform doctrine and update-stack documents are treated as operational
+  source, not optional prose.
+- README skin parsing and hierarchy rendering are expanding as reusable app
+  behavior.
+
+Contribution shortlist for Moritz after this check:
+
+1. Keep deleting local style/control leftovers in favor of Magdalena settings
+   surfaces and token-driven controls.
+2. Add Moritz tests around settings propagation and module-skin behavior to
+   match mother's stronger settings-test discipline.
+3. Keep `docs/platform-team-wishlist.md` and integration notes in lockstep with
+   Luise doctrine updates so compliance drift is visible quickly.
+4. Prioritize donations from Moritz local pure helpers (`src/core/*`) only when
+   there is a clear three-app signature and a director-acceptable upstream
+   target.
+
 ## Prime Directive acknowledgement
 
 > The platform is sovereign. Moritz is a training case, not a customer.
