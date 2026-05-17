@@ -68,9 +68,9 @@
 
 /* Universal-across-themes tokens. */
 :root {
-  --mz-warn:        #ff5a3c;
-  --mz-warn-strong: #c8351b;
-  --mz-warn-soft:   #5a1f10;
+  --mz-warn:        var(--mg-tone-changed, #ff5a3c);
+  --mz-warn-strong: color-mix(in srgb, var(--mg-tone-changed, #ff5a3c) 78%, black);
+  --mz-warn-soft:   color-mix(in srgb, var(--mg-tone-changed, #ff5a3c) 36%, black);
 }
 
 /* ---------- Module-scope mixins ------------------------------------------ */
@@ -281,8 +281,8 @@ input[type='range']::-moz-range-thumb {
   border-color: var(--mz-warn-strong) !important;
 }
 .mz-btn--warn:disabled {
-  border-color: var(--mz-line) !important;
-  color: var(--mz-text-faint) !important;
+  border-color: var(--mg-line, var(--mz-line)) !important;
+  color: var(--mg-text-muted, var(--mz-text-faint)) !important;
   background: transparent;
   cursor: default;
 }
