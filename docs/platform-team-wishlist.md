@@ -1,7 +1,7 @@
 # Moritz — platform-team-wishlist
 
 Status: live
-Last update: 2026-05-16
+Last update: 2026-05-17
 Audience: Luise / Sigrid / Magdalena directors
 Authority: bound by [BECOME-A-CHILD.md](../../Luise/docs/BECOME-A-CHILD.md),
 [platform-charter.md → Prime Directive](../../Luise/docs/platform-charter.md#prime-directive-binding-supersedes-all-other-clauses),
@@ -59,6 +59,22 @@ Contribution shortlist for Moritz after this check:
 4. Prioritize donations from Moritz local pure helpers (`src/core/*`) only when
    there is a clear three-app signature and a director-acceptable upstream
    target.
+
+## Mother check cadence
+
+Use this sequence for every "check mother" pass so status and direction stay
+comparable across days:
+
+1. Fetch Luise and Moritz (`git fetch --all --prune`) and record branch +
+  upstream + ahead/behind for both repos.
+2. Capture mother's recent log window (`--since="30 days ago"`, latest 15-25
+  commits) and note recurring themes from commit subjects and touched paths.
+3. Distinguish remote state vs local WIP in mother so "updates" means the same
+  thing each time.
+4. Write a dated `Mother check YYYY-MM-DD` block with: sync state, paradigm
+  signals, and a 3-5 item Moritz contribution shortlist.
+5. Commit only the checklist/date update and check block, then push immediately
+  so the log stays operational instead of conversational.
 
 ## Prime Directive acknowledgement
 
