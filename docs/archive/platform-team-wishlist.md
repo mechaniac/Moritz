@@ -1,18 +1,22 @@
-# Moritz — platform-team-wishlist
+# Archived platform-team wishlist
+
+Archived historical note. This file records earlier migration thinking and is not the current Moritz/Luise architecture checklist. Use [docs/luise-migration-plan.md](../luise-migration-plan.md) for current work.
+
+# Moritz â€” platform-team-wishlist
 
 Status: live
 Last update: 2026-05-17
 Audience: Luise / Sigrid / Magdalena directors
 Authority: bound by [BECOME-A-CHILD.md](../../Luise/docs/BECOME-A-CHILD.md),
-[platform-charter.md → Prime Directive](../../Luise/docs/platform-charter.md#prime-directive-binding-supersedes-all-other-clauses),
+[platform-charter.md â†’ Prime Directive](../../Luise/docs/platform-charter.md#prime-directive-binding-supersedes-all-other-clauses),
 [CONTRIBUTING-AS-CONSUMER.md](../../Luise/docs/CONTRIBUTING-AS-CONSUMER.md),
 [data-flow.md](../../Luise/docs/data-flow.md),
 [module-contract.md](../../Luise/docs/module-contract.md).
 
 Related Moritz docs:
-- [.github/copilot-instructions.md](../.github/copilot-instructions.md) — Moritz product principles & domain model
-- [CLAUDE.md](../CLAUDE.md) — mirror of the above for Claude Code
-- [glyph-system-donation-map.md](glyph-system-donation-map.md) — no-loss
+- [.github/copilot-instructions.md](../.github/copilot-instructions.md) â€” Moritz product principles & domain model
+- [CLAUDE.md](../CLAUDE.md) â€” mirror of the above for Claude Code
+- [glyph-system-donation-map.md](glyph-system-donation-map.md) â€” no-loss
   migration map for donating Moritz glyph/vector behavior to Sigrid and
   Magdalena
 
@@ -91,7 +95,7 @@ The four allowed seams of a Moritz `src/` are documented in
 [data-flow.md](../../Luise/docs/data-flow.md):
 
 ```
-FILE  ↔  STATE  →  SCENE  →  PIXELS  ↔  INPUT
+FILE  â†”  STATE  â†’  SCENE  â†’  PIXELS  â†”  INPUT
 ```
 
 Anything between those seams is platform code. Moritz imports it. Moritz
@@ -101,11 +105,11 @@ does not vendor it. Moritz does not re-implement it.
 
 Moritz is currently **non-compliant** in four categorical ways. Each is
 listed with the binding rule it violates and the planned remediation
-ordered by blast radius. None of these are wishlist entries — the
+ordered by blast radius. None of these are wishlist entries â€” the
 charter does not allow them to be. They are **app rewrites Moritz owes
 the platform**.
 
-### V1. Bespoke persistence envelopes (CONTRIBUTING-AS-CONSUMER → "must never do" #1)
+### V1. Bespoke persistence envelopes (CONTRIBUTING-AS-CONSUMER â†’ "must never do" #1)
 
 Files: [src/state/persistence.ts](../src/state/persistence.ts),
 [src/state/pagePersistence.ts](../src/state/pagePersistence.ts),
@@ -125,7 +129,7 @@ never the legacy shape, never a dual-write. The recommended document
 layout is filed below as wishlist entry W1 (kind names + node
 conventions need a director ack before the rewrite can land).
 
-### V2. App-local CSS palette (CONTRIBUTING-AS-CONSUMER → "must never do" #3)
+### V2. App-local CSS palette (CONTRIBUTING-AS-CONSUMER â†’ "must never do" #3)
 
 Files: [src/styles.css](../src/styles.css), every `mz-mod--<id>`
 class in the four module shells, the `mod={...}` prop on
@@ -146,13 +150,13 @@ shell buttons. Module work areas still use `mz-mod--<id>` while their internal
 inspectors migrate. The legacy Moritz colour-scheme picker (`themeStore` +
 `SettingsModal`) has been deleted; Magdalena dev settings own shell theme/debug
 controls.
-Bundle: 795 KB → 792 KB. CSS asset: 55.30 KB → 50.42 KB after deleting
-the unreachable alternate `data-theme` palettes, then 50.42 KB → 46.72 KB
+Bundle: 795 KB â†’ 792 KB. CSS asset: 55.30 KB â†’ 50.42 KB after deleting
+the unreachable alternate `data-theme` palettes, then 50.42 KB â†’ 46.72 KB
 after deleting dead legacy shell selectors. `MoritzSelect` keeps Moritz-font
 labels, but now uses `--mg-*` tokens for its local menu chrome. The remaining
 GlyphSetter left-column tab strip keeps Moritz-font labels, registers with
 `useMgElement`, and uses `--mg-*` tokens for its local chrome. CSS asset:
-46.72 KB → 46.52 KB. Generic native buttons, text/number inputs, textareas,
+46.72 KB â†’ 46.52 KB. Generic native buttons, text/number inputs, textareas,
 and range sliders now use `--mg-*` chrome tokens with `--mz-*` fallbacks
 (CSS asset 47.10 KB with fallback-rich rules). `mz-section` cards and
 `mz-modified` markers now use Magdalena surface / changed tokens, leaving
@@ -167,9 +171,9 @@ workspace in `src/moduleSkins.ts`, wires those skin ids into
 compatibility aliases for internals that still read `--mz-*`; Magdalena now
 owns the module skin boundary and local module skin persistence.
 
-### V3. Local interface library `src/sift/` (CONTRIBUTING-AS-CONSUMER → "must never do" #4) — resolved 2026-05-16
+### V3. Local interface library `src/sift/` (CONTRIBUTING-AS-CONSUMER â†’ "must never do" #4) â€” resolved 2026-05-16
 
-Deleted files: `src/sift/` — `SiftRoot`, `Workbench`,
+Deleted files: `src/sift/` â€” `SiftRoot`, `Workbench`,
 `FloatingWindow`, `Tree`, `Attrs` / `AttrSection` / `AttrRow`, `inputs`
 (`Button`, `Slider`, `TextInput`, `NumberInput`, `Checkbox`, `Select`),
 `DevSettings`, `ImportanceDebugLayer`, `Imp`, `ClosenessGroup`,
@@ -181,7 +185,7 @@ window from scratch. They live in `@christof/magdalena`."
 **Remediation:** done 2026-05-16. `src/sift/` was deleted in full after every
 live consumer moved to `@christof/magdalena/react` or to a small local native
 control that preserves Moritz-font labels. There is no "Sift parity gap"
-wishlist entry — the gap was Moritz's, not Magdalena's.
+wishlist entry â€” the gap was Moritz's, not Magdalena's.
 
 ### V4. Rule-of-Three drift in `src/core/`
 
@@ -205,9 +209,9 @@ the above are pure 2D vector math / layout helpers usable by any
 present or future Christof drawing tool.
 
 **Remediation:** for each, either (a) file a properly-templated
-wishlist entry (W4–W6 below) with the donation candidate signature plus
+wishlist entry (W4â€“W6 below) with the donation candidate signature plus
 the three apps that would use it, or (b) delete the helper from
-Moritz's `src/` and adopt the existing upstream symbol — accepting
+Moritz's `src/` and adopt the existing upstream symbol â€” accepting
 visible regressions if the upstream surface is narrower than what
 Moritz used to render. Per the Prime Directive, **(b) is the default
 verdict** unless the wishlist entry is accepted as proposed.
@@ -230,15 +234,15 @@ accepts the regression named in the relevant wishlist entry.
 ## Wishlist entries
 
 Each entry uses the template from
-[CONTRIBUTING-AS-CONSUMER → How to file a wishlist entry](../../Luise/docs/CONTRIBUTING-AS-CONSUMER.md#how-to-file-a-wishlist-entry).
+[CONTRIBUTING-AS-CONSUMER â†’ How to file a wishlist entry](../../Luise/docs/CONTRIBUTING-AS-CONSUMER.md#how-to-file-a-wishlist-entry).
 Entries missing the **Why this generalises** or **App-side workaround**
 paragraphs are non-conformant and will be deleted.
 
-### W1 — `SigridProjectFile` document `kind` names for app-namespaced facets
+### W1 â€” `SigridProjectFile` document `kind` names for app-namespaced facets
 
 Where it would live: `@christof/sigrid` (registry / docs)
 Replaces locally: enables remediation V1
-Priority: P0 — blocks V1 rewrite.
+Priority: P0 â€” blocks V1 rewrite.
 
 Proposed function signature: no new function. A documented convention
 in `@christof/sigrid` README that app-namespaced `SigridDocument.kind`
@@ -281,7 +285,7 @@ file is still a `SigridProjectFile` and round-trips through
 `parseProjectFileJson` / `serializeProjectFileJson`; it just loses
 per-artefact granular validation.
 
-### W2 — `MgViewport2d` shell (camera + pan/zoom + DPR-aware canvas)
+### W2 â€” `MgViewport2d` shell (camera + pan/zoom + DPR-aware canvas)
 
 Where it would live: `@christof/magdalena/2d` (mirroring the existing
 `@christof/magdalena/3d` subpath that ships `Mg3dElement`).
@@ -289,7 +293,7 @@ Replaces locally: [src/ui/canvas/Workspace.tsx](../src/ui/canvas/Workspace.tsx),
 [src/ui/canvas/coords.ts](../src/ui/canvas/coords.ts),
 [src/ui/canvas/useCanvasInput.ts](../src/ui/canvas/useCanvasInput.ts),
 [src/ui/canvas/useCanvasSize.ts](../src/ui/canvas/useCanvasSize.ts).
-Priority: **P0** — blocks the four module shells from being thin
+Priority: **P0** â€” blocks the four module shells from being thin
 (currently each owns its own canvas plumbing in violation of the
 "a very thin sliver of use-case-specific logic" target shape).
 
@@ -307,12 +311,12 @@ export interface MgViewport2dProps {
   children: ReactNode;     // SVG / Canvas overlay tree
 }
 export function MgViewport2d(props: MgViewport2dProps): JSX.Element;
-export function useMgViewport2d(): MgViewport2dContext;  // panZoom, screen↔world mappers, hit-test
+export function useMgViewport2d(): MgViewport2dContext;  // panZoom, screenâ†”world mappers, hit-test
 ```
 
 Why this generalises: every 2D Christof tool needs an infinite world
 with smooth pan + zoom + retina-aware canvas. **Three apps**: Moritz
-(comic lettering — four workspaces), Mex_Mapper (2D tile/region map
+(comic lettering â€” four workspaces), Mex_Mapper (2D tile/region map
 editor in the listed roster), Padoeng_Online (browser-based 2D play
 field). `@christof/magdalena/3d` already ships the precedent for the
 3D analogue; this is the 2D mirror.
@@ -322,12 +326,12 @@ App-side workaround if the platform refuses: Moritz keeps
 target shape becomes unreachable for Moritz's `src/`, so Moritz files
 this as a permanent known violation and stops trying to delete it.
 
-### W3 — `Mg2dElement` overlay primitives (lines, polygons, beziers, anchor handles)
+### W3 â€” `Mg2dElement` overlay primitives (lines, polygons, beziers, anchor handles)
 
 Where it would live: `@christof/magdalena/2d`
 Replaces locally: [src/editor/StrokeOverlay.tsx](../src/editor/StrokeOverlay.tsx),
 [src/editor/BubbleLayerOverlayEditor.tsx](../src/editor/BubbleLayerOverlayEditor.tsx)
-Priority: **P0** — blocks W2 (the viewport hosts overlays, so the
+Priority: **P0** â€” blocks W2 (the viewport hosts overlays, so the
 overlay element vocabulary must land first or together).
 
 Proposed function signature: a 2D mirror of `Mg3dElement` with the
@@ -335,7 +339,7 @@ same `tone` / `importance` / `role` token system. Element kinds:
 `'line' | 'polyline' | 'polygon' | 'cubic-bezier' | 'anchor' |
 'in-handle' | 'out-handle' | 'control-ring' | 'drag-handle'`. Same
 pure-data picker / merge / diff / lerp surface that `Mg3dGroup` got
-in slices 87–90.
+in slices 87â€“90.
 
 Why this generalises: any 2D Christof editor needs to render manipulable
 geometry on top of the viewport. **Three apps**: Moritz (anchor + handle
@@ -345,10 +349,10 @@ The `Mg3dElement` precedent already exists for 3D; without a 2D mirror
 each 2D app writes its own SVG handle library.
 
 App-side workaround if the platform refuses: Moritz keeps
-`src/editor/*` indefinitely. Same consequence as W2 — the "thin
+`src/editor/*` indefinitely. Same consequence as W2 â€” the "thin
 sliver" goal is permanently out of reach for Moritz's editor surface.
 
-### W4 — `outlineGlyphStroke2d` extensions for Moritz-specific renderer richness
+### W4 â€” `outlineGlyphStroke2d` extensions for Moritz-specific renderer richness
 
 Where it would live: `@christof/sigrid-curves`
 Replaces locally: enables full adoption of upstream
@@ -356,7 +360,7 @@ Replaces locally: enables full adoption of upstream
 local extensions, [src/core/widthEffects.ts](../src/core/widthEffects.ts),
 [src/core/effects.ts](../src/core/effects.ts) jitter,
 [src/core/ribbon.ts](../src/core/ribbon.ts).
-Priority: P2 — under the Prime Directive the **default action is to
+Priority: P2 â€” under the Prime Directive the **default action is to
 delete the local features**, accept the upstream rendering, and ship
 the regression. This entry exists only so the director has the option
 to rule otherwise. If rejected, Moritz's renderer becomes whatever
@@ -386,7 +390,7 @@ export function jitterGlyphOutlinePolygon2d(
 
 Why this generalises: adaptive flattening, runtime width-modulation
 callbacks, custom caps, and seed-scoped jitter are not Moritz-specific
-— they are the standard primitives of any procedural vector renderer.
+â€” they are the standard primitives of any procedural vector renderer.
 **Three apps**: Moritz (comic lettering), theGarden (procedural plant
 trunks/branches need adaptive flattening + width-mod), CSim (cellular
 simulation visualisations need seed-scoped jitter so the same cell
@@ -402,13 +406,13 @@ high zoom, length-mode taper / cosine-noise wiggle, custom-shape caps,
 deterministic seeded jitter, post-outline polygon jitter. Default
 fonts are re-tuned to look acceptable under the upstream renderer.
 
-### W5 — `chainOpenStrokesIntoLoops2d` for fillable hand-drawn outlines
+### W5 â€” `chainOpenStrokesIntoLoops2d` for fillable hand-drawn outlines
 
 Where it would live: `@christof/sigrid-curves`
 Replaces locally: [src/core/bubbleFill.ts](../src/core/bubbleFill.ts)
 `chainPolylinesToLoops` (enables adoption of
 `triangulateGlyphFillMeshes2d` for cloud-bubble interiors).
-Priority: P2 — same default verdict as W4: under the Prime Directive,
+Priority: P2 â€” same default verdict as W4: under the Prime Directive,
 delete the feature unless the director rules otherwise.
 
 Proposed function signature:
@@ -434,13 +438,13 @@ all bubble outlines are authored as single closed strokes. The default
 bubble library is rebuilt to match. Cloud-style organic fills are
 removed from Moritz's feature set.
 
-### W6 — Bubble-layer primitives (multi-layer outline + per-layer fill + per-layer effects)
+### W6 â€” Bubble-layer primitives (multi-layer outline + per-layer fill + per-layer effects)
 
 Where it would live: `@christof/sigrid-curves` (or new
 `@christof/sigrid-paint` if the director prefers a separate package)
 Replaces locally: [src/core/bubble.ts](../src/core/bubble.ts),
 [src/core/bubbleRender.ts](../src/core/bubbleRender.ts)
-Priority: P2 — donation candidate. Moritz already has working code;
+Priority: P2 â€” donation candidate. Moritz already has working code;
 this entry is here so the director picks the API shape before Moritz
 files the actual `extraction:` issue.
 
@@ -460,7 +464,7 @@ App-side workaround if the platform refuses: Moritz keeps
 Rule of Three. The platform retains the right to absorb the code
 without asking; Moritz will not resist.
 
-### W7 — Workbench-shell migration (V3 remediation tracking)
+### W7 â€” Workbench-shell migration (V3 remediation tracking)
 
 Where it would live: `@christof/magdalena/react` (already ships
 `MgWorkbench`, `MgFloatingWindow`, `mgDock`, `MgDevSettingsWindow`,
@@ -468,7 +472,7 @@ Where it would live: `@christof/magdalena/react` (already ships
 `MgToggle`, `MgAttrs`, `MgAttrSection`, `MgAttrRow`, `MgOutliner`,
 `useMgElement`).
 Replaces locally: deleted `src/sift/`.
-Priority: **P0** — V3 violation tracking. This is not a request for
+Priority: **P0** â€” V3 violation tracking. This is not a request for
 the platform to add features. It is the migration log for deleting
 `src/sift/`. Sub-steps in deletion order:
 
@@ -496,18 +500,18 @@ equivalent coverage). Strikethrough = adopted (see *Recently Adopted*).
 
 | # | Upstream symbol (slice) | Local file to delete |
 |---|---|---|
-| 1 | ~~`triangulateSimplePolygon2d` (slice 104)~~ | ~~[src/core/triangulate.ts](../src/core/triangulate.ts)~~ — adopted as shim |
-| 2 | ~~`glyphSpline2d` cubic + tangent + segment helpers (slice 92)~~ | ~~[src/core/bezier.ts](../src/core/bezier.ts)~~ — partial, `bezier-js` still used for arc length + projection (see W4 default verdict: delete the local part, lose those two helpers) |
-| 3 | ~~`transformGlyph2d` / `affineFromGlyphStyle2d` (slice 93)~~ | ~~[src/core/transform.ts](../src/core/transform.ts)~~ — adopted as shim |
-| 4 | `outlineGlyphStroke2d` + width direction controls (slices 94, 95) | most of [src/core/stroke.ts](../src/core/stroke.ts) — **adopt as-is**, delete local extensions per V4 default verdict; W4 is the only legitimate way to keep the local features |
-| 5 | `triangulateGlyphFillMeshes2d` (slices 106, 107) + `glyphMeshBatch2d` (slice 110) | [src/core/bubbleFill.ts](../src/core/bubbleFill.ts) — **adopt as-is**, delete `chainPolylinesToLoops`; W5 is the only legitimate way to keep open-stroke chaining |
-| 6 | `triangulateGlyphStrokeRibbon2d` (slices 96, 98) | [src/core/ribbon.ts](../src/core/ribbon.ts) — adopt as-is |
-| 7 | `glyphWidthEffects2d` (slice 99) | [src/core/widthEffects.ts](../src/core/widthEffects.ts) — **adopt as-is**, delete the local runtime-callback model; W4 is the only legitimate way to keep it |
-| 8 | `jitterGlyphStroke2d` / `relaxGlyphStroke2d` (slice 100) | [src/core/effects.ts](../src/core/effects.ts), [src/core/relax.ts](../src/core/relax.ts) — **adopt as-is**, delete local jitter-shape / scope variants; W4 is the only legitimate way to keep them |
-| 9 | `layoutGlyphs2d` + wrap + paragraph + line metadata (slices 93, 101, 102, 103) | [src/core/layout.ts](../src/core/layout.ts) — adopt as-is once #4/#7 above land |
+| 1 | ~~`triangulateSimplePolygon2d` (slice 104)~~ | ~~[src/core/triangulate.ts](../src/core/triangulate.ts)~~ â€” adopted as shim |
+| 2 | ~~`glyphSpline2d` cubic + tangent + segment helpers (slice 92)~~ | ~~[src/core/bezier.ts](../src/core/bezier.ts)~~ â€” partial, `bezier-js` still used for arc length + projection (see W4 default verdict: delete the local part, lose those two helpers) |
+| 3 | ~~`transformGlyph2d` / `affineFromGlyphStyle2d` (slice 93)~~ | ~~[src/core/transform.ts](../src/core/transform.ts)~~ â€” adopted as shim |
+| 4 | `outlineGlyphStroke2d` + width direction controls (slices 94, 95) | most of [src/core/stroke.ts](../src/core/stroke.ts) â€” **adopt as-is**, delete local extensions per V4 default verdict; W4 is the only legitimate way to keep the local features |
+| 5 | `triangulateGlyphFillMeshes2d` (slices 106, 107) + `glyphMeshBatch2d` (slice 110) | [src/core/bubbleFill.ts](../src/core/bubbleFill.ts) â€” **adopt as-is**, delete `chainPolylinesToLoops`; W5 is the only legitimate way to keep open-stroke chaining |
+| 6 | `triangulateGlyphStrokeRibbon2d` (slices 96, 98) | [src/core/ribbon.ts](../src/core/ribbon.ts) â€” adopt as-is |
+| 7 | `glyphWidthEffects2d` (slice 99) | [src/core/widthEffects.ts](../src/core/widthEffects.ts) â€” **adopt as-is**, delete the local runtime-callback model; W4 is the only legitimate way to keep it |
+| 8 | `jitterGlyphStroke2d` / `relaxGlyphStroke2d` (slice 100) | [src/core/effects.ts](../src/core/effects.ts), [src/core/relax.ts](../src/core/relax.ts) â€” **adopt as-is**, delete local jitter-shape / scope variants; W4 is the only legitimate way to keep them |
+| 9 | `layoutGlyphs2d` + wrap + paragraph + line metadata (slices 93, 101, 102, 103) | [src/core/layout.ts](../src/core/layout.ts) â€” adopt as-is once #4/#7 above land |
 | 10 | `parseProjectFileJson` / `serializeProjectFileJson` (slice 121) + `validateSigridProjectFile` (slice 124) | V1 remediation. Pending W1 ack on document `kind` names. Read legacy once at boundary, save as `SigridProjectFile` forever. |
 | 11 | `MgWorkbench`, `MgFloatingWindow`, `mgDock`, `MgDevSettingsWindow`, `MgModuleSwitcher`, Mg controls, `MgAttrs`, `MgOutliner`, `useMgElement` | V3 remediation. Tracked sub-step-by-sub-step in W7 above. |
-| 12 | (V2 remediation — `--mg-*` token migration) | [src/styles.css](../src/styles.css) and every `mz-mod--<id>` class. No upstream symbol to wait on; pure deletion + token swap. |
+| 12 | (V2 remediation â€” `--mg-*` token migration) | [src/styles.css](../src/styles.css) and every `mz-mod--<id>` class. No upstream symbol to wait on; pure deletion + token swap. |
 
 ---
 
@@ -520,13 +524,13 @@ Local code Moritz has actually deleted in favour of an upstream symbol.
 | 2026-05-17 | `MgSkinDefinition` / `MgSkinProvider` module scopes from `@christof/magdalena` | Added [src/moduleSkins.ts](../src/moduleSkins.ts) as Moritz's single module-skin registry, attached `skinId` metadata to the top-bar `MgModuleSwitcher`, and wrapped the active workspace shell in `MgSkinProvider`. Local `mz-mod--<id>` classes are now compatibility aliases under a Magdalena-owned module skin boundary, not the source of shell skin identity. |
 | 2026-05-16 | `Glyph2d` / `GlyphSplineStroke` from `@christof/sigrid/glyph`; `MgSelectedCOptions` from `@christof/magdalena/react` | Moved [src/core/glyphAnimator.ts](../src/core/glyphAnimator.ts) so canonical glyph data types come from Sigrid core rather than through `@christof/sigrid-curves`; curves now supply only the animation behavior. Replaced GlyphSetter's hand-written selected-cObject cOptions conditional with `MgSelectedCOptions` in [src/modules/glyphsetter/GlyphSetter.tsx](../src/modules/glyphsetter/GlyphSetter.tsx). 152/152 tests green. Bundle: 793.62 KB. |
 | 2026-05-16 | `MgModuleSwitcher` from `@christof/magdalena/react` | Replaced the hand-wired top-bar module button map in [src/app.tsx](../src/app.tsx). Module labels still render through `MoritzLabel`, but Magdalena now owns the module-switcher role, active-state metadata, tone, and selected importance. 151/151 tests green. Bundle: 792 KB. |
-| 2026-05-16 | `MagdalenaProvider`, `MgDevSettingsWindow`, `MgWorkbench`, `MgTopBar`, `MgLeftBar`, `MgRightBar`, `MgCOptions`, `MgButton`, `MgOutliner` from `@christof/magdalena/react` | Deleted `src/sift/` in full: local `SiftRoot`, workbench, floating window, attrs, tree, inputs, dev settings, importance overlay, layout, tokens, and CSS. The app shell now relies on Magdalena for root/debug settings and shell regions; the remaining zoom slider is a tiny native range input with a Moritz glyph label. 151/151 tests green. Bundle: 800 KB → 795 KB. |
+| 2026-05-16 | `MagdalenaProvider`, `MgDevSettingsWindow`, `MgWorkbench`, `MgTopBar`, `MgLeftBar`, `MgRightBar`, `MgCOptions`, `MgButton`, `MgOutliner` from `@christof/magdalena/react` | Deleted `src/sift/` in full: local `SiftRoot`, workbench, floating window, attrs, tree, inputs, dev settings, importance overlay, layout, tokens, and CSS. The app shell now relies on Magdalena for root/debug settings and shell regions; the remaining zoom slider is a tiny native range input with a Moritz glyph label. 151/151 tests green. Bundle: 800 KB â†’ 795 KB. |
 | 2026-05-15 | `cObject`, `cMarkSelection`, `cPrimarySelectedObject`, `cSelectedObjects` from `@christof/sigrid-geometry`; `animateGlyphSymbolsAlongStroke2d` from `@christof/sigrid-curves`; `MgOutliner` from `@christof/magdalena/react` | Added the Moritz cObject adapter in [src/core/moritzCObjects.ts](../src/core/moritzCObjects.ts): `font -> glyph -> animator? -> stroke -> anchor -> handles`, plus `bubbleFont -> bubble -> layer -> glyph -> strokes` and `page -> block -> text/bubble -> layer -> glyph -> strokes`. `Glyph` is now explicitly the nuclear drawable unit and can carry a pure-data `GlyphAnimatorComponent`, bridged by [src/core/glyphAnimator.ts](../src/core/glyphAnimator.ts). GlyphSetter, BubbleSetter, and TypeSetter left bars now show cObject trees; TypeSetter's cObject tree now consumes canonical `Block` / `TextRun` data at the shell boundary. `MgCOptions` follows selected glyph cObjects. Plan recorded in [docs/moritz-cobject-plan.md](moritz-cobject-plan.md). 150/150 tests green. Bundle: 801 KB. |
-| 2026-05-15 | `MgTopBar` / `MgLeftBar` / `MgRightBar` / `MgCOptions` from `@christof/magdalena/react` (the new mandatory four-region shell from [BECOME-A-CHILD.md → Mandatory shell](../../Luise/docs/BECOME-A-CHILD.md#mandatory-shell-the-four-regions)) | Every `MgFloatingWindow dock={mgDock.toolbar/outliner/attributes/instance}` call site (1 toolbar in [src/app.tsx](../src/app.tsx), 3 windows in [src/modules/glyphsetter/GlyphSetter.tsx](../src/modules/glyphsetter/GlyphSetter.tsx), 2 windows × 3 in stylesetter / bubblesetter / typesetter). Region semantics now declared at the call site instead of via dock-preset selection. The selection-driven `MgCOptions` replaces the GlyphSetter `itemattrs` window and now only mounts while a glyph cObject is selected. 135/135 tests green. Bundle: 768 KB → 768 KB. |
-| 2026-05-14 | `MgFloatingWindow` + `mgDock.{toolbar,outliner,attributes,instance}` from `@christof/magdalena/react` | Every Sift `<FloatingWindow>` call site (1 in [src/app.tsx](../src/app.tsx), 3 in [src/modules/glyphsetter/GlyphSetter.tsx](../src/modules/glyphsetter/GlyphSetter.tsx), 2 in [src/modules/stylesetter/StyleSetter.tsx](../src/modules/stylesetter/StyleSetter.tsx), 2 in [src/modules/bubblesetter/BubbleSetter.tsx](../src/modules/bubblesetter/BubbleSetter.tsx), 2 in [src/modules/typesetter/TypeSetter.tsx](../src/modules/typesetter/TypeSetter.tsx)). The `mod={...}` palette-inheritance prop and the `initial={x,y,w,h}` undocked-bounds prop are **deleted, not replaced** (V2 / V7 sub-step 3 deliberate feature loss). The bare-window `bare` prop becomes "no `title`" + `dock={mgDock.instance}` per Mg's auto-detection. `useSiftLayout()` + the `dockToolbar/dockOutliner/dockAttrs/dockItemAttrs` helpers are no longer called; their imports stripped from each shell. Local `src/sift/FloatingWindow.tsx` + `src/sift/layout.ts` are now dead code reachable only via `src/sift/index.ts` re-exports. Bundle: 772 KB → 768 KB. 135/135 tests green. Sub-step 3 of W7. |
-| 2026-05-14 | `MgWorkbench` + `MgViewportLayer` from `@christof/magdalena/react` | Sift `<Workbench stage windows overlays>` wrapper component in [src/app.tsx](../src/app.tsx); the stage / windows / overlays are now plain children of `MgWorkbench`. Local `src/sift/Workbench.tsx` is now dead code reachable only via `src/sift/index.ts` re-exports. Bundle: 772 KB → 772 KB (Sift `Workbench` was 12 LOC of pure JSX). 135/135 tests green. Sub-step 1 of W7. |
-| 2026-05-14 | `MgDevSettingsWindow` auto-mounted by `MagdalenaProvider` (default `devSettings: true`) | Local `<DevSettingsWindow />` toggle in [src/app.tsx](../src/app.tsx). Local `src/sift/DevSettings.tsx` is now dead code reachable only via `src/sift/index.ts` re-exports. Bundle: 778 KB → 772 KB. 135/135 tests green. Sub-step 2 of W7. |
-| 2026-05-14 | `triangulateSimplePolygon2d` from `@christof/sigrid-curves` (slice 104) | `earcut` + `@types/earcut` dependencies; body of [src/core/triangulate.ts](../src/core/triangulate.ts) is now a thin delegating shim. Bundle: 781 KB → 778 KB. 135/135 tests green. |
+| 2026-05-15 | `MgTopBar` / `MgLeftBar` / `MgRightBar` / `MgCOptions` from `@christof/magdalena/react` (the new mandatory four-region shell from [BECOME-A-CHILD.md â†’ Mandatory shell](../../Luise/docs/BECOME-A-CHILD.md#mandatory-shell-the-four-regions)) | Every `MgFloatingWindow dock={mgDock.toolbar/outliner/attributes/instance}` call site (1 toolbar in [src/app.tsx](../src/app.tsx), 3 windows in [src/modules/glyphsetter/GlyphSetter.tsx](../src/modules/glyphsetter/GlyphSetter.tsx), 2 windows Ã— 3 in stylesetter / bubblesetter / typesetter). Region semantics now declared at the call site instead of via dock-preset selection. The selection-driven `MgCOptions` replaces the GlyphSetter `itemattrs` window and now only mounts while a glyph cObject is selected. 135/135 tests green. Bundle: 768 KB â†’ 768 KB. |
+| 2026-05-14 | `MgFloatingWindow` + `mgDock.{toolbar,outliner,attributes,instance}` from `@christof/magdalena/react` | Every Sift `<FloatingWindow>` call site (1 in [src/app.tsx](../src/app.tsx), 3 in [src/modules/glyphsetter/GlyphSetter.tsx](../src/modules/glyphsetter/GlyphSetter.tsx), 2 in [src/modules/stylesetter/StyleSetter.tsx](../src/modules/stylesetter/StyleSetter.tsx), 2 in [src/modules/bubblesetter/BubbleSetter.tsx](../src/modules/bubblesetter/BubbleSetter.tsx), 2 in [src/modules/typesetter/TypeSetter.tsx](../src/modules/typesetter/TypeSetter.tsx)). The `mod={...}` palette-inheritance prop and the `initial={x,y,w,h}` undocked-bounds prop are **deleted, not replaced** (V2 / V7 sub-step 3 deliberate feature loss). The bare-window `bare` prop becomes "no `title`" + `dock={mgDock.instance}` per Mg's auto-detection. `useSiftLayout()` + the `dockToolbar/dockOutliner/dockAttrs/dockItemAttrs` helpers are no longer called; their imports stripped from each shell. Local `src/sift/FloatingWindow.tsx` + `src/sift/layout.ts` are now dead code reachable only via `src/sift/index.ts` re-exports. Bundle: 772 KB â†’ 768 KB. 135/135 tests green. Sub-step 3 of W7. |
+| 2026-05-14 | `MgWorkbench` + `MgViewportLayer` from `@christof/magdalena/react` | Sift `<Workbench stage windows overlays>` wrapper component in [src/app.tsx](../src/app.tsx); the stage / windows / overlays are now plain children of `MgWorkbench`. Local `src/sift/Workbench.tsx` is now dead code reachable only via `src/sift/index.ts` re-exports. Bundle: 772 KB â†’ 772 KB (Sift `Workbench` was 12 LOC of pure JSX). 135/135 tests green. Sub-step 1 of W7. |
+| 2026-05-14 | `MgDevSettingsWindow` auto-mounted by `MagdalenaProvider` (default `devSettings: true`) | Local `<DevSettingsWindow />` toggle in [src/app.tsx](../src/app.tsx). Local `src/sift/DevSettings.tsx` is now dead code reachable only via `src/sift/index.ts` re-exports. Bundle: 778 KB â†’ 772 KB. 135/135 tests green. Sub-step 2 of W7. |
+| 2026-05-14 | `triangulateSimplePolygon2d` from `@christof/sigrid-curves` (slice 104) | `earcut` + `@types/earcut` dependencies; body of [src/core/triangulate.ts](../src/core/triangulate.ts) is now a thin delegating shim. Bundle: 781 KB â†’ 778 KB. 135/135 tests green. |
 | 2026-05-14 | `evalGlyphCubicSegment`, `unitTangentGlyphCubicSegment`, `glyphVertexPairToSegment`, `glyphStrokeToSegments` from `@christof/sigrid-curves` (slice 92) | Hand-rolled cubic + derivative + segment-builder math in [src/core/bezier.ts](../src/core/bezier.ts) (~50 lines). Local `CubicSegment` is now a type alias of upstream `GlyphCubicSegment2d`. `bezier-js`-backed `segmentLength` / `closestPointT` / `sampleStroke` stay local until upstream ships arc-length + projection (or until the W4 default verdict triggers their deletion). 135/135 tests green. |
 | 2026-05-14 | `affineFromGlyphStyle2d`, `transformGlyph2d`, `transformGlyphStroke2d`, `transformGlyphVertex2d` from `@christof/sigrid-curves` (slice 93) | Hand-rolled affine + slant-pivot math in [src/core/transform.ts](../src/core/transform.ts) (~80 lines). Local `Affine` is now a type alias of upstream `Affine2d`. 135/135 tests green. |
 
@@ -542,13 +546,13 @@ Local code Moritz has actually deleted in favour of an upstream symbol.
 | 2026-05-14 (slice 126) | `prepare: npm run build` on every `@christof/*` package | None; see Bug Reports below |
 | 2026-05-14 (slice 124) | `validateSigridDocument` / `validateSigridProjectFile` | V1 (paired with W1) |
 | 2026-05-14 (slice 121) | `parseProjectFileJson` / `serializeProjectFileJson` | V1 (paired with W1) |
-| 2026-05-14 (slices 92–110) | `@christof/sigrid-curves` Moritz-style 2D pipeline | Adoption Queue rows #1–#9 |
+| 2026-05-14 (slices 92â€“110) | `@christof/sigrid-curves` Moritz-style 2D pipeline | Adoption Queue rows #1â€“#9 |
 
 ## Bug Reports
 
-Not wishlist entries — these are platform regressions Moritz has hit.
+Not wishlist entries â€” these are platform regressions Moritz has hit.
 
-### B1 — slice 126 `prepare: npm run build` breaks `file:` consumers
+### B1 â€” slice 126 `prepare: npm run build` breaks `file:` consumers
 
 Repro: in Moritz, `npm install` triggers `prepare` inside
 `@christof/sigrid-curves`, which `tsc`-builds and fails because its

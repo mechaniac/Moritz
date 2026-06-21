@@ -1,3 +1,7 @@
+# Archived glyph system donation map
+
+Archived historical note. This file records earlier migration thinking and is not the current Moritz/Luise architecture checklist. Use [docs/luise-migration-plan.md](../luise-migration-plan.md) for current work.
+
 # Glyph System Donation Map
 
 Status: active

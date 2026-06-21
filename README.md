@@ -22,20 +22,19 @@ project-file direction.
 
 ## Quick Start
 
-Moritz currently consumes sibling packages from `../Luise`:
+Moritz currently consumes the sibling Luise packages that exist in the 2026
+monorepo layout:
 
 ```json
 "@christof/magdalena": "file:../Luise/packages/magdalena",
-"@christof/sigrid": "file:../Luise/packages/sigrid",
-"@christof/sigrid-curves": "file:../Luise/packages/sigrid-curves",
-"@christof/sigrid-geometry": "file:../Luise/packages/sigrid-geometry"
+"@christof/sigrid": "file:../Luise/packages/sigrid"
 ```
 
 Install and run:
 
 ```bash
 npm install --ignore-scripts
-npm run dev
+npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
 npm run typecheck
 npm test
 npm run build
@@ -43,23 +42,30 @@ npm run build
 
 `--ignore-scripts` avoids the current `file:` consumer issue where upstream
 workspace packages try to run their `prepare` build outside the Luise monorepo.
-The Vite dev server is pinned to:
+The default Vite config uses port `5182`; on shared dev machines, prefer an
+explicit free loopback port. The current smoke-tested command serves:
 
 ```text
-http://localhost:5181
+http://127.0.0.1:5173
 ```
 
 Tested with Node 20+.
 
-## Current Workspaces
+## Moritz Suite
 
-Moritz has four main workspaces, hosted in the mandatory Magdalena shell
-regions:
+Moritz is one Christof product and one topbar `cModule`: `moritz`.
 
-- `topBar`: app/module/project controls.
-- `leftBar`: contents and cObject outliners.
-- `rightBar`: class-wide settings for the active workspace.
-- `cOptions`: per-instance options for the selected cObject.
+Inside Moritz, the four editor work areas are internal documents/views:
+
+- `moritz.font`: GlyphSetter.
+- `moritz.bubbleFont`: BubbleSetter.
+- `moritz.stylePreview`: StyleSetter.
+- `moritz.page`: TypeSetter.
+
+The global topbar is for products such as Sigrid, Luise, Magdalena, Anita, and
+Moritz. GlyphSetter, BubbleSetter, StyleSetter, and TypeSetter stay inside the
+Moritz leftbar/view switcher until they are intentionally split into reusable
+packages.
 
 ### GlyphSetter
 
@@ -156,12 +162,13 @@ glyph/page/bubble cKinds can replace the adapter tags at this switch point.
 
 Selection is already cObject-driven in the visible shell:
 
-- GlyphSetter shows the selected glyph tree in `leftBar`.
-- GlyphSetter `cOptions` follows glyph, animator, stroke, anchor, and
+- GlyphSetter shows the selected glyph tree in the Moritz leftbar.
+- GlyphSetter item controls follow glyph, animator, stroke, anchor, and
   multi-stroke selection.
-- BubbleSetter shows `bubble -> layer -> glyph -> strokes` in `leftBar`.
+- BubbleSetter shows `bubble -> layer -> glyph -> strokes` in the Moritz
+  leftbar.
 - TypeSetter shows `page -> block -> text/bubble -> layer -> glyph -> strokes`
-  in `leftBar`.
+  in the Moritz leftbar.
 
 ## Glyph Animation
 
@@ -169,30 +176,31 @@ Animation belongs to the glyph, not to the font container.
 
 `Glyph.animator` is pure data. The current runtime bridge is
 [src/core/glyphAnimator.ts](src/core/glyphAnimator.ts), which maps Moritz glyphs
-to canonical Sigrid glyph types from `@christof/sigrid/glyph` and uses
-`@christof/sigrid-curves` for the path-animation behavior. React components can
-preview animation, but animation is not stored as React state.
+to the local universal glyph shape in [src/core/glyphGeometry.ts](src/core/glyphGeometry.ts)
+and uses Moritz-owned path-animation helpers. React components can preview
+animation, but animation is not stored as React state.
 
 ## Sigrid Integration
 
-Moritz currently depends on these Sigrid packages:
+Moritz currently depends on these Luise packages:
 
-- `@christof/sigrid`: project-file, canonical glyph vocabulary, and glyph
-  document helpers.
-- `@christof/sigrid-geometry`: cObject helpers such as `cObject`,
-  `cMarkSelection`, `cPrimarySelectedObject`, and `cSelectedObjects`.
-- `@christof/sigrid-curves`: shared 2D geometry and animation helpers.
+- `@christof/sigrid`: current Luise/Sigrid public core package.
+- `@christof/magdalena`: current Luise/Magdalena public UI package.
 
-Already adopted:
+Moritz is a thin sibling app at `C:\cWORK\Moritz` and consumes Luise only from
+`C:\cWORK\Luise` through the `@christof/sigrid` and `@christof/magdalena`
+package junctions. The app shell is a Magdalena workspace runtime mounted by
+[src/app-mount.ts](src/app-mount.ts), and the active cObject trees are built in
+[src/workspaceTrees.ts](src/workspaceTrees.ts).
 
-- `triangulateSimplePolygon2d` is used through the local triangulation shim.
-- Sigrid cubic segment helpers replaced local Bezier segment construction,
-  evaluation, and tangent math.
-- Sigrid affine/glyph transform helpers replaced local transform math.
-- cObjects now describe fonts, bubbles, and pages.
-- the animator bridge imports `Glyph2d` / `GlyphSplineStroke` from
-  `@christof/sigrid/glyph`, while glyph symbol animation uses Sigrid curve
-  animation helpers.
+Current local-core status:
+
+- Triangulation, cubic segment construction, evaluation, tangent math, affine
+  transforms, and glyph animation helpers are preserved locally in
+  [src/core/glyphGeometry.ts](src/core/glyphGeometry.ts).
+- Real Sigrid `cObject`s describe fonts, bubbles, and pages.
+- Word weighting is built through Magdalena's word-weight API for the active
+  Moritz tree, workbench chrome, Moritz view labels, and live interface tree.
 
 Still planned:
 
@@ -202,31 +210,25 @@ Still planned:
 - Move project identity and cross-document references into Sigrid documents
   instead of app-local JSON envelopes.
 
-The detailed queue and wishlist live in
-[docs/platform-team-wishlist.md](docs/platform-team-wishlist.md). The no-loss
-map for donating Moritz glyph/vector behavior to Sigrid and Magdalena lives in
-[docs/glyph-system-donation-map.md](docs/glyph-system-donation-map.md).
+The active migration checklist lives in
+[docs/luise-migration-plan.md](docs/luise-migration-plan.md).
 
 ## Magdalena Integration
 
-Magdalena is the active UI shell direction. Moritz has deleted the old
-`src/sift` interface library.
+Magdalena is the active UI shell. Moritz has deleted the old `src/sift`
+interface library and no longer keeps a local workbench chrome.
 
 Already adopted:
 
-- `MagdalenaProvider`.
-- `MgWorkbench` and `MgViewportLayer`.
-- `MgDevSettingsWindow`.
-- `MgTopBar`, `MgLeftBar`, `MgRightBar`, `MgCOptions`, and
-  `MgSelectedCOptions`.
-- `MgOutliner` for cObject trees.
-- `MgModuleSwitcher` for top-bar module navigation with Moritz-font labels.
-- The top-bar zoom slider is now a local native range input with a Moritz
-  glyph label.
-- The legacy Moritz colour-scheme picker has been removed; Magdalena dev
-  settings now own shell theme/debug controls.
-- The old Sift root, debug overlay, controls, floating window, outliner, attrs,
-  layout, tokens, and CSS files have been removed.
+- `MWorkbench` is mounted through Magdalena's workspace runtime.
+- `moritz` is the only Moritz topbar module.
+- The four editor work areas are routed by active Moritz document/view.
+- The Moritz-owned rightbar overlay has been removed; durable function cards
+  belong to Magdalena's docked rightbar and editor controls live inside Moritz
+  view surfaces.
+- The old local compatibility shell, Sift root, debug overlay, controls,
+  floating window, outliner, attrs, layout, tokens, and CSS files have been
+  removed.
 
 Current app-side bridge:
 
@@ -239,15 +241,14 @@ Current app-side bridge:
 Still planned:
 
 - Replace remaining hand-rolled inspectors and local controls with Magdalena
-  mObject or Mg controls.
+  mObjects.
 - Replace app-local `--mz-*` palette/chrome with Magdalena `--mg-*` tokens and
   tone/importance vocabulary.
 - Replace direct React shell composition with an mObject tree once the direct
   shell is stable.
 
-`MAGDALENA_INTEGRATION_README.md` is now only a pointer to canonical Luise docs
-and the Moritz wishlist. The source of truth for current platform state is
-[docs/platform-team-wishlist.md](docs/platform-team-wishlist.md).
+The source of truth for the Luise migration is
+[docs/luise-migration-plan.md](docs/luise-migration-plan.md).
 
 ## Code Layout
 
@@ -256,9 +257,10 @@ src/
   core/          pure geometry, layout, rendering, data types, cObject adapters
   data/          built-in fonts, styles, bubbles, text presets
   state/         Zustand stores and current persistence wrappers
-  modules/       workspace-specific React payloads for the Magdalena shell
+  modules/       Moritz internal editor views for the Magdalena shell
   ui/            Moritz-specific UI bridges such as MoritzText/MoritzSelect
-  app.tsx        Magdalena-hosted app shell and workspace routing
+  workspace.tsx  Moritz cModule, documents/views, and Magdalena slot bindings
+  app-mount.ts   Magdalena workspace runtime and workbench mount
 ```
 
 Everything in `src/core/` should stay pure: no DOM, no React, no browser
@@ -328,8 +330,8 @@ bundle: about 794 KB minified JS
 - App-local `mz-*` styling still coexists with Magdalena `mg-*` shell styling.
 - Persistence has not yet moved to `SigridProjectFile`.
 - TypeSetter live state still uses legacy `TextBlock` data.
-- Several pure 2D helpers in `src/core/` are still Rule-of-Three candidates for
-  Sigrid/Sigrid-curves.
+- Several pure 2D helpers are still Rule-of-Three candidates for future
+  Sigrid/Magdalena public APIs.
 - Some inspectors still use hand-rolled React/inline styles rather than Mg
   controls.
 - The app depends on local `file:` packages from `../Luise`, so the sibling repo
