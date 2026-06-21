@@ -5,6 +5,7 @@ import {
   moritzModuleSkinFor,
   moritzViewSkins,
 } from '../../src/moduleSkins.js';
+import { moritzModules } from '../../src/workspace.js';
 
 describe('moritz module skins', () => {
   it('defines one public cModule skin for the Moritz suite', () => {
@@ -18,6 +19,16 @@ describe('moritz module skins', () => {
       'bubblesetter',
       'stylesetter',
       'typesetter',
+    ]);
+  });
+
+  it('registers product-level modules in the topbar', () => {
+    expect(moritzModules.map((module) => module.id)).toEqual([
+      'moritz',
+      'sigrid',
+      'luise',
+      'magdalena',
+      'anita',
     ]);
   });
 

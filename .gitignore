@@ -4,6 +4,7 @@ dist
 *.log
 .vite
 coverage
+.tmp
 
 tsconfig.tsbuildinfo
 

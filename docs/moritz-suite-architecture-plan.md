@@ -12,6 +12,8 @@ packages.
 ## Target Shape
 
 - [x] Register exactly one Moritz `cModule` with id `moritz`.
+- [x] Register sibling product modules `sigrid`, `luise`, `magdalena`, and
+  `anita` in the same topbar.
 - [x] Keep four Moritz documents/views:
   - `moritz.font` for GlyphSetter.
   - `moritz.bubbleFont` for BubbleSetter.
@@ -41,10 +43,9 @@ tests, no hidden Zustand coupling to the suite, and a clear consumer story.
 ## Verification Log
 
 - `npm.cmd run typecheck`: passed.
-- `npm.cmd test`: passed, 157 tests.
+- `npm.cmd test`: passed, 158 tests.
 - `npm.cmd run build`: passed; Vite reported only the existing large chunk
   warning.
 - `npm.cmd run check:luise-migration`: passed.
-- Browser smoke at `http://127.0.0.1:5173/`: HTTP 200; real workbench markers
-  present; floating rightbar marker count `0`, legacy shell marker count `0`,
-  and Vite error marker count `0`.
+- Browser smoke at `http://127.0.0.1:5177/`: HTTP 200; screenshot confirmed
+  topbar modules `moritz`, `sigrid`, `luise`, `magdalena`, and `anita`.

@@ -75,14 +75,22 @@ export function mountMoritzApp(host: HTMLElement): MountedMoritzApp {
           ws.dispatch({ type: 'updateActiveTree', tree: next }),
         onFunctionCall: moritzFunctionCallHandler,
         onSetActiveModule: (id) => {
+          const nextDocumentId = ws.state.activeDocumentByModule[id];
+          const nextDocument = ws.documents.find((doc) => doc.id === nextDocumentId);
+          const nextSelection =
+            id === MORITZ_MODULE_ID
+              ? moritzSelectedIdForView(viewId)
+              : nextDocument?.tree.cId;
           ws.dispatch({ type: 'setActiveModule', moduleId: id });
           ws.dispatch({
             type: 'setSelection',
-            cObjectId: moritzSelectedIdForView(viewId),
+            cObjectId: nextSelection,
           });
         },
         onSelect: (id) => {
-          applyMoritzSelection(viewId, id);
+          if (ws.state.activeModuleId === MORITZ_MODULE_ID) {
+            applyMoritzSelection(viewId, id);
+          }
           ws.dispatch({ type: 'setSelection', cObjectId: id });
         },
         onMoveSelection: (_id: string, _position: Vec3) => {},

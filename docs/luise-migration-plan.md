@@ -19,6 +19,8 @@ page, and editor behavior.
 - [x] Register Moritz as one real `cModule`; keep GlyphSetter, BubbleSetter,
   StyleSetter, and TypeSetter as Moritz-internal documents/views bound into
   workbench slots.
+- [x] Register sibling product modules `sigrid`, `luise`, `magdalena`, and
+  `anita` alongside Moritz in the workbench topbar.
 - [x] Build workspace word weights through Magdalena and pass them into the
   workbench props.
 - [x] Keep Zustand only for editor-internal domain state during this migration
@@ -41,13 +43,12 @@ page, and editor behavior.
 ## Verification Log
 
 - `npm.cmd run typecheck`: passed.
-- `npm.cmd test`: passed, 157 tests.
+- `npm.cmd test`: passed, 158 tests.
 - `npm.cmd run build`: passed; Vite reported only the existing large chunk
   warning.
 - `npm.cmd run check:luise-migration`: passed.
-- `node_modules/@christof/magdalena` and `node_modules/@christof/sigrid`
+- `node_modules/@christof/anita`, `node_modules/@christof/magdalena`, and
+  `node_modules/@christof/sigrid`
   resolve to junctions under `C:\cWORK\Luise\packages`.
-- Browser smoke at `http://127.0.0.1:5173/`: HTTP 200; DOM marker counts
-  included `mWorkbench=150`, `m-weighted-name=115`, `c-workbench=106`,
-  zero floating rightbar markers, zero legacy shell markers, and zero Vite
-  dynamic-import errors.
+- Browser smoke at `http://127.0.0.1:5177/`: HTTP 200; screenshot confirmed
+  topbar modules `moritz`, `sigrid`, `luise`, `magdalena`, and `anita`.

@@ -13,6 +13,7 @@
     "check:luise-migration": "node scripts/check-luise-migration.mjs"
   },
   "dependencies": {
+    "@christof/anita": "file:../Luise/packages/anita",
     "@christof/magdalena": "file:../Luise/packages/magdalena",
     "@christof/sigrid": "file:../Luise/packages/sigrid",
     "bezier-js": "^6.1.4",

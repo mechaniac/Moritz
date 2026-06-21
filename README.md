@@ -26,6 +26,7 @@ Moritz currently consumes the sibling Luise packages that exist in the 2026
 monorepo layout:
 
 ```json
+"@christof/anita": "file:../Luise/packages/anita",
 "@christof/magdalena": "file:../Luise/packages/magdalena",
 "@christof/sigrid": "file:../Luise/packages/sigrid"
 ```
@@ -34,7 +35,7 @@ Install and run:
 
 ```bash
 npm install --ignore-scripts
-npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
+npm run dev -- --host 127.0.0.1 --port 5177 --strictPort
 npm run typecheck
 npm test
 npm run build
@@ -46,14 +47,16 @@ The default Vite config uses port `5182`; on shared dev machines, prefer an
 explicit free loopback port. The current smoke-tested command serves:
 
 ```text
-http://127.0.0.1:5173
+http://127.0.0.1:5177
 ```
 
 Tested with Node 20+.
 
 ## Moritz Suite
 
-Moritz is one Christof product and one topbar `cModule`: `moritz`.
+Moritz contributes one Christof product module: `moritz`. The host workbench
+topbar also registers sibling product modules from Luise: `sigrid`, `luise`,
+`magdalena`, and `anita`.
 
 Inside Moritz, the four editor work areas are internal documents/views:
 
@@ -184,12 +187,13 @@ animation, but animation is not stored as React state.
 
 Moritz currently depends on these Luise packages:
 
+- `@christof/anita`: current Luise/Anita codebase graph package.
 - `@christof/sigrid`: current Luise/Sigrid public core package.
 - `@christof/magdalena`: current Luise/Magdalena public UI package.
 
 Moritz is a thin sibling app at `C:\cWORK\Moritz` and consumes Luise only from
-`C:\cWORK\Luise` through the `@christof/sigrid` and `@christof/magdalena`
-package junctions. The app shell is a Magdalena workspace runtime mounted by
+`C:\cWORK\Luise` through the `@christof/anita`, `@christof/sigrid`, and
+`@christof/magdalena` package junctions. The app shell is a Magdalena workspace runtime mounted by
 [src/app-mount.ts](src/app-mount.ts), and the active cObject trees are built in
 [src/workspaceTrees.ts](src/workspaceTrees.ts).
 

@@ -1,8 +1,21 @@
 import { defineConfig, type Connect, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { christofAnitaVitePlugins } from '@christof/anita/vite';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
+const PROJECT_ROOT = __dirname;
+const ANITA_INDEX_SCRIPT = path.resolve(
+  PROJECT_ROOT,
+  '../Luise/scripts/anita-index.mjs',
+);
+const ANITA_WATCH_ROOTS = [
+  path.resolve(PROJECT_ROOT, 'src'),
+  path.resolve(PROJECT_ROOT, 'tests'),
+  path.resolve(PROJECT_ROOT, 'package.json'),
+  path.resolve(PROJECT_ROOT, 'tsconfig.json'),
+  path.resolve(PROJECT_ROOT, 'vite.config.ts'),
+];
 const FONTS_DIR = path.resolve(__dirname, 'src/data/fonts');
 const STYLES_DIR = path.resolve(__dirname, 'src/data/styles');
 const PAGES_DIR = path.resolve(__dirname, 'src/data/pages');
@@ -86,7 +99,17 @@ function moritzFiles(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), moritzFiles()],
+  plugins: [
+    ...christofAnitaVitePlugins({
+      repoRoot: PROJECT_ROOT,
+      projectRoot: PROJECT_ROOT,
+      anitaIndexScript: ANITA_INDEX_SCRIPT,
+      watchRoots: ANITA_WATCH_ROOTS,
+      freshenManifest: false,
+    }),
+    react(),
+    moritzFiles(),
+  ],
   server: {
     port: 5182,
     strictPort: true,
@@ -97,6 +120,7 @@ export default defineConfig({
       // of truth on next reload, but during a session the in-memory
       // state is authoritative.
       ignored: [
+        '**/.tmp/**',
         '**/src/data/fonts/**',
         '**/src/data/styles/**',
         '**/src/data/pages/**',

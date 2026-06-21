@@ -37,10 +37,14 @@ export function buildMoritzWorkbenchProps(
 ): MWorkbenchProps {
   const { snapshot: ws, handlers, interfaceTree } = input;
   const activeModuleId = ws.state.activeModuleId || MORITZ_MODULE_ID;
+  const isMoritzActive = activeModuleId === MORITZ_MODULE_ID;
   const viewId = moritzViewForDocumentId(
     ws.state.activeDocumentByModule[MORITZ_MODULE_ID],
   );
-  const tree = moritzTreeForView(viewId);
+  const displayed = ws.displayedDocument;
+  const tree = isMoritzActive
+    ? moritzTreeForView(viewId)
+    : displayed?.tree ?? ws.documents[0]?.tree ?? moritzTreeForView(viewId);
   const chromeTree = cDocumentById(ws.state, 'workbench')?.tree;
   const skinsTree = cDocumentById(ws.state, 'skins')?.tree;
   const viewportBinding = ws.resolvedBindings.get('viewport');
@@ -55,7 +59,9 @@ export function buildMoritzWorkbenchProps(
     modules: ws.config.modules,
     activeModuleId,
     onSetActiveModule: handlers.onSetActiveModule,
-    selectedId: moritzSelectedIdForView(viewId) ?? ws.state.selectionId,
+    selectedId: isMoritzActive
+      ? moritzSelectedIdForView(viewId) ?? ws.state.selectionId
+      : ws.state.selectionId,
     wordWeights: mBuildWordWeightsForScope(
       [tree, ...(chromeTree ? [chromeTree] : []), ...(interfaceTree ? [interfaceTree] : [])],
       [
@@ -69,7 +75,7 @@ export function buildMoritzWorkbenchProps(
     ),
     mode: readWorkbenchView(tree),
     onSelect: (id) => {
-      applyMoritzSelection(viewId, id);
+      if (isMoritzActive) applyMoritzSelection(viewId, id);
       handlers.onSelect(id);
     },
     onMoveSelection: handlers.onMoveSelection,
