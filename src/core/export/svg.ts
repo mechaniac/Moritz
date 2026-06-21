@@ -7,7 +7,7 @@
 
 import type { LayoutResult } from '../layout.js';
 import { effectiveStyleForGlyph, outlineStroke, redistributePolygonEvenly } from '../stroke.js';
-import { triangulatePolygon } from '../triangulate.js';
+import { safeTriangulatePolygon } from '../triangulate.js';
 import { triangulateStrokeRibbon } from '../ribbon.js';
 import { relaxCurves, relaxSliderToParams, relaxTangents } from '../relax.js';
 import { jitterActive, jitterPolygon, resolveJitterSeed } from '../effects.js';
@@ -41,7 +41,7 @@ export type SvgRenderOptions = {
 
 function polygonToPathD(points: readonly Vec2[]): string {
   if (points.length === 0) return '';
-  const tris = triangulatePolygon(points);
+  const tris = safeTriangulatePolygon(points);
   return trianglesD(points, tris);
 }
 // Kept for potential reuse by other tools/exporters; silence "unused" check.
@@ -51,7 +51,8 @@ function trianglesD(
   points: readonly Vec2[],
   tris: readonly (readonly [number, number, number])[],
 ): string {
-  if (points.length === 0 || tris.length === 0) return '';
+  if (points.length === 0) return '';
+  if (tris.length === 0) return polygonD(points);
   const parts: string[] = [];
   for (const t of tris) {
     const a = points[t[0]]!;
@@ -59,6 +60,16 @@ function trianglesD(
     const c = points[t[2]]!;
     parts.push(`M ${fmt(a.x)} ${fmt(a.y)} L ${fmt(b.x)} ${fmt(b.y)} L ${fmt(c.x)} ${fmt(c.y)} Z`);
   }
+  return parts.join(' ');
+}
+
+function polygonD(points: readonly Vec2[]): string {
+  if (points.length < 3) return '';
+  const parts = [`M ${fmt(points[0]!.x)} ${fmt(points[0]!.y)}`];
+  for (let i = 1; i < points.length; i++) {
+    parts.push(`L ${fmt(points[i]!.x)} ${fmt(points[i]!.y)}`);
+  }
+  parts.push('Z');
   return parts.join(' ');
 }
 
@@ -91,7 +102,7 @@ function triangulateForStyle(
     if (evenness > 0 && polygon.length >= 3) {
       polygon = redistributePolygonEvenly(polygon, evenness);
     }
-    triangles = triangulatePolygon(polygon);
+    triangles = safeTriangulatePolygon(polygon);
   }
   // Relax passes: smooth the polygon while pinning anchors. Index list
   // stays valid because the passes preserve vertex count and order.
@@ -151,7 +162,7 @@ export function renderLayoutToSvg(
           )
         : null;
       const { polygon, triangles } = triangulateForStyle(stroke, gStyle, widthMod, pg.glyph.box.h);
-      if (polygon.length === 0 || triangles.length === 0) continue;
+      if (polygon.length === 0) continue;
       const jittered = jitterActive(shapeJitter)
         ? jitterPolygon(
             polygon,

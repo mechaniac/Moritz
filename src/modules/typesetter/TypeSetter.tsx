@@ -8,7 +8,8 @@
  */
 
 import { useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
-import type { CObject } from '@christof/sigrid-geometry';
+import { MOutliner } from '@christof/magdalena/panels';
+import type { cObject } from '@christof/sigrid/core';
 import { layout } from '../../core/layout.js';
 import { renderLayoutToSvg } from '../../core/export/svg.js';
 import { svgToPng } from '../../core/export/png.js';
@@ -50,16 +51,18 @@ import type {
   WidthProfile,
 } from '../../core/types.js';
 import { Section, StyleControls } from '../stylesetter/StyleControls.js';
-import { MgLeftBar, MgRightBar, MgOutliner, type MgTreeNode } from '@christof/magdalena/react';
 import { StrokeOverlay, type Selection } from '../glyphsetter/GlyphSetter.js';
 import { MoritzLabel } from '../../ui/MoritzText.js';
 import { MoritzSelect } from '../../ui/MoritzSelect.js';
 import {
-  moritzTypeSetterCObjectMetaFromId,
   moritzTypeSetterObjectSelectionFromCObjectId,
   moritzTypeSetterPageCObjectSelection,
   type TypeSetterCObjectInput,
 } from '../../core/moritzCObjects.js';
+
+const MoritzMOutliner = MOutliner as unknown as (
+  props: Parameters<typeof MOutliner>[0],
+) => JSX.Element;
 
 /**
  * Legacy `block.shape` strings ('speech', 'cloud', 'rect') predate the
@@ -73,10 +76,12 @@ const LEGACY_SHAPE_TO_PRESET: Readonly<Record<string, string>> = {
 };
 
 export function TypeSetter(): JSX.Element {
+  return <TypeSetterStage />;
+}
+
+export function TypeSetterStage(): JSX.Element {
   const baseFont = useAppStore((s) => s.font);
   const style = useAppStore((s) => s.style);
-  const setStyleOverride = useAppStore((s) => s.setStyleOverride);
-  const loadedStyleSettings = useAppStore((s) => s.loadedStyleSettings);
   // The active bubble font (from BubbleSetter). Drives all `shape:'preset'`
   // blocks; if the user switches BubbleFont, every preset-bubble on the
   // page updates automatically.
@@ -86,29 +91,16 @@ export function TypeSetter(): JSX.Element {
   // core consumption that carries it as `.style`.
   // Per-block resolver shared between live render and export so a saved
   // file matches what's on screen (Principle 7 + 4).
-  const exportResolveFont = useCallback(
-    (b: TextBlock): Font =>
-      fontWithOverrides(resolveBlockFont(b, baseFont), resolveBlockStyle(b, style)),
-    [baseFont, style],
-  );
   const {
     pageImage,
     pageW,
     pageH,
-    pageFormatId,
     border,
     blocks,
     selectedBlockId,
     bubbleEditingLayerId,
-    setPage,
-    setPageFormat,
-    setBorder,
-    addBlock,
     updateBlock,
-    updateBlockBubble,
     updateBlockBubbleLayer,
-    setBlockBubble,
-    deleteBlock,
     selectBlock,
     selectBubbleEditingLayer,
   } = useTypesetterStore();
@@ -243,37 +235,6 @@ export function TypeSetter(): JSX.Element {
   // local alias for readability.
   const zoom = cam.zoom;
 
-  const onLoadImage = async (file: File) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => setPage(url, img.naturalWidth, img.naturalHeight);
-    img.src = url;
-  };
-
-  const onAddBlock = () => {
-    const w = Math.max(120, pageW * 0.18);
-    const h = Math.max(80, pageH * 0.12);
-    // Default new blocks to a bubble from the active BubbleFont so the
-    // user's chosen artwork is always what shows up on the page.
-    const firstPresetId =
-      Object.keys(bubbleFont.bubbles)[0] ?? undefined;
-    addBlock({
-      x: pageW * 0.3,
-      y: pageH * 0.3,
-      fontSize: 28,
-      text: 'HELLO!',
-      bold: 1,
-      italic: 0,
-      shape: firstPresetId ? 'preset' : 'none',
-      ...(firstPresetId ? { bubblePresetId: firstPresetId } : {}),
-      bubbleW: w,
-      bubbleH: h,
-      tailX: w * 0.25,
-      tailY: h + h * 0.6,
-      bubbleStroke: 3,
-    });
-  };
-
   const selected = blocks.find((b) => b.id === selectedBlockId) ?? null;
 
   // ---------- Bubble-edit mode -------------------------------------------
@@ -294,227 +255,17 @@ export function TypeSetter(): JSX.Element {
     : null;
   const editingLayerId =
     bubbleEditingLayerId ?? editingBubble?.layers[0]?.id ?? null;
-  const isEditingSelected = !!editingBlock && !!editingBubble;
-  const cObjectBlocks = useMemo(
-    () =>
-      blocks.map((block) =>
-        legacyBlockToBlock(block, ACTIVE_PAGE_REFS),
-      ),
-    [blocks],
-  );
-  const cObjectInput: TypeSetterCObjectInput = useMemo(
-    () => ({
-      pageId: 'live',
-      pageName: 'Page',
-      blocks: cObjectBlocks,
-      bubbleFont,
-    }),
-    [cObjectBlocks, bubbleFont],
-  );
-  const cObjectSelection = useMemo(
-    () =>
-      moritzTypeSetterPageCObjectSelection(cObjectInput, {
-        blockId: selectedBlockId,
-        layerId: isEditingSelected ? bubbleEditingLayerId : null,
-      }),
-    [cObjectInput, selectedBlockId, isEditingSelected, bubbleEditingLayerId],
-  );
-  const selectCObject = useCallback(
-    (id: string): void => {
-      const selection = moritzTypeSetterObjectSelectionFromCObjectId(cObjectInput, id);
-      if (selection.kind === 'page') {
-        selectBlock(null);
-        selectBubbleEditingLayer(null);
-        return;
-      }
-      selectBlock(selection.blockId);
-      if (selection.kind === 'bubbleLayer') {
-        selectBubbleEditingLayer(selection.layerId);
-      } else {
-        selectBubbleEditingLayer(null);
-      }
-    },
-    [cObjectInput, selectBlock, selectBubbleEditingLayer],
-  );
-
-  const onSaveToPreset = useCallback(() => {
-    if (!editingBlock || !editingBubble || !editingBlock.bubblePresetId) return;
-    const id = editingBlock.bubblePresetId;
-    // Write the live bubble back to the active BubbleFont under its
-    // existing id, then persist the whole font.
-    const nextFont: BubbleFont = {
-      ...bubbleFont,
-      bubbles: { ...bubbleFont.bubbles, [id]: { ...editingBubble, id, name: bubbleFont.bubbles[id]?.name ?? editingBubble.name } },
-    };
-    useBubbleStore.getState().loadBubbleFont(nextFont);
-    try {
-      saveBubbleFont(nextFont);
-    } catch {
-      alert('Saving bubble font to browser storage failed.');
-    }
-    // Block now matches the preset — drop the per-instance override.
-    setBlockBubble(editingBlock.id, undefined);
-  }, [editingBlock, editingBubble, bubbleFont, setBlockBubble]);
-
-  const onSaveAsNewPreset = useCallback(() => {
-    if (!editingBlock || !editingBubble) return;
-    const name = window.prompt('New preset name:', editingBubble.name || 'New bubble');
-    if (!name) return;
-    const id = sanitizePresetId(name);
-    if (!id) return;
-    if (bubbleFont.bubbles[id] && !window.confirm(`A preset "${id}" already exists. Overwrite?`)) {
-      return;
-    }
-    const nextBubble: Bubble = { ...editingBubble, id, name };
-    const nextFont: BubbleFont = {
-      ...bubbleFont,
-      bubbles: { ...bubbleFont.bubbles, [id]: nextBubble },
-    };
-    useBubbleStore.getState().loadBubbleFont(nextFont);
-    try {
-      saveBubbleFont(nextFont);
-    } catch {
-      alert('Saving bubble font to browser storage failed.');
-    }
-    // Re-point the block at the new preset and drop the per-instance
-    // override (it's now the saved preset, identical content).
-    updateBlock(editingBlock.id, { bubblePresetId: id });
-    setBlockBubble(editingBlock.id, undefined);
-  }, [editingBlock, editingBubble, bubbleFont, updateBlock, setBlockBubble]);
-
-  const onResetToPreset = useCallback(() => {
-    if (!editingBlock) return;
-    setBlockBubble(editingBlock.id, undefined);
-  }, [editingBlock, setBlockBubble]);
-
   // Full-screen takeover removed: bubble editing happens **in place** on
   // the page so the user keeps the rest of the page visible. The handle
   // overlay is drawn by `BlockOverlay` for the block whose id matches
-  // `bubbleEditingBlockId`; the rich editing UI (layer list, Save / Save
-  // As / Reset / Done) lives in the right inspector.
+  // `bubbleEditingBlockId`; the rich editing UI lives in a workbench-bound
+  // inspector surface.
 
   return (
     <div
       className="mz-typesetter mz-typesetter--mg"
       style={{ position: 'absolute', inset: 0 }}
     >
-      {/* Outliner — page source + block list */}
-      <MgLeftBar
-        id="moritz.outliner"
-        title="Page"
-      >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <label
-            style={{
-              background: 'var(--mz-bg)',
-              color: 'var(--mz-text)',
-              border: '1px solid var(--mz-line)',
-              padding: '6px 10px',
-              borderRadius: 4,
-              cursor: 'pointer',
-              textAlign: 'center',
-            }}
-          >
-            <MoritzLabel text="Load comic page" size={12} />
-            <input
-              type="file"
-              accept="image/*"
-              style={{ display: 'none' }}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) void onLoadImage(f);
-              }}
-            />
-          </label>
-          <button onClick={onAddBlock}>
-            <MoritzLabel text="Add text block" size={12} />
-          </button>
-          <Section title="Page">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
-              <MoritzLabel text="Format" size={11} />
-              <MoritzSelect
-                value={pageFormatId}
-                options={PAGE_FORMATS.map((f) => ({ value: f.id, label: f.name }))}
-                onChange={setPageFormat}
-              />
-            </div>
-            <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12, marginTop: 6 }}>
-              <span style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>
-                  <MoritzLabel text="Safe area inset" size={11} />
-                </span>
-                <span style={{ color: 'var(--mz-text-mute)', fontVariantNumeric: 'tabular-nums' }}>
-                  {Math.round(border.inset)}px
-                </span>
-              </span>
-              <input
-                type="range"
-                min={0}
-                max={120}
-                step={1}
-                value={border.inset}
-                onChange={(e) => setBorder({ inset: parseFloat(e.target.value) })}
-              />
-            </label>
-          </Section>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              onClick={() => exportPage(exportResolveFont, blocks, pageW, pageH, 'svg', bubbleFont)}
-              disabled={blocks.length === 0}
-              style={{ flex: 1 }}
-            >
-              <MoritzLabel text="Export SVG" size={12} />
-            </button>
-            <button
-              onClick={() => exportPage(exportResolveFont, blocks, pageW, pageH, 'png', bubbleFont)}
-              disabled={blocks.length === 0}
-              style={{ flex: 1 }}
-            >
-              <MoritzLabel text="Export PNG" size={12} />
-            </button>
-          </div>
-          <Section title="Objects">
-            <TypeSetterCObjectOutliner
-              input={cObjectInput}
-              selection={cObjectSelection}
-              onSelect={selectCObject}
-            />
-          </Section>
-          {selected && (
-            <Section title={isEditingSelected ? 'Edit bubble' : 'Block'}>
-              <BlockInspector
-                block={selected}
-                onChange={(patch) => updateBlock(selected.id, patch)}
-                onDelete={() => deleteBlock(selected.id)}
-                editing={
-                  isEditingSelected && editingBubble
-                    ? {
-                        bubble: editingBubble,
-                        layerId: editingLayerId,
-                        presetId: selected.bubblePresetId ?? null,
-                        dirty: !!selected.bubble,
-                        selectLayer: selectBubbleEditingLayer,
-                        updateBubble: (fn) =>
-                          updateBlockBubble(selected.id, editingBubble, fn),
-                        updateLayer: (layerId, fn) =>
-                          updateBlockBubbleLayer(
-                            selected.id,
-                            editingBubble,
-                            layerId,
-                            fn,
-                          ),
-                        onSave: onSaveToPreset,
-                        onSaveAs: onSaveAsNewPreset,
-                        onReset: onResetToPreset,
-                      }
-                    : undefined
-                }
-              />
-            </Section>
-          )}
-        </div>
-      </MgLeftBar>
-
       {/* Stage — paper page sits directly on the workspace raster.
           No drop-shadowed mini-page-on-stage; the page itself IS the
           subject. The dashed inner rectangle is the safe area / live
@@ -653,20 +404,288 @@ export function TypeSetter(): JSX.Element {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Attributes — style controls (identical position across modules) */}
-      <MgRightBar
-        id="moritz.attrs"
-        title="Style"
+export function TypeSetterOutliner(): JSX.Element {
+  const baseFont = useAppStore((s) => s.font);
+  const style = useAppStore((s) => s.style);
+  const bubbleFont = useBubbleStore((s) => s.font);
+  const exportResolveFont = useCallback(
+    (b: TextBlock): Font =>
+      fontWithOverrides(resolveBlockFont(b, baseFont), resolveBlockStyle(b, style)),
+    [baseFont, style],
+  );
+  const {
+    pageW,
+    pageH,
+    pageFormatId,
+    border,
+    blocks,
+    selectedBlockId,
+    bubbleEditingLayerId,
+    setPage,
+    setPageFormat,
+    setBorder,
+    addBlock,
+    updateBlock,
+    updateBlockBubble,
+    updateBlockBubbleLayer,
+    setBlockBubble,
+    deleteBlock,
+    selectBlock,
+    selectBubbleEditingLayer,
+  } = useTypesetterStore();
+  const selected = blocks.find((b) => b.id === selectedBlockId) ?? null;
+  const editingPreset =
+    selected?.bubblePresetId
+      ? bubbleFont.bubbles[selected.bubblePresetId] ?? null
+      : null;
+  const editingBubble = selected ? selected.bubble ?? editingPreset : null;
+  const editingLayerId =
+    bubbleEditingLayerId ?? editingBubble?.layers[0]?.id ?? null;
+  const isEditingSelected = !!selected && !!editingBubble;
+  const cObjectBlocks = useMemo(
+    () =>
+      blocks.map((block) =>
+        legacyBlockToBlock(block, ACTIVE_PAGE_REFS),
+      ),
+    [blocks],
+  );
+  const cObjectInput: TypeSetterCObjectInput = useMemo(
+    () => ({
+      pageId: 'live',
+      pageName: 'Page',
+      blocks: cObjectBlocks,
+      bubbleFont,
+    }),
+    [cObjectBlocks, bubbleFont],
+  );
+  const cObjectSelection = useMemo(
+    () =>
+      moritzTypeSetterPageCObjectSelection(cObjectInput, {
+        blockId: selectedBlockId,
+        layerId: isEditingSelected ? bubbleEditingLayerId : null,
+      }),
+    [cObjectInput, selectedBlockId, isEditingSelected, bubbleEditingLayerId],
+  );
+  const selectCObject = useCallback(
+    (id: string): void => {
+      const selection = moritzTypeSetterObjectSelectionFromCObjectId(cObjectInput, id);
+      if (selection.kind === 'page') {
+        selectBlock(null);
+        selectBubbleEditingLayer(null);
+        return;
+      }
+      selectBlock(selection.blockId);
+      selectBubbleEditingLayer(
+        selection.kind === 'bubbleLayer' ? selection.layerId : null,
+      );
+    },
+    [cObjectInput, selectBlock, selectBubbleEditingLayer],
+  );
+  const onLoadImage = async (file: File) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => setPage(url, img.naturalWidth, img.naturalHeight);
+    img.src = url;
+  };
+  const onAddBlock = () => {
+    const w = Math.max(120, pageW * 0.18);
+    const h = Math.max(80, pageH * 0.12);
+    const firstPresetId = Object.keys(bubbleFont.bubbles)[0] ?? undefined;
+    addBlock({
+      x: pageW * 0.3,
+      y: pageH * 0.3,
+      fontSize: 28,
+      text: 'HELLO!',
+      bold: 1,
+      italic: 0,
+      shape: firstPresetId ? 'preset' : 'none',
+      ...(firstPresetId ? { bubblePresetId: firstPresetId } : {}),
+      bubbleW: w,
+      bubbleH: h,
+      tailX: w * 0.25,
+      tailY: h + h * 0.6,
+      bubbleStroke: 3,
+    });
+  };
+  const onSaveToPreset = useCallback(() => {
+    if (!selected || !editingBubble || !selected.bubblePresetId) return;
+    const id = selected.bubblePresetId;
+    const nextFont: BubbleFont = {
+      ...bubbleFont,
+      bubbles: {
+        ...bubbleFont.bubbles,
+        [id]: {
+          ...editingBubble,
+          id,
+          name: bubbleFont.bubbles[id]?.name ?? editingBubble.name,
+        },
+      },
+    };
+    useBubbleStore.getState().loadBubbleFont(nextFont);
+    try {
+      saveBubbleFont(nextFont);
+    } catch {
+      alert('Saving bubble font to browser storage failed.');
+    }
+    setBlockBubble(selected.id, undefined);
+  }, [selected, editingBubble, bubbleFont, setBlockBubble]);
+  const onSaveAsNewPreset = useCallback(() => {
+    if (!selected || !editingBubble) return;
+    const name = window.prompt('New preset name:', editingBubble.name || 'New bubble');
+    if (!name) return;
+    const id = sanitizePresetId(name);
+    if (!id) return;
+    if (bubbleFont.bubbles[id] && !window.confirm(`A preset "${id}" already exists. Overwrite?`)) {
+      return;
+    }
+    const nextBubble: Bubble = { ...editingBubble, id, name };
+    const nextFont: BubbleFont = {
+      ...bubbleFont,
+      bubbles: { ...bubbleFont.bubbles, [id]: nextBubble },
+    };
+    useBubbleStore.getState().loadBubbleFont(nextFont);
+    try {
+      saveBubbleFont(nextFont);
+    } catch {
+      alert('Saving bubble font to browser storage failed.');
+    }
+    updateBlock(selected.id, { bubblePresetId: id });
+    setBlockBubble(selected.id, undefined);
+  }, [selected, editingBubble, bubbleFont, updateBlock, setBlockBubble]);
+  const onResetToPreset = useCallback(() => {
+    if (!selected) return;
+    setBlockBubble(selected.id, undefined);
+  }, [selected, setBlockBubble]);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <label
+        style={{
+          background: 'var(--mz-bg)',
+          color: 'var(--mz-text)',
+          border: '1px solid var(--mz-line)',
+          padding: '6px 10px',
+          borderRadius: 4,
+          cursor: 'pointer',
+          textAlign: 'center',
+        }}
       >
-        <div className="mz-mod--stylesetter">
-          <StyleControls
-            style={style}
-            setStyle={setStyleOverride}
-            original={loadedStyleSettings}
+        <MoritzLabel text="Load comic page" size={12} />
+        <input
+          type="file"
+          accept="image/*"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void onLoadImage(f);
+          }}
+        />
+      </label>
+      <button onClick={onAddBlock}>
+        <MoritzLabel text="Add text block" size={12} />
+      </button>
+      <Section title="Page">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
+          <MoritzLabel text="Format" size={11} />
+          <MoritzSelect
+            value={pageFormatId}
+            options={PAGE_FORMATS.map((f) => ({ value: f.id, label: f.name }))}
+            onChange={setPageFormat}
           />
         </div>
-      </MgRightBar>
+        <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12, marginTop: 6 }}>
+          <span style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span>
+              <MoritzLabel text="Safe area inset" size={11} />
+            </span>
+            <span style={{ color: 'var(--mz-text-mute)', fontVariantNumeric: 'tabular-nums' }}>
+              {Math.round(border.inset)}px
+            </span>
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={120}
+            step={1}
+            value={border.inset}
+            onChange={(e) => setBorder({ inset: parseFloat(e.target.value) })}
+          />
+        </label>
+      </Section>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <button
+          onClick={() => exportPage(exportResolveFont, blocks, pageW, pageH, 'svg', bubbleFont)}
+          disabled={blocks.length === 0}
+          style={{ flex: 1 }}
+        >
+          <MoritzLabel text="Export SVG" size={12} />
+        </button>
+        <button
+          onClick={() => exportPage(exportResolveFont, blocks, pageW, pageH, 'png', bubbleFont)}
+          disabled={blocks.length === 0}
+          style={{ flex: 1 }}
+        >
+          <MoritzLabel text="Export PNG" size={12} />
+        </button>
+      </div>
+      <Section title="Objects">
+        <TypeSetterCObjectOutliner
+          input={cObjectInput}
+          selection={cObjectSelection}
+          onSelect={selectCObject}
+        />
+      </Section>
+      {selected && (
+        <Section title={isEditingSelected ? 'Edit bubble' : 'Block'}>
+          <BlockInspector
+            block={selected}
+            onChange={(patch) => updateBlock(selected.id, patch)}
+            onDelete={() => deleteBlock(selected.id)}
+            editing={
+              isEditingSelected && editingBubble
+                ? {
+                    bubble: editingBubble,
+                    layerId: editingLayerId,
+                    presetId: selected.bubblePresetId ?? null,
+                    dirty: !!selected.bubble,
+                    selectLayer: selectBubbleEditingLayer,
+                    updateBubble: (fn) =>
+                      updateBlockBubble(selected.id, editingBubble, fn),
+                    updateLayer: (layerId, fn) =>
+                      updateBlockBubbleLayer(
+                        selected.id,
+                        editingBubble,
+                        layerId,
+                        fn,
+                      ),
+                    onSave: onSaveToPreset,
+                    onSaveAs: onSaveAsNewPreset,
+                    onReset: onResetToPreset,
+                  }
+                : undefined
+            }
+          />
+        </Section>
+      )}
+    </div>
+  );
+}
+
+export function TypeSetterAttrs(): JSX.Element {
+  const style = useAppStore((s) => s.style);
+  const setStyleOverride = useAppStore((s) => s.setStyleOverride);
+  const loadedStyleSettings = useAppStore((s) => s.loadedStyleSettings);
+  return (
+    <div className="mz-mod--stylesetter">
+      <StyleControls
+        style={style}
+        setStyle={setStyleOverride}
+        original={loadedStyleSettings}
+      />
     </div>
   );
 }
@@ -1491,8 +1510,8 @@ function BlockAnchorGizmo(props: {
 function TypeSetterCObjectOutliner(props: {
   input: TypeSetterCObjectInput;
   selection: {
-    readonly root: CObject | null;
-    readonly selected: CObject | null;
+    readonly root: cObject | null;
+    readonly selected: cObject | null;
   };
   onSelect: (id: string) => void;
 }): JSX.Element {
@@ -1505,37 +1524,14 @@ function TypeSetterCObjectOutliner(props: {
     );
   }
   return (
-    <MgOutliner
-      nodes={[typeSetterCObjectToTreeNode(props.input, root)]}
-      selectedId={props.selection.selected?.id ?? null}
-      onSelect={props.onSelect}
+    <MoritzMOutliner
+      root={root}
+      selectedId={props.selection.selected?.cId}
+      onSelect={(id) => {
+        if (id) props.onSelect(id);
+      }}
     />
   );
-}
-
-function typeSetterCObjectToTreeNode(input: TypeSetterCObjectInput, node: CObject): MgTreeNode {
-  const meta = moritzTypeSetterCObjectMetaFromId(input, node.id);
-  return {
-    id: node.id,
-    label: meta?.label ?? cObjectFallbackLabel(node.id),
-    kind: meta?.role ?? node.kind,
-    selected: node.selected === true,
-    tone:
-      meta?.role === 'page'
-        ? 'relevant'
-        : meta?.role === 'bubbleLayer'
-          ? 'generate'
-          : 'neutral',
-    importance: node.selected ? 5 : meta?.role === 'page' ? 3 : 1,
-    ...(node.children.length > 0
-      ? { children: node.children.map((child) => typeSetterCObjectToTreeNode(input, child)) }
-      : {}),
-  };
-}
-
-function cObjectFallbackLabel(id: string): string {
-  const parts = id.split('.');
-  return parts[parts.length - 1] || id;
 }
 
 function BlockInspector(props: {

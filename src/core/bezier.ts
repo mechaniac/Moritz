@@ -6,14 +6,9 @@
  * (p0, c1, c2, p1). A `Stroke` from `types.ts` becomes a chain of segments
  * between consecutive vertices, with control points `vertex.p + handle`.
  *
- * Adoption-queue row #2 (see docs/platform-team-wishlist.md): the pure
- * cubic + tangent + segment-construction helpers now delegate to
- * `@christof/sigrid-curves` (slice 92, `glyphSpline2d`). The legacy
- * function names are kept as thin re-exports/aliases so the ~25 call
- * sites across the renderer don't have to change in lockstep. The
- * `bezier-js`-backed helpers (`segmentLength`, `closestPointT`,
- * `sampleStroke`) stay local until upstream ships an arc-length and
- * projection equivalent; once it does, this file disappears entirely.
+ * Moritz owns the 2D glyph-authoring cubic helpers that are still specific to
+ * this editor. The `bezier-js`-backed helpers (`segmentLength`,
+ * `closestPointT`, `sampleStroke`) stay local too.
  */
 
 import { Bezier } from 'bezier-js';
@@ -23,7 +18,7 @@ import {
   glyphVertexPairToSegment,
   unitTangentGlyphCubicSegment,
   type GlyphCubicSegment2d,
-} from '@christof/sigrid-curves';
+} from './glyphGeometry.js';
 import type { Stroke, Vec2, Vertex } from './types.js';
 
 export type CubicSegment = GlyphCubicSegment2d;

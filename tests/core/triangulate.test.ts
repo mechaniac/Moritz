@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { triangulatePolygon } from '../../src/core/triangulate.js';
+import { safeTriangulatePolygon, triangulatePolygon } from '../../src/core/triangulate.js';
 
 describe('triangulatePolygon', () => {
   it('triangulates a square into 2 triangles', () => {
@@ -37,6 +37,17 @@ describe('triangulatePolygon', () => {
   it('returns empty for degenerate input', () => {
     expect(triangulatePolygon([])).toEqual([]);
     expect(triangulatePolygon([{ x: 0, y: 0 }, { x: 1, y: 0 }])).toEqual([]);
+  });
+
+  it('lets renderers recover from non-simple polygons', () => {
+    const bowTie = [
+      { x: 0, y: 0 },
+      { x: 1, y: 1 },
+      { x: 0, y: 1 },
+      { x: 1, y: 0 },
+    ];
+
+    expect(safeTriangulatePolygon(bowTie)).toEqual([]);
   });
 
   it('handles clockwise polygons by flipping orientation', () => {

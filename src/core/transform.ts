@@ -7,12 +7,8 @@
  *   outHandle, then re-evaluate the Bézier and re-outline. This keeps stroke
  *   thickness uniform under stretch/slant (no smeared widths).
  *
- * Adoption-queue row #3 (see docs/platform-team-wishlist.md): the affine
- * math now delegates to `@christof/sigrid-curves` slice 93
- * (`affineFromGlyphStyle2d` / `transformGlyph2d` / `transformGlyphStroke2d` /
- * `transformGlyphVertex2d` / `transformPoint2d` / `transformVector2d`).
- * Local `Affine` is a type alias of upstream `Affine2d`. Legacy function
- * names are kept as one-line delegations so the four call sites
+ * The affine math delegates to Moritz's local glyph-geometry primitives.
+ * These function names are kept as one-line delegations so the call sites
  * ([core/layout.ts](./layout.ts), [core/bubbleRender.ts](./bubbleRender.ts),
  * [editor/BubbleLayerOverlayEditor.tsx](../editor/BubbleLayerOverlayEditor.tsx),
  * [modules/typesetter/TypeSetter.tsx](../modules/typesetter/TypeSetter.tsx),
@@ -40,7 +36,7 @@ import {
   transformGlyph2d,
   transformGlyphStroke2d,
   transformGlyphVertex2d,
-} from '@christof/sigrid-curves';
+} from './glyphGeometry.js';
 import type { Glyph, Stroke, StyleSettings, Vertex } from './types.js';
 
 export type Affine = Affine2d;

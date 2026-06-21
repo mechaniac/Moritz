@@ -18,7 +18,8 @@
  */
 
 import { createContext, useCallback, useContext, useMemo } from 'react';
-import type { CObject } from '@christof/sigrid-geometry';
+import { MOutliner } from '@christof/magdalena/panels';
+import type { cObject } from '@christof/sigrid/core';
 import { useAppStore } from '../../state/store.js';
 import { useBubbleStore } from '../../state/bubbleStore.js';
 import { outlineStroke, effectiveStyleForGlyph } from '../../core/stroke.js';
@@ -26,7 +27,6 @@ import { fillLoopsForStrokes, loopsToPath } from '../../core/bubbleFill.js';
 import { GlyphEditor, SettingsPanel } from '../glyphsetter/GlyphSetter.js';
 import { Section } from '../stylesetter/StyleControls.js';
 import { StyleControls } from '../stylesetter/StyleControls.js';
-import { MgLeftBar, MgRightBar, MgOutliner, type MgTreeNode } from '@christof/magdalena/react';
 import { textPresetSets } from '../../data/textPresets.js';
 import {
   presetKey,
@@ -48,6 +48,10 @@ import type {
   StyleSettings,
   Vec2,
 } from '../../core/types.js';
+
+const MoritzMOutliner = MOutliner as unknown as (
+  props: Parameters<typeof MOutliner>[0],
+) => JSX.Element;
 
 /**
  * Editing target consumed by the BubbleSetter editor (LayerList,
@@ -394,23 +398,7 @@ export function BubbleSetter(props: {
 }
 
 function StandaloneBubbleSetter(): JSX.Element {
-  return (
-    <>
-      <BubbleSetterStage />
-      <MgLeftBar
-        id="moritz.outliner"
-        title="Bubbles"
-      >
-        <BubbleSetterOutliner />
-      </MgLeftBar>
-      <MgRightBar
-        id="moritz.attrs"
-        title="Style"
-      >
-        <BubbleSetterAttrs />
-      </MgRightBar>
-    </>
-  );
+  return <BubbleSetterStage />;
 }
 
 /** Central editor surface for standalone-mode bubble editing. */
@@ -511,8 +499,8 @@ function BubbleCObjectOutliner(props: {
   font: BubbleFont;
   selectedBubbleId: string;
   selection: {
-    readonly root: CObject | null;
-    readonly selected: CObject | null;
+    readonly root: cObject | null;
+    readonly selected: cObject | null;
   };
   onSelect: (id: string) => void;
 }): JSX.Element | null {
@@ -520,46 +508,18 @@ function BubbleCObjectOutliner(props: {
   if (!root) return null;
   const bubbleId = props.selectedBubbleId;
   const bubbleNode = root.children.find(
-    (node) => node.id === moritzBubbleCObjectId(props.font.id, bubbleId),
+    (node) => node.cId === moritzBubbleCObjectId(props.font.id, bubbleId),
   );
-  const nodes = bubbleNode ? [bubbleCObjectToTreeNode(props.font, bubbleId, bubbleNode)] : [];
-  if (nodes.length === 0) return null;
+  if (!bubbleNode) return null;
   return (
-    <MgOutliner
-      nodes={nodes}
-      selectedId={props.selection.selected?.id ?? null}
-      onSelect={props.onSelect}
+    <MoritzMOutliner
+      root={bubbleNode}
+      selectedId={props.selection.selected?.cId}
+      onSelect={(id) => {
+        if (id) props.onSelect(id);
+      }}
     />
   );
-}
-
-function bubbleCObjectToTreeNode(
-  font: BubbleFont,
-  selectedBubbleId: string,
-  node: CObject,
-): MgTreeNode {
-  const meta = moritzBubbleCObjectMetaFromId(font, selectedBubbleId, node.id);
-  return {
-    id: node.id,
-    label: meta?.label ?? cObjectFallbackLabel(node.id),
-    kind: meta?.role ?? node.kind,
-    selected: node.selected === true,
-    tone:
-      meta?.role === 'bubble'
-        ? 'relevant'
-        : meta?.role === 'bubbleLayer'
-          ? 'generate'
-          : 'neutral',
-    importance: node.selected ? 5 : meta?.role === 'bubble' ? 3 : 1,
-    ...(node.children.length > 0
-      ? { children: node.children.map((child) => bubbleCObjectToTreeNode(font, selectedBubbleId, child)) }
-      : {}),
-  };
-}
-
-function cObjectFallbackLabel(id: string): string {
-  const parts = id.split('.');
-  return parts[parts.length - 1] || id;
 }
 
 /** Attrs (style controls) content for standalone-mode bubble editing. */

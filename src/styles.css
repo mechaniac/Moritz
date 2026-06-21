@@ -309,6 +309,11 @@ input[type='range']::-moz-range-thumb {
 
 /* ---------- App chrome --------------------------------------------------- */
 
+.mz-host {
+  width: 100%;
+  height: 100%;
+}
+
 .mz-app__main {
   flex: 1;
   min-width: 0;
@@ -316,6 +321,51 @@ input[type='range']::-moz-range-thumb {
   overflow: hidden;
   background: var(--mg-bg, var(--mz-bg));
   color: var(--mg-text, var(--mz-text));
+}
+
+.mz-workbench-settings {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: auto;
+  padding: 4px 6px;
+}
+
+.mz-suite-leftbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mz-suite-tabs {
+  flex: 0 0 auto;
+}
+
+.mz-suite-tabs__tab {
+  min-width: 0;
+}
+
+.mz-suite-leftbar__panel {
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mz-suite-leftbar__panel--attrs {
+  border-top: 1px solid var(--mg-line, var(--mz-line));
+  padding-top: 8px;
+}
+
+.mz-suite-leftbar__glyph-attrs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* ---------- Universal canvas (Illustrator-like infinite workspace) -------- *

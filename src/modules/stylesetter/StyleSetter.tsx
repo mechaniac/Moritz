@@ -17,7 +17,6 @@ import { Workspace } from '../../ui/canvas/Workspace.js';
 import type { CameraSnapshot } from '../../ui/canvas/useCanvasInput.js';
 import { MoritzLabel } from '../../ui/MoritzText.js';
 import { MoritzSelect } from '../../ui/MoritzSelect.js';
-import { MgLeftBar, MgRightBar } from '@christof/magdalena/react';
 
 // Tiny shared store so the Stage and the Outliner (now separate
 // components hosted in different windows) can share the debug-overlay
@@ -38,23 +37,7 @@ const useStyleSetterUiStore = create<{
  * so the controls live in the same screen position across modules.
  */
 export function StyleSetter(): JSX.Element {
-  return (
-    <>
-      <StyleSetterStage />
-      <MgLeftBar
-        id="moritz.outliner"
-        title="Style"
-      >
-        <StyleSetterOutliner />
-      </MgLeftBar>
-      <MgRightBar
-        id="moritz.attrs"
-        title="Attributes"
-      >
-        <StyleSetterAttrs />
-      </MgRightBar>
-    </>
-  );
+  return <StyleSetterStage />;
 }
 
 export function StyleSetterStage(): JSX.Element {

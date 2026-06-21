@@ -1,42 +1,39 @@
-import { resolveMgSkins } from '@christof/magdalena/core';
 import { describe, expect, it } from 'vitest';
 import {
+  MORITZ_MODULE_ID,
+  moritzModuleSkin,
   moritzModuleSkinFor,
-  moritzModuleSkinIds,
-  moritzModuleSkinList,
+  moritzViewSkins,
 } from '../../src/moduleSkins.js';
 
 describe('moritz module skins', () => {
-  it('defines one Magdalena module skin per top-level Moritz workspace', () => {
-    const skins = resolveMgSkins(moritzModuleSkinList);
+  it('defines one public cModule skin for the Moritz suite', () => {
+    expect(MORITZ_MODULE_ID).toBe('moritz');
+    expect(moritzModuleSkinFor('moritz')).toEqual(moritzModuleSkin);
+  });
 
-    expect(skins.map((skin) => skin.id)).toEqual([
-      moritzModuleSkinIds.glyphsetter,
-      moritzModuleSkinIds.bubblesetter,
-      moritzModuleSkinIds.stylesetter,
-      moritzModuleSkinIds.typesetter,
+  it('keeps internal view skins separate from topbar modules', () => {
+    expect(Object.keys(moritzViewSkins)).toEqual([
+      'glyphsetter',
+      'bubblesetter',
+      'stylesetter',
+      'typesetter',
     ]);
-    expect(skins.every((skin) => skin.scope === 'module')).toBe(true);
-    expect(skins.every((skin) => skin.ownerId === 'moritz')).toBe(true);
-    expect(skins.every((skin) => skin.editPolicy === 'consumerEditable')).toBe(true);
   });
 
-  it('returns the active module skin by store module id', () => {
-    expect(moritzModuleSkinFor('glyphsetter').id).toBe(moritzModuleSkinIds.glyphsetter);
-    expect(moritzModuleSkinFor('typesetter').label).toBe('TypeSetter');
+  it('can still return an internal view skin for Moritz controls', () => {
+    expect(moritzModuleSkinFor('glyphsetter')).toEqual(moritzViewSkins.glyphsetter);
+    expect(moritzModuleSkinFor('typesetter')).toMatchObject({
+      bg: '#46370f',
+      fg: '#ffd76d',
+    });
   });
 
-  it('keeps core module skin settings explicit for downstream controls', () => {
-    const glyph = moritzModuleSkinFor('glyphsetter');
-    const type = moritzModuleSkinFor('typesetter');
-
-    expect(glyph.settings?.theme?.contrastColorNight).toBeDefined();
-    expect(glyph.settings?.theme?.contrastColorDay).toBeDefined();
-    expect(glyph.settings?.signals?.changed?.hue).toBe(338);
-    expect(glyph.settings?.signals?.save?.hue).toBe(122);
-
-    expect(type.settings?.theme?.globalContrast).toBeGreaterThan(0);
-    expect(type.settings?.theme?.localContrast).toBeGreaterThan(0);
-    expect(type.settings?.signals?.relevant?.hue).toBe(48);
+  it('keeps every skin in the two-colour cModule contract', () => {
+    for (const skin of [moritzModuleSkin, ...Object.values(moritzViewSkins)]) {
+      expect(skin.bg).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(skin.fg).toMatch(/^#[0-9a-f]{6}$/i);
+      expect(Object.keys(skin).sort()).toEqual(['bg', 'fg']);
+    }
   });
 });

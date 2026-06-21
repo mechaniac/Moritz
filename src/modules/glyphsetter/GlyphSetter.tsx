@@ -22,7 +22,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { CObject } from '@christof/sigrid-geometry';
+import { create } from 'zustand';
+import { MOutliner } from '@christof/magdalena/panels';
 import { effectiveStyleForGlyph, outlineStroke, redistributePolygonEvenly, widthAt } from '../../core/stroke.js';
 import {
   closestPointT,
@@ -31,7 +32,7 @@ import {
   tangentAt,
   type CubicSegment,
 } from '../../core/bezier.js';
-import { triangulatePolygon } from '../../core/triangulate.js';
+import { safeTriangulatePolygon } from '../../core/triangulate.js';
 import { ribbonDebugSpline0, ribbonDebugSpline1, triangulateStrokeRibbon } from '../../core/ribbon.js';
 import { relaxCurves, relaxSliderToParams, relaxTangents } from '../../core/relax.js';
 import { makeWidthMod } from '../../core/widthEffects.js';
@@ -84,7 +85,6 @@ import {
 import { animateGlyphWithAnimator } from '../../core/glyphAnimator.js';
 import {
   moritzGlyphCObjectId,
-  moritzGlyphCObjectMetaFromId,
   moritzGlyphCObjectSelection,
   moritzGlyphObjectSelectionFromCObjectId,
   type GlyphObjectSelection,
@@ -96,7 +96,10 @@ import { useAppStore } from '../../state/store.js';
 import { StyleControls } from '../stylesetter/StyleControls.js';
 import { MoritzLabel } from '../../ui/MoritzText.js';
 import { MoritzSelect } from '../../ui/MoritzSelect.js';
-import { MgLeftBar, MgRightBar, MgSelectedCOptions, MgOutliner, useMgElement, type MgTreeNode } from '@christof/magdalena/react';
+
+const MoritzMOutliner = MOutliner as unknown as (
+  props: Parameters<typeof MOutliner>[0],
+) => JSX.Element;
 
 // Module-level clipboard for copied strokes. Persists across glyph switches
 // (the GlyphEditor remounts when `selectedGlyph` changes) and even module
@@ -205,6 +208,26 @@ function extractKerningFromReference(
 
 export type Selection = GlyphObjectSelection;
 
+const useGlyphSetterSelectionStore = create<{
+  selection: Selection;
+  setSelection: (selection: Selection) => void;
+}>((set) => ({
+  selection: { kind: 'none' },
+  setSelection: (selection) => set({ selection }),
+}));
+
+export function getGlyphSetterSelection(): Selection {
+  return useGlyphSetterSelectionStore.getState().selection;
+}
+
+export function setGlyphSetterSelection(selection: Selection): void {
+  useGlyphSetterSelectionStore.getState().setSelection(selection);
+}
+
+export function subscribeGlyphSetterSelection(listener: () => void): () => void {
+  return useGlyphSetterSelectionStore.subscribe(listener);
+}
+
 type Drag =
   | { kind: 'anchor'; strokeIdx: number; vIdx: number }
   | { kind: 'handle'; strokeIdx: number; vIdx: number; side: 'in' | 'out' }
@@ -215,62 +238,26 @@ type Drag =
   | { kind: 'pan'; startClientX: number; startClientY: number; startPanX: number; startPanY: number };
 
 export function GlyphSetter(): JSX.Element {
-  const font = useAppStore((s) => s.font);
-  const selectedChar = useAppStore((s) => s.selectedGlyph);
-  const [selection, setSelection] = useState<Selection>({ kind: 'none' });
-  const cObjectSelection = useMemo(
-    () => moritzGlyphCObjectSelection(font, selectedChar, selection),
-    [font, selectedChar, selection],
-  );
-  useEffect(() => {
-    setSelection({ kind: 'none' });
-  }, [selectedChar]);
-
-  return (
-    <>
-      <GlyphSetterStage
-        selection={selection}
-        onSelectionChange={setSelection}
-      />
-      <MgLeftBar
-        id="moritz.outliner"
-        title="Glyphs"
-      >
-        <GlyphSetterOutliner
-          cObjectSelection={cObjectSelection}
-          onSelectionChange={setSelection}
-        />
-      </MgLeftBar>
-      <MgSelectedCOptions
-        id="moritz.itemattrs"
-        title={cObjectSelection.meta?.label}
-        cObject={cObjectSelection.selected}
-      >
-        <GlyphSetterItemAttrs
-          cObjectSelection={cObjectSelection}
-          onSelectionChange={setSelection}
-        />
-      </MgSelectedCOptions>
-      <MgRightBar
-        id="moritz.attrs"
-        title="Style"
-      >
-        <GlyphSetterAttrs />
-      </MgRightBar>
-    </>
-  );
+  return <GlyphSetterStage />;
 }
 
 export function GlyphSetterStage(props: {
-  selection: Selection;
-  onSelectionChange: (selection: Selection) => void;
-}): JSX.Element {
+  selection?: Selection;
+  onSelectionChange?: (selection: Selection) => void;
+} = {}): JSX.Element {
   const font = useAppStore((s) => s.font);
   const selectedChar = useAppStore((s) => s.selectedGlyph);
   const updateSelectedGlyph = useAppStore((s) => s.updateSelectedGlyph);
   const view = useAppStore((s) => s.glyphView);
   const setGlyphView = useAppStore((s) => s.setGlyphView);
+  const storeSelection = useGlyphSetterSelectionStore((s) => s.selection);
+  const setStoreSelection = useGlyphSetterSelectionStore((s) => s.setSelection);
+  const selection = props.selection ?? storeSelection;
+  const onSelectionChange = props.onSelectionChange ?? setStoreSelection;
   const glyph = font.glyphs[selectedChar];
+  useEffect(() => {
+    onSelectionChange({ kind: 'none' });
+  }, [onSelectionChange, selectedChar]);
   return (
     <div
       className="mz-glyphsetter mz-glyphsetter--mg"
@@ -299,8 +286,8 @@ export function GlyphSetterStage(props: {
             view={view}
             setView={setGlyphView}
             font={font}
-            selection={props.selection}
-            onSelectionChange={props.onSelectionChange}
+            selection={selection}
+            onSelectionChange={onSelectionChange}
           />
         ) : (
           <p style={{ padding: 16 }}>No glyph selected.</p>
@@ -311,9 +298,9 @@ export function GlyphSetterStage(props: {
 }
 
 export function GlyphSetterOutliner(props: {
-  cObjectSelection: MoritzGlyphCObjectSelection;
-  onSelectionChange: (selection: Selection) => void;
-}): JSX.Element {
+  cObjectSelection?: MoritzGlyphCObjectSelection;
+  onSelectionChange?: (selection: Selection) => void;
+} = {}): JSX.Element {
   const font = useAppStore((s) => s.font);
   const selectedChar = useAppStore((s) => s.selectedGlyph);
   const selectGlyph = useAppStore((s) => s.selectGlyph);
@@ -323,6 +310,13 @@ export function GlyphSetterOutliner(props: {
   const setKerning = useAppStore((s) => s.setKerning);
   const leftTab = useAppStore((s) => s.glyphsetterTab);
   const setLeftTab = useAppStore((s) => s.setGlyphsetterTab);
+  const selection = useGlyphSetterSelectionStore((s) => s.selection);
+  const setSelection = useGlyphSetterSelectionStore((s) => s.setSelection);
+  const cObjectSelection = useMemo(
+    () => props.cObjectSelection ?? moritzGlyphCObjectSelection(font, selectedChar, selection),
+    [font, props.cObjectSelection, selectedChar, selection],
+  );
+  const onSelectionChange = props.onSelectionChange ?? setSelection;
   return (
     <>
       <LeftTabBar value={leftTab} onChange={setLeftTab} />
@@ -339,8 +333,8 @@ export function GlyphSetterOutliner(props: {
             <GlyphCObjectOutliner
               font={font}
               selectedChar={selectedChar}
-              cObjectSelection={props.cObjectSelection}
-              onSelectionChange={props.onSelectionChange}
+              cObjectSelection={cObjectSelection}
+              onSelectionChange={onSelectionChange}
             />
           </>
         ) : leftTab === 'kerning' ? (
@@ -379,37 +373,44 @@ export function GlyphSetterAttrs(): JSX.Element {
 
 /** Per-item attributes panel in the cOptions region. */
 export function GlyphSetterItemAttrs(props: {
-  cObjectSelection: MoritzGlyphCObjectSelection;
-  onSelectionChange: (selection: Selection) => void;
-}): JSX.Element {
+  cObjectSelection?: MoritzGlyphCObjectSelection;
+  onSelectionChange?: (selection: Selection) => void;
+} = {}): JSX.Element {
   const font = useAppStore((s) => s.font);
   const selectedChar = useAppStore((s) => s.selectedGlyph);
   const view = useAppStore((s) => s.glyphView);
   const updateSelectedGlyph = useAppStore((s) => s.updateSelectedGlyph);
   const updateAllGlyphs = useAppStore((s) => s.updateAllGlyphs);
+  const selection = useGlyphSetterSelectionStore((s) => s.selection);
+  const setSelection = useGlyphSetterSelectionStore((s) => s.setSelection);
+  const cObjectSelection = useMemo(
+    () => props.cObjectSelection ?? moritzGlyphCObjectSelection(font, selectedChar, selection),
+    [font, props.cObjectSelection, selectedChar, selection],
+  );
+  const onSelectionChange = props.onSelectionChange ?? setSelection;
   const glyph = font.glyphs[selectedChar];
   if (!glyph) return <p style={{ color: 'var(--mz-text-mute)', fontSize: 12 }}>No glyph selected.</p>;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <CObjectSelectionHeader meta={props.cObjectSelection.meta} />
-      {props.cObjectSelection.meta?.role === 'anchor' ? (
+      <CObjectSelectionHeader meta={cObjectSelection.meta} />
+      {cObjectSelection.meta?.role === 'anchor' ? (
         <AnchorInstancePanel
           glyph={glyph}
-          meta={props.cObjectSelection.meta}
+          meta={cObjectSelection.meta}
           updateGlyph={updateSelectedGlyph}
         />
-      ) : props.cObjectSelection.meta?.role === 'stroke' ? (
+      ) : cObjectSelection.meta?.role === 'stroke' ? (
         <StrokeInstancePanel
           glyph={glyph}
-          meta={props.cObjectSelection.meta}
+          meta={cObjectSelection.meta}
         />
-      ) : props.cObjectSelection.meta?.role === 'multi' ? (
-        <MultiStrokePanel meta={props.cObjectSelection.meta} />
-      ) : props.cObjectSelection.meta?.role === 'animator' ? (
+      ) : cObjectSelection.meta?.role === 'multi' ? (
+        <MultiStrokePanel meta={cObjectSelection.meta} />
+      ) : cObjectSelection.meta?.role === 'animator' ? (
         <AnimatorInstancePanel
           glyph={glyph}
           updateGlyph={updateSelectedGlyph}
-          onSelectionChange={props.onSelectionChange}
+          onSelectionChange={onSelectionChange}
         />
       ) : (
         <GlyphMetricsPanel
@@ -417,7 +418,7 @@ export function GlyphSetterItemAttrs(props: {
           view={view}
           updateGlyph={updateSelectedGlyph}
           updateAllGlyphs={updateAllGlyphs}
-          onSelectAnimator={() => props.onSelectionChange({ kind: 'animator' })}
+          onSelectAnimator={() => onSelectionChange({ kind: 'animator' })}
         />
       )}
     </div>
@@ -786,10 +787,8 @@ function GlyphCObjectOutliner(props: {
     const root = props.cObjectSelection.root;
     if (!root) return [];
     const glyphId = moritzGlyphCObjectId(props.font.id, props.selectedChar);
-    const glyphNode = root.children.find((node) => node.id === glyphId);
-    return glyphNode
-      ? [cObjectToMgTreeNode(props.font, props.selectedChar, glyphNode)]
-      : [];
+    const glyphNode = root.children.find((node) => node.cId === glyphId);
+    return glyphNode ? [glyphNode] : [];
   }, [props.cObjectSelection.root, props.font, props.selectedChar]);
 
   if (nodes.length === 0) return null;
@@ -801,38 +800,18 @@ function GlyphCObjectOutliner(props: {
         borderTop: '1px solid var(--mz-line)',
       }}
     >
-      <MgOutliner
-        nodes={nodes}
-        selectedId={props.cObjectSelection.selected?.id ?? null}
-        onSelect={(id) =>
+      <MoritzMOutliner
+        root={nodes[0]!}
+        selectedId={props.cObjectSelection.selected?.cId}
+        onSelect={(id) => {
+          if (!id) return;
           props.onSelectionChange(
             moritzGlyphObjectSelectionFromCObjectId(props.font, props.selectedChar, id),
-          )
-        }
+          );
+        }}
       />
     </div>
   );
-}
-
-function cObjectToMgTreeNode(font: Font, selectedChar: string, node: CObject): MgTreeNode {
-  const meta = moritzGlyphCObjectMetaFromId(font, selectedChar, node.id);
-  return {
-    id: node.id,
-    label: meta?.label ?? cObjectFallbackLabel(node.id),
-    kind: meta?.role ?? node.kind,
-    selected: node.selected === true,
-    tone: meta?.role === 'glyph' ? 'relevant' : meta?.role === 'animator' ? 'generate' : 'neutral',
-    importance: node.selected ? 5 : meta?.role === 'glyph' ? 3 : 1,
-    ...(node.children.length > 0
-      ? { children: node.children.map((child) => cObjectToMgTreeNode(font, selectedChar, child)) }
-      : {}),
-  };
-}
-
-function cObjectFallbackLabel(id: string): string {
-  const parts = id.split('.');
-  const tail = parts[parts.length - 1];
-  return tail ? tail : id;
 }
 
 /** Pixels per font unit in the grid thumbnails. Fixed so all glyphs render at
@@ -2675,14 +2654,6 @@ function LeftTabBar(props: {
   value: 'glyphs' | 'kerning' | 'settings';
   onChange: (v: 'glyphs' | 'kerning' | 'settings') => void;
 }): JSX.Element {
-  const bind = useMgElement({
-    id: 'moritz.glyphsetter.leftTabs',
-    role: 'tabs',
-    label: 'GlyphSetter left tabs',
-    tone: 'relevant',
-    importance: 1,
-    closeness: 'controlInternal',
-  });
   const tab = (id: 'glyphs' | 'kerning' | 'settings', label: string): JSX.Element => {
     const active = props.value === id;
     return (
@@ -2711,7 +2682,12 @@ function LeftTabBar(props: {
   };
   return (
     <div
-      {...bind}
+      id="moritz.glyphsetter.leftTabs"
+      role="tablist"
+      aria-label="GlyphSetter left tabs"
+      data-m="moritzGlyphSetterLeftTabs"
+      data-m-tone="relevant"
+      data-m-importance={1}
       style={{
         display: 'flex',
         alignItems: 'center',
@@ -3472,6 +3448,8 @@ function trianglesD(
   poly: readonly Vec2[],
   triangles: readonly (readonly [number, number, number])[],
 ): string {
+  if (poly.length === 0) return '';
+  if (triangles.length === 0) return polygonD(poly);
   let d = '';
   for (const t of triangles) {
     const a = poly[t[0]]!;
@@ -3480,6 +3458,15 @@ function trianglesD(
     d += `M ${a.x} ${a.y} L ${b.x} ${b.y} L ${c.x} ${c.y} Z `;
   }
   return d;
+}
+
+function polygonD(poly: readonly Vec2[]): string {
+  if (poly.length < 3) return '';
+  let d = `M ${poly[0]!.x} ${poly[0]!.y}`;
+  for (let i = 1; i < poly.length; i++) {
+    d += ` L ${poly[i]!.x} ${poly[i]!.y}`;
+  }
+  return `${d} Z`;
 }
 
 /**
@@ -3528,7 +3515,7 @@ function triangulateForStyle(
     if (evenness > 0 && polygon.length >= 3) {
       polygon = redistributePolygonEvenly(polygon, evenness);
     }
-    triangles = triangulatePolygon(polygon);
+    triangles = safeTriangulatePolygon(polygon);
   }
   // Relax passes mirror svg.ts so the editor and the export show the
   // same shape. Index list stays valid (vertex count + order preserved).

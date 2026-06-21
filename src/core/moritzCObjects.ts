@@ -1,10 +1,4 @@
-import {
-  cMarkSelection,
-  cObject,
-  cPrimarySelectedObject,
-  cSelectedObjects,
-  type CObject,
-} from '@christof/sigrid-geometry';
+import { cNodeById, createCObject, type cObject } from '@christof/sigrid/core';
 import type {
   Block,
   BlockBubble,
@@ -58,9 +52,9 @@ export type MoritzCObjectMeta = {
 };
 
 export type MoritzGlyphCObjectSelection = {
-  readonly root: CObject | null;
-  readonly selected: CObject | null;
-  readonly selectedObjects: readonly CObject[];
+  readonly root: cObject | null;
+  readonly selected: cObject | null;
+  readonly selectedObjects: readonly cObject[];
   readonly selectedIds: readonly string[];
   readonly meta: MoritzCObjectMeta | null;
 };
@@ -86,8 +80,6 @@ export type TypeSetterCObjectInput = {
   readonly bubbleFont?: BubbleFont;
 };
 
-const GROUP_PAYLOAD = { kind: 'group' } as const;
-
 export function moritzGlyphCObjectSelection(
   font: Font,
   selectedChar: string,
@@ -105,27 +97,40 @@ export function moritzGlyphCObjectSelection(
   }
 
   const selectedIds = selectedIdsForGlyphSelection(font, selectedChar, glyph, selection);
-  const root = cMarkSelection(moritzFontCObject(font), new Set(selectedIds));
+  const root = moritzFontCObject(font);
+  const selectedIdSet = new Set(selectedIds);
   return {
     root,
-    selected: cPrimarySelectedObject(root),
-    selectedObjects: cSelectedObjects(root),
+    selected: selectedCObject(root, selectedIdSet),
+    selectedObjects: selectedCObjects(root, selectedIdSet),
     selectedIds,
     meta: metaForGlyphSelection(font, selectedChar, glyph, selection, selectedIds),
   };
 }
 
-export function moritzFontCObject(font: Font): CObject {
+export function moritzFontCObject(font: Font): cObject {
   return groupObject(
     moritzFontCObjectId(font.id),
     Object.keys(font.glyphs).map((char) => glyphToCObject(font.id, font.glyphs[char]!)),
+    {
+      role: 'font',
+      label: font.name || font.id,
+      componentKind: 'moritz.font',
+      data: { fontId: font.id },
+    },
   );
 }
 
-export function moritzBubbleFontCObject(font: BubbleFont): CObject {
+export function moritzBubbleFontCObject(font: BubbleFont): cObject {
   return groupObject(
     moritzBubbleFontCObjectId(font.id),
     Object.values(font.bubbles).map((bubble) => bubbleToCObject(font.id, bubble)),
+    {
+      role: 'bubbleFont',
+      label: font.name || font.id,
+      componentKind: 'moritz.bubbleFont',
+      data: { bubbleFontId: font.id },
+    },
   );
 }
 
@@ -135,23 +140,30 @@ export function moritzBubbleCObjectSelection(
   selectedLayerId: string | null,
 ): MoritzBubbleCObjectSelection {
   const selectedIds = selectedIdsForBubbleSelection(font, selectedBubbleId, selectedLayerId);
-  const root = cMarkSelection(moritzBubbleFontCObject(font), new Set(selectedIds));
-  const selected = cPrimarySelectedObject(root);
+  const root = moritzBubbleFontCObject(font);
+  const selectedIdSet = new Set(selectedIds);
+  const selected = selectedCObject(root, selectedIdSet);
   return {
     root,
     selected,
-    selectedObjects: cSelectedObjects(root),
+    selectedObjects: selectedCObjects(root, selectedIdSet),
     selectedIds,
     meta: selected
-      ? moritzBubbleCObjectMetaFromId(font, selectedBubbleId, selected.id)
+      ? moritzBubbleCObjectMetaFromId(font, selectedBubbleId, selected.cId)
       : null,
   };
 }
 
-export function moritzTypeSetterPageCObject(input: TypeSetterCObjectInput): CObject {
+export function moritzTypeSetterPageCObject(input: TypeSetterCObjectInput): cObject {
   return groupObject(
     moritzPageCObjectId(input.pageId),
     input.blocks.map((block) => typeSetterBlockToCObject(input, block)),
+    {
+      role: 'page',
+      label: input.pageName,
+      componentKind: 'moritz.page',
+      data: { pageId: input.pageId },
+    },
   );
 }
 
@@ -160,15 +172,16 @@ export function moritzTypeSetterPageCObjectSelection(
   selection: { readonly blockId?: string | null; readonly layerId?: string | null },
 ): MoritzTypeSetterCObjectSelection {
   const selectedIds = selectedIdsForTypeSetterSelection(input, selection);
-  const root = cMarkSelection(moritzTypeSetterPageCObject(input), new Set(selectedIds));
-  const selected = cPrimarySelectedObject(root);
+  const root = moritzTypeSetterPageCObject(input);
+  const selectedIdSet = new Set(selectedIds);
+  const selected = selectedCObject(root, selectedIdSet);
   return {
     root,
     selected,
-    selectedObjects: cSelectedObjects(root),
+    selectedObjects: selectedCObjects(root, selectedIdSet),
     selectedIds,
     meta: selected
-      ? moritzTypeSetterCObjectMetaFromId(input, selected.id)
+      ? moritzTypeSetterCObjectMetaFromId(input, selected.cId)
       : null,
   };
 }
@@ -481,26 +494,56 @@ export function moritzHandleCObjectId(
   return handleCObjectIdForBase(moritzGlyphCObjectId(fontId, char), strokeIdx, vIdx, side);
 }
 
-function glyphToCObject(fontId: string, glyph: Glyph): CObject {
-  return glyphToCObjectAtBase(moritzGlyphCObjectId(fontId, glyph.char), glyph);
+function glyphToCObject(fontId: string, glyph: Glyph): cObject {
+  return glyphToCObjectAtBase(moritzGlyphCObjectId(fontId, glyph.char), glyph, {
+    label: `Glyph ${labelForChar(glyph.char)}`,
+    data: { fontId, char: glyph.char },
+  });
 }
 
-function bubbleToCObject(fontId: string, bubble: Bubble): CObject {
+function bubbleToCObject(fontId: string, bubble: Bubble): cObject {
   return groupObject(
     moritzBubbleCObjectId(fontId, bubble.id),
     bubble.layers.map((layer) => bubbleLayerToCObject(fontId, bubble.id, layer)),
+    {
+      role: 'bubble',
+      label: bubble.name || bubble.id,
+      componentKind: 'moritz.bubble',
+      data: { bubbleFontId: fontId, bubbleId: bubble.id },
+    },
   );
 }
 
-function bubbleLayerToCObject(fontId: string, bubbleId: string, layer: BubbleLayer): CObject {
-  return groupObject(moritzBubbleLayerCObjectId(fontId, bubbleId, layer.id), [
-    glyphToCObjectAtBase(moritzBubbleLayerGlyphCObjectId(fontId, bubbleId, layer.id), layer.glyph),
-  ]);
+function bubbleLayerToCObject(fontId: string, bubbleId: string, layer: BubbleLayer): cObject {
+  return groupObject(
+    moritzBubbleLayerCObjectId(fontId, bubbleId, layer.id),
+    [
+      glyphToCObjectAtBase(moritzBubbleLayerGlyphCObjectId(fontId, bubbleId, layer.id), layer.glyph, {
+        label: `Glyph ${layer.name || layer.id}`,
+        data: { bubbleFontId: fontId, bubbleId, layerId: layer.id },
+      }),
+    ],
+    {
+      role: 'bubbleLayer',
+      label: layer.name || layer.id,
+      componentKind: 'moritz.bubbleLayer',
+      data: { bubbleFontId: fontId, bubbleId, layerId: layer.id },
+    },
+  );
 }
 
-function typeSetterBlockToCObject(input: TypeSetterCObjectInput, block: Block): CObject {
-  const children: CObject[] = block.texts.map((text) =>
-    groupObject(moritzPageBlockTextCObjectId(input.pageId, block.id, text.id)),
+function typeSetterBlockToCObject(input: TypeSetterCObjectInput, block: Block): cObject {
+  const children: cObject[] = block.texts.map((text) =>
+    groupObject(
+      moritzPageBlockTextCObjectId(input.pageId, block.id, text.id),
+      [],
+      {
+        role: 'text',
+        label: textLabel(text.text),
+        componentKind: 'moritz.text',
+        data: { pageId: input.pageId, blockId: block.id, textId: text.id },
+      },
+    ),
   );
   if (block.bubble) {
     const bubble = resolveBlockBubble(block.bubble, input.bubbleFont);
@@ -510,40 +553,130 @@ function typeSetterBlockToCObject(input: TypeSetterCObjectInput, block: Block): 
         bubble
           ? bubble.layers.map((layer) => typeSetterBubbleLayerToCObject(input.pageId, block.id, layer))
           : [],
+        {
+          role: 'blockBubble',
+          label: blockBubbleLabel(block, input.bubbleFont),
+          componentKind: 'moritz.blockBubble',
+          data: {
+            pageId: input.pageId,
+            blockId: block.id,
+            bubbleId: blockBubbleId(block.bubble),
+          },
+        },
       ),
     );
   }
-  return groupObject(moritzPageBlockCObjectId(input.pageId, block.id), children);
+  return groupObject(
+    moritzPageBlockCObjectId(input.pageId, block.id),
+    children,
+    {
+      role: 'block',
+      label: blockLabel(block),
+      componentKind: 'moritz.block',
+      data: { pageId: input.pageId, blockId: block.id },
+    },
+  );
 }
 
-function typeSetterBubbleLayerToCObject(pageId: string, blockId: string, layer: BubbleLayer): CObject {
-  return groupObject(moritzPageBlockBubbleLayerCObjectId(pageId, blockId, layer.id), [
-    glyphToCObjectAtBase(moritzPageBlockBubbleLayerGlyphCObjectId(pageId, blockId, layer.id), layer.glyph),
-  ]);
+function typeSetterBubbleLayerToCObject(pageId: string, blockId: string, layer: BubbleLayer): cObject {
+  return groupObject(
+    moritzPageBlockBubbleLayerCObjectId(pageId, blockId, layer.id),
+    [
+      glyphToCObjectAtBase(moritzPageBlockBubbleLayerGlyphCObjectId(pageId, blockId, layer.id), layer.glyph, {
+        label: `Glyph ${layer.name || layer.id}`,
+        data: { pageId, blockId, layerId: layer.id },
+      }),
+    ],
+    {
+      role: 'bubbleLayer',
+      label: layer.name || layer.id,
+      componentKind: 'moritz.bubbleLayer',
+      data: { pageId, blockId, layerId: layer.id },
+    },
+  );
 }
 
-function glyphToCObjectAtBase(baseId: string, glyph: Glyph): CObject {
+function glyphToCObjectAtBase(
+  baseId: string,
+  glyph: Glyph,
+  input: {
+    readonly label: string;
+    readonly data: Readonly<Record<string, unknown>>;
+  },
+): cObject {
   return groupObject(
     baseId,
     [
-      ...(glyph.animator ? [groupObject(glyphAnimatorCObjectIdForBase(baseId))] : []),
+      ...(glyph.animator
+        ? [
+            groupObject(
+              glyphAnimatorCObjectIdForBase(baseId),
+              [],
+              {
+                role: 'animator',
+                label: 'Animator',
+                componentKind: 'moritz.animator',
+                data: input.data,
+              },
+            ),
+          ]
+        : []),
       ...glyph.strokes.map((stroke, strokeIdx) => strokeToCObject(baseId, stroke, strokeIdx)),
     ],
+    {
+      role: 'glyph',
+      label: input.label,
+      componentKind: 'moritz.glyph',
+      data: input.data,
+    },
   );
 }
 
-function strokeToCObject(baseId: string, stroke: Stroke, strokeIdx: number): CObject {
+function strokeToCObject(baseId: string, stroke: Stroke, strokeIdx: number): cObject {
   return groupObject(
     strokeCObjectIdForBase(baseId, strokeIdx),
     stroke.vertices.map((_, vIdx) => anchorToCObject(baseId, strokeIdx, vIdx)),
+    {
+      role: 'stroke',
+      label: `Stroke ${strokeIdx + 1}`,
+      componentKind: 'moritz.stroke',
+      data: { strokeIdx },
+    },
   );
 }
 
-function anchorToCObject(baseId: string, strokeIdx: number, vIdx: number): CObject {
-  return groupObject(anchorCObjectIdForBase(baseId, strokeIdx, vIdx), [
-    groupObject(handleCObjectIdForBase(baseId, strokeIdx, vIdx, 'in')),
-    groupObject(handleCObjectIdForBase(baseId, strokeIdx, vIdx, 'out')),
-  ]);
+function anchorToCObject(baseId: string, strokeIdx: number, vIdx: number): cObject {
+  return groupObject(
+    anchorCObjectIdForBase(baseId, strokeIdx, vIdx),
+    [
+      groupObject(
+        handleCObjectIdForBase(baseId, strokeIdx, vIdx, 'in'),
+        [],
+        {
+          role: 'handle',
+          label: `In handle ${strokeIdx + 1}.${vIdx + 1}`,
+          componentKind: 'moritz.handle',
+          data: { strokeIdx, vIdx, side: 'in' },
+        },
+      ),
+      groupObject(
+        handleCObjectIdForBase(baseId, strokeIdx, vIdx, 'out'),
+        [],
+        {
+          role: 'handle',
+          label: `Out handle ${strokeIdx + 1}.${vIdx + 1}`,
+          componentKind: 'moritz.handle',
+          data: { strokeIdx, vIdx, side: 'out' },
+        },
+      ),
+    ],
+    {
+      role: 'anchor',
+      label: `Anchor ${strokeIdx + 1}.${vIdx + 1}`,
+      componentKind: 'moritz.anchor',
+      data: { strokeIdx, vIdx },
+    },
+  );
 }
 
 function glyphAnimatorCObjectIdForBase(baseId: string): string {
@@ -562,13 +695,52 @@ function handleCObjectIdForBase(baseId: string, strokeIdx: number, vIdx: number,
   return `${anchorCObjectIdForBase(baseId, strokeIdx, vIdx)}.handle.${side}`;
 }
 
-function groupObject(id: string, children: readonly CObject[] = []): CObject {
-  return cObject({
-    id,
-    kind: 'group',
-    payload: GROUP_PAYLOAD,
+function groupObject(
+  id: string,
+  children: readonly cObject[] = [],
+  input?: {
+    readonly role?: MoritzCObjectRole;
+    readonly label?: string;
+    readonly componentKind?: string;
+    readonly data?: unknown;
+  },
+): cObject {
+  const role = input?.role ?? 'multi';
+  return createCObject({
+    cId: id,
+    kind: `cnode.moritz.${role}`,
+    tags: ['moritz', `moritz.${role}`],
+    components: input?.componentKind
+      ? [{ kind: input.componentKind, data: input.data ?? {} }]
+      : [],
     children,
+    extras: {
+      displayName: input?.label ?? cObjectFallbackLabel(id),
+    },
   });
+}
+
+function selectedCObject(root: cObject, selectedIds: ReadonlySet<string>): cObject | null {
+  for (const id of selectedIds) {
+    const selected = cNodeById(root, id);
+    if (selected) return selected;
+  }
+  return null;
+}
+
+function selectedCObjects(root: cObject, selectedIds: ReadonlySet<string>): cObject[] {
+  const out: cObject[] = [];
+  const visit = (node: cObject): void => {
+    if (selectedIds.has(node.cId)) out.push(node);
+    for (const child of node.children) visit(child);
+  };
+  visit(root);
+  return out;
+}
+
+function cObjectFallbackLabel(id: string): string {
+  const parts = id.split('.');
+  return parts[parts.length - 1] || id;
 }
 
 function selectedIdsForGlyphSelection(

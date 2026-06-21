@@ -88,7 +88,7 @@ function moritzFiles(): Plugin {
 export default defineConfig({
   plugins: [react(), moritzFiles()],
   server: {
-    port: 5181,
+    port: 5182,
     strictPort: true,
     watch: {
       // Saving writes into `src/data/{fonts,styles,pages}/<id>.json`. We

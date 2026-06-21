@@ -31,8 +31,8 @@ describe('moritzGlyphCObjectSelection', () => {
     const root = moritzFontCObject(defaultFont);
     const first = firstChar();
 
-    expect(root.id).toMatch(/^moritz\.font\./);
-    expect(root.children.map((node) => node.id)).toContain(
+    expect(root.cId).toMatch(/^moritz\.font\./);
+    expect(root.children.map((node) => node.cId)).toContain(
       moritzGlyphCObjectId(defaultFont.id, first),
     );
   });
@@ -41,9 +41,9 @@ describe('moritzGlyphCObjectSelection', () => {
     const char = firstChar();
     const result = moritzGlyphCObjectSelection(defaultFont, char, { kind: 'none' });
 
-    expect(result.selected?.id).toBe(moritzGlyphCObjectId(defaultFont.id, char));
+    expect(result.selected?.cId).toBe(moritzGlyphCObjectId(defaultFont.id, char));
     expect(result.meta?.role).toBe('glyph');
-    expect(result.selectedObjects.map((node) => node.id)).toEqual([result.selected?.id]);
+    expect(result.selectedObjects.map((node) => node.cId)).toEqual([result.selected?.cId]);
   });
 
   it('selects a stroke cObject from the editor stroke selection', () => {
@@ -53,7 +53,7 @@ describe('moritzGlyphCObjectSelection', () => {
       strokeIdx: 0,
     });
 
-    expect(result.selected?.id).toBe(moritzStrokeCObjectId(defaultFont.id, char, 0));
+    expect(result.selected?.cId).toBe(moritzStrokeCObjectId(defaultFont.id, char, 0));
     expect(result.meta).toMatchObject({ role: 'stroke', strokeIdx: 0, glyphChar: char });
   });
 
@@ -65,7 +65,7 @@ describe('moritzGlyphCObjectSelection', () => {
       vIdx: 0,
     });
 
-    expect(result.selected?.id).toBe(moritzAnchorCObjectId(defaultFont.id, char, 0, 0));
+    expect(result.selected?.cId).toBe(moritzAnchorCObjectId(defaultFont.id, char, 0, 0));
     expect(result.meta).toMatchObject({ role: 'anchor', strokeIdx: 0, vIdx: 0 });
   });
 
@@ -89,10 +89,10 @@ describe('moritzGlyphCObjectSelection', () => {
 
     const result = moritzGlyphCObjectSelection(font, char, { kind: 'none' });
     const glyphNode = result.root?.children.find(
-      (node) => node.id === moritzGlyphCObjectId(font.id, char),
+      (node) => node.cId === moritzGlyphCObjectId(font.id, char),
     );
 
-    expect(glyphNode?.children[0]?.id).toBe(moritzGlyphAnimatorCObjectId(font.id, char));
+    expect(glyphNode?.children[0]?.cId).toBe(moritzGlyphAnimatorCObjectId(font.id, char));
   });
 
   it('selects the glyph animator cObject when requested', () => {
@@ -115,7 +115,7 @@ describe('moritzGlyphCObjectSelection', () => {
 
     const result = moritzGlyphCObjectSelection(font, char, { kind: 'animator' });
 
-    expect(result.selected?.id).toBe(moritzGlyphAnimatorCObjectId(font.id, char));
+    expect(result.selected?.cId).toBe(moritzGlyphAnimatorCObjectId(font.id, char));
     expect(result.meta).toMatchObject({ role: 'animator', glyphChar: char });
   });
 
@@ -154,13 +154,13 @@ describe('moritzBubbleCObjectSelection', () => {
     const bubble = defaultBubbleFont.bubbles.speech!;
     const layer = bubble.layers[0]!;
 
-    expect(root.children.map((node) => node.id)).toContain(
+    expect(root.children.map((node) => node.cId)).toContain(
       moritzBubbleCObjectId(defaultBubbleFont.id, bubble.id),
     );
-    const bubbleNode = root.children.find((node) => node.id === moritzBubbleCObjectId(defaultBubbleFont.id, bubble.id));
-    const layerNode = bubbleNode?.children.find((node) => node.id === moritzBubbleLayerCObjectId(defaultBubbleFont.id, bubble.id, layer.id));
+    const bubbleNode = root.children.find((node) => node.cId === moritzBubbleCObjectId(defaultBubbleFont.id, bubble.id));
+    const layerNode = bubbleNode?.children.find((node) => node.cId === moritzBubbleLayerCObjectId(defaultBubbleFont.id, bubble.id, layer.id));
 
-    expect(layerNode?.children[0]?.id).toBe(
+    expect(layerNode?.children[0]?.cId).toBe(
       moritzBubbleLayerGlyphCObjectId(defaultBubbleFont.id, bubble.id, layer.id),
     );
   });
@@ -170,7 +170,7 @@ describe('moritzBubbleCObjectSelection', () => {
     const layer = bubble.layers[0]!;
     const result = moritzBubbleCObjectSelection(defaultBubbleFont, bubble.id, layer.id);
 
-    expect(result.selected?.id).toBe(moritzBubbleLayerCObjectId(defaultBubbleFont.id, bubble.id, layer.id));
+    expect(result.selected?.cId).toBe(moritzBubbleLayerCObjectId(defaultBubbleFont.id, bubble.id, layer.id));
     expect(result.meta).toMatchObject({ role: 'bubbleLayer', bubbleId: bubble.id, layerId: layer.id });
     expect(
       moritzBubbleObjectSelectionFromCObjectId(
@@ -195,15 +195,15 @@ describe('moritzTypeSetterPageCObjectSelection', () => {
     const root = moritzTypeSetterPageCObject(input);
     const blockNode = root.children[0]!;
     const bubbleNode = blockNode.children.find(
-      (node) => node.id === moritzPageBlockCObjectId('live', block.id) + '.bubble',
+      (node) => node.cId === moritzPageBlockCObjectId('live', block.id) + '.bubble',
     );
 
-    expect(root.id).toBe(moritzPageCObjectId('live'));
-    expect(blockNode.id).toBe(moritzPageBlockCObjectId('live', block.id));
-    expect(blockNode.children.map((node) => node.id)).toContain(
+    expect(root.cId).toBe(moritzPageCObjectId('live'));
+    expect(blockNode.cId).toBe(moritzPageBlockCObjectId('live', block.id));
+    expect(blockNode.children.map((node) => node.cId)).toContain(
       moritzPageBlockTextCObjectId('live', block.id, block.texts[0]!.id),
     );
-    expect(bubbleNode?.children.map((node) => node.id)).toContain(
+    expect(bubbleNode?.children.map((node) => node.cId)).toContain(
       moritzPageBlockBubbleLayerCObjectId('live', block.id, layer.id),
     );
   });
@@ -222,10 +222,10 @@ describe('moritzTypeSetterPageCObjectSelection', () => {
       layerId: layer.id,
     });
 
-    expect(result.selected?.id).toBe(moritzPageBlockBubbleLayerCObjectId('live', block.id, layer.id));
+    expect(result.selected?.cId).toBe(moritzPageBlockBubbleLayerCObjectId('live', block.id, layer.id));
     expect(result.meta).toMatchObject({ role: 'bubbleLayer', blockId: block.id, layerId: layer.id });
     expect(
-      moritzTypeSetterObjectSelectionFromCObjectId(input, result.selected!.id),
+      moritzTypeSetterObjectSelectionFromCObjectId(input, result.selected!.cId),
     ).toEqual({ kind: 'bubbleLayer', blockId: block.id, layerId: layer.id });
   });
 });

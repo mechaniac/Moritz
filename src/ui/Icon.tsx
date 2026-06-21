@@ -10,7 +10,6 @@
 import { useMemo } from 'react';
 import { iconFont, type IconName } from '../data/iconFont.js';
 import { outlineStroke } from '../core/stroke.js';
-import { triangulatePolygon } from '../core/triangulate.js';
 import type { Font, StyleSettings } from '../core/types.js';
 
 type Props = {
@@ -40,10 +39,6 @@ export function Icon(props: Props): JSX.Element | null {
     return glyph.strokes.map((s) => {
       const polygon = outlineStroke(s, settings, null);
       if (polygon.length < 3) return '';
-      const tris = triangulatePolygon(polygon);
-      // Render the polygon outline; triangulation is computed only to
-      // match the rest of the pipeline's invariants and is unused here.
-      void tris;
       const d = polygon
         .map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
         .join(' ');

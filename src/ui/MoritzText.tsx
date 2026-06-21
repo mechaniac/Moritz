@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { layout } from '../core/layout.js';
 import { effectiveStyleForGlyph, outlineStroke } from '../core/stroke.js';
-import { triangulatePolygon } from '../core/triangulate.js';
+import { safeTriangulatePolygon } from '../core/triangulate.js';
 import type { Font, Glyph, Vec2 } from '../core/types.js';
 import { useAppStore } from '../state/store.js';
 
@@ -80,9 +80,18 @@ function glyphPathsForFont(glyph: Glyph, font: Font): readonly string[] {
   return glyph.strokes.map((stroke) => {
     const polygon = outlineStroke(stroke, style, null);
     if (polygon.length < 3) return '';
-    const triangles = triangulatePolygon(polygon);
-    return trianglesD(polygon, triangles);
+    const triangles = safeTriangulatePolygon(polygon);
+    return triangles.length > 0 ? trianglesD(polygon, triangles) : polygonD(polygon);
   });
+}
+
+function polygonD(polygon: readonly Vec2[]): string {
+  if (polygon.length < 3) return '';
+  let d = `M ${polygon[0]!.x.toFixed(2)} ${polygon[0]!.y.toFixed(2)}`;
+  for (let i = 1; i < polygon.length; i++) {
+    d += ` L ${polygon[i]!.x.toFixed(2)} ${polygon[i]!.y.toFixed(2)}`;
+  }
+  return `${d} Z`;
 }
 
 function trianglesD(
