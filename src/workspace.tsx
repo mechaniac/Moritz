@@ -44,7 +44,7 @@ import {
 } from './moduleSkins.js';
 import { loadAnitaManifest, readAnitaProjectStatus, type AnitaProjectStatus } from './codebase.js';
 import { BubbleSetterAttrs, BubbleSetterOutliner, BubbleSetterStage } from './modules/bubblesetter/BubbleSetter.js';
-import { GlyphSetterAttrs, GlyphSetterItemAttrs, GlyphSetterOutliner, GlyphSetterStage } from './modules/glyphsetter/GlyphSetter.js';
+import { GlyphEditorToolbar, GlyphSetterAttrs, GlyphSetterItemAttrs, GlyphSetterOutliner, GlyphSetterStage } from './modules/glyphsetter/GlyphSetter.js';
 import { StyleSetterAttrs, StyleSetterOutliner, StyleSetterStage } from './modules/stylesetter/StyleSetter.js';
 import { TypeSetterAttrs, TypeSetterOutliner, TypeSetterStage } from './modules/typesetter/TypeSetter.js';
 import {
@@ -82,6 +82,11 @@ export const moritzModule: cModule = {
   id: MORITZ_MODULE_ID,
   skin: moritzModuleSkin,
   gateway: {},
+  chrome: {
+    hud: false,
+    floatingAttributes: false,
+    workbenchTab: false,
+  },
 };
 
 
@@ -489,6 +494,7 @@ function MoritzWorkbenchSettings(props: { viewId: ModuleId }): ReactElement {
             />
           </label>
           <FontBar />
+          <GlyphEditorToolbar />
         </>
       )}
       {props.viewId === 'bubblesetter' && <BubbleBar />}

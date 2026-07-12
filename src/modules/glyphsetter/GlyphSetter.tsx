@@ -229,6 +229,157 @@ export function subscribeGlyphSetterSelection(listener: () => void): () => void 
   return useGlyphSetterSelectionStore.subscribe(listener);
 }
 
+/**
+ * Standalone glyph editing toolbar — reads from stores so it can be rendered
+ * anywhere (e.g. in the workbench settings bar). Contains Add stroke, Add anchor,
+ * Delete, Flip H/V, Break tangent, help hint.
+ */
+export function GlyphEditorToolbar(): JSX.Element {
+  const font = useAppStore((s) => s.font);
+  const selectedChar = useAppStore((s) => s.selectedGlyph);
+  const updateSelectedGlyph = useAppStore((s) => s.updateSelectedGlyph);
+  const selection = useGlyphSetterSelectionStore((s) => s.selection);
+  const setSelection = useGlyphSetterSelectionStore((s) => s.setSelection);
+  const glyph = font.glyphs[selectedChar];
+
+  const selectedStrokeIdxs: readonly number[] = (() => {
+    if (selection.kind === 'stroke') return [selection.strokeIdx];
+    if (selection.kind === 'anchor') return [selection.strokeIdx];
+    if (selection.kind === 'multi') return selection.strokeIdxs;
+    return [];
+  })();
+
+  const selectedAnchor =
+    selection.kind === 'anchor' && glyph
+      ? glyph.strokes[selection.strokeIdx]?.vertices[selection.vIdx]
+      : undefined;
+
+  const onAddStroke = () => {
+    if (glyph) updateSelectedGlyph((g) => addStroke(g));
+  };
+  const onAddAnchor = () => {
+    if (!glyph) return;
+    let strokeIdx = -1;
+    let segIdx = -1;
+    if (selection.kind === 'anchor') {
+      const s = glyph.strokes[selection.strokeIdx];
+      if (!s) return;
+      strokeIdx = selection.strokeIdx;
+      segIdx = selection.vIdx < s.vertices.length - 1
+        ? selection.vIdx
+        : selection.vIdx - 1;
+    } else if (selection.kind === 'stroke') {
+      const s = glyph.strokes[selection.strokeIdx];
+      if (!s || s.vertices.length < 2) return;
+      strokeIdx = selection.strokeIdx;
+      segIdx = Math.floor((s.vertices.length - 1) / 2);
+    } else {
+      return;
+    }
+    if (strokeIdx < 0 || segIdx < 0) return;
+    updateSelectedGlyph((g) => insertAnchor(g, strokeIdx, segIdx, 0.5));
+    setSelection({ kind: 'anchor', strokeIdx, vIdx: segIdx + 1 });
+  };
+  const onDeleteSelected = () => {
+    if (!glyph) return;
+    if (selection.kind === 'anchor') {
+      updateSelectedGlyph((g) => deleteAnchor(g, selection.strokeIdx, selection.vIdx));
+      setSelection({ kind: 'none' });
+      return;
+    }
+    if (selectedStrokeIdxs.length === 0) return;
+    const idxs = [...selectedStrokeIdxs].sort((a, b) => b - a);
+    updateSelectedGlyph((g) => idxs.reduce((acc, i) => deleteStroke(acc, i), g));
+    setSelection({ kind: 'none' });
+  };
+  const onFlipH = () => {
+    if (!glyph || selectedStrokeIdxs.length === 0) return;
+    const idxs = selectedStrokeIdxs;
+    updateSelectedGlyph((g) =>
+      idxs.reduce((acc, i) => flipStrokeHorizontal(acc, i, g.box.w / 2), g),
+    );
+  };
+  const onFlipV = () => {
+    if (!glyph || selectedStrokeIdxs.length === 0) return;
+    const idxs = selectedStrokeIdxs;
+    updateSelectedGlyph((g) =>
+      idxs.reduce((acc, i) => flipStrokeVertical(acc, i, g.box.h / 2), g),
+    );
+  };
+
+  if (!glyph) return <></>;
+
+  return (
+    <>
+      <button onClick={onAddStroke} aria-label="Add stroke" title="Add stroke">
+        <MoritzLabel text="Add stroke" size={12} />
+      </button>
+      <button
+        onClick={onAddAnchor}
+        disabled={selection.kind !== 'anchor' && selection.kind !== 'stroke'}
+        title="Insert anchor at midpoint of the segment after the selected anchor"
+        aria-label="Add anchor"
+      >
+        <MoritzLabel text="Add anchor" size={12} />
+      </button>
+      <button
+        onClick={onDeleteSelected}
+        disabled={selectedStrokeIdxs.length === 0 && selection.kind !== 'anchor'}
+        aria-label="Delete selected"
+        title="Delete selected"
+      >
+        <MoritzLabel text="Delete selected" size={12} />
+      </button>
+      <button
+        onClick={onFlipH}
+        disabled={selectedStrokeIdxs.length === 0}
+        title="Mirror the selected stroke(s) around the glyph box's vertical centre line"
+        aria-label="Flip horizontal"
+      >
+        <MoritzLabel text="Flip H" size={12} />
+      </button>
+      <button
+        onClick={onFlipV}
+        disabled={selectedStrokeIdxs.length === 0}
+        title="Mirror the selected stroke(s) around the glyph box's horizontal centre line"
+        aria-label="Flip vertical"
+      >
+        <MoritzLabel text="Flip V" size={12} />
+      </button>
+      <label
+        style={{
+          fontSize: 12,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
+          width: 110,
+          flexShrink: 0,
+          visibility: selectedAnchor && selection.kind === 'anchor' ? 'visible' : 'hidden',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={selectedAnchor?.breakTangent === true}
+          disabled={!(selectedAnchor && selection.kind === 'anchor')}
+          onChange={(e) => {
+            if (selection.kind !== 'anchor') return;
+            updateSelectedGlyph((g) =>
+              setBreakTangent(g, selection.strokeIdx, selection.vIdx, e.target.checked),
+            );
+          }}
+        />
+        <MoritzLabel text="Break tangent" size={11} />
+      </label>
+      <span
+        style={{ color: 'var(--mz-text-mute)', fontSize: 11 }}
+        title="Drag anchors / handles. Drag stroke body = move whole stroke. Alt-click stroke = insert anchor. Alt-click anchor = toggle corner/smooth."
+      >
+        (?)
+      </span>
+    </>
+  );
+}
+
 type Drag =
   | { kind: 'anchor'; strokeIdx: number; vIdx: number }
   | { kind: 'handle'; strokeIdx: number; vIdx: number; side: 'in' | 'out' }
@@ -1236,43 +1387,6 @@ export function GlyphEditor(props: {
     (e.target as Element).setPointerCapture(e.pointerId);
   };
 
-  const onAddStroke = () => onChange((g) => addStroke(g));
-  // Indices of all currently-selected strokes (for actions that act on the
-  // selection: copy, delete, flip). Includes the stroke under an anchor
-  // selection and every stroke in a multi-selection.
-  const selectedStrokeIdxs: readonly number[] = (() => {
-    if (selection.kind === 'stroke') return [selection.strokeIdx];
-    if (selection.kind === 'anchor') return [selection.strokeIdx];
-    if (selection.kind === 'multi') return selection.strokeIdxs;
-    return [];
-  })();
-  const onDeleteSelected = () => {
-    if (selection.kind === 'anchor') {
-      onChange((g) => deleteAnchor(g, selection.strokeIdx, selection.vIdx));
-      setSelection({ kind: 'none' });
-      return;
-    }
-    if (selectedStrokeIdxs.length === 0) return;
-    // Delete from highest index downward so earlier indices stay valid.
-    const idxs = [...selectedStrokeIdxs].sort((a, b) => b - a);
-    onChange((g) => idxs.reduce((acc, i) => deleteStroke(acc, i), g));
-    setSelection({ kind: 'none' });
-  };
-  const onFlipH = () => {
-    if (selectedStrokeIdxs.length === 0) return;
-    const idxs = selectedStrokeIdxs;
-    onChange((g) =>
-      idxs.reduce((acc, i) => flipStrokeHorizontal(acc, i, g.box.w / 2), g),
-    );
-  };
-  const onFlipV = () => {
-    if (selectedStrokeIdxs.length === 0) return;
-    const idxs = selectedStrokeIdxs;
-    onChange((g) =>
-      idxs.reduce((acc, i) => flipStrokeVertical(acc, i, g.box.h / 2), g),
-    );
-  };
-
   // Pointer-down on a stroke path:
   //   - Alt-click: insert anchor at the closest segment's midpoint (no drag).
   //   - Plain: select the stroke and start a drag-to-translate. If the
@@ -1337,11 +1451,6 @@ export function GlyphEditor(props: {
     };
     (e.target as Element).setPointerCapture(e.pointerId);
   };
-
-  const selectedAnchor =
-    selection.kind === 'anchor'
-      ? glyph.strokes[selection.strokeIdx]?.vertices[selection.vIdx]
-      : undefined;
 
   // ---------- Copy / paste of strokes ---------------------------------------
   // Ctrl/Cmd+C copies the currently selected stroke (or the stroke containing
@@ -1469,128 +1578,33 @@ export function GlyphEditor(props: {
           position: 'relative',
         }}
       >
-        <div
-          className="mz-glyphsetter__toolbar"
-          style={{
-            position: 'absolute',
-            left: '50%',
-            bottom: 8,
-            transform: 'translateX(-50%)',
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 10,
-            padding: '4px 10px',
-            background: 'var(--mz-paper)',
-            border: '1px solid var(--mz-line)',
-            borderRadius: 4,
-            boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
-            fontSize: 13,
-            flexShrink: 0,
-            boxSizing: 'border-box',
-            minHeight: 32,
-            zIndex: 5,
-          }}
-        >
-          <button onClick={onAddStroke} aria-label="Add stroke" title="Add stroke">
-            <MoritzLabel text="Add stroke" size={12} />
-          </button>
-          <button
-            onClick={() => {
-              // Pick a target stroke + segment to split. Prefer the segment
-              // following the selected anchor (or before, if it's the last
-              // vertex). If only a stroke is selected, split its middle
-              // segment. Bail out otherwise.
-              let strokeIdx = -1;
-              let segIdx = -1;
-              if (selection.kind === 'anchor') {
-                const s = glyph.strokes[selection.strokeIdx];
-                if (!s) return;
-                strokeIdx = selection.strokeIdx;
-                segIdx =
-                  selection.vIdx < s.vertices.length - 1
-                    ? selection.vIdx
-                    : selection.vIdx - 1;
-              } else if (selection.kind === 'stroke') {
-                const s = glyph.strokes[selection.strokeIdx];
-                if (!s || s.vertices.length < 2) return;
-                strokeIdx = selection.strokeIdx;
-                segIdx = Math.floor((s.vertices.length - 1) / 2);
-              } else {
-                return;
-              }
-              if (strokeIdx < 0 || segIdx < 0) return;
-              onChange((g) => insertAnchor(g, strokeIdx, segIdx, 0.5));
-              // Newly inserted anchor lands at segIdx + 1; select it.
-              setSelection({ kind: 'anchor', strokeIdx, vIdx: segIdx + 1 });
-            }}
-            disabled={selection.kind !== 'anchor' && selection.kind !== 'stroke'}
-            title="Insert a new anchor at the midpoint of the segment after the selected anchor (or in the middle of the selected stroke). Tip: alt-click a stroke to insert at the click point."
-            aria-label="Add anchor"
-          >
-            <MoritzLabel text="Add anchor" size={12} />
-          </button>
-          <button
-            onClick={onDeleteSelected}
-            disabled={selectedStrokeIdxs.length === 0 && selection.kind !== 'anchor'}
-            aria-label="Delete selected"
-            title="Delete selected"
-          >
-            <MoritzLabel text="Delete selected" size={12} />
-          </button>
-          <button
-            onClick={onFlipH}
-            disabled={selectedStrokeIdxs.length === 0}
-            title="Mirror the selected stroke(s) around the glyph box's vertical centre line"
-            aria-label="Flip horizontal"
-          >
-            <MoritzLabel text="Flip H" size={12} />
-          </button>
-          <button
-            onClick={onFlipV}
-            disabled={selectedStrokeIdxs.length === 0}
-            title="Mirror the selected stroke(s) around the glyph box's horizontal centre line"
-            aria-label="Flip vertical"
-          >
-            <MoritzLabel text="Flip V" size={12} />
-          </button>
-          {/* Reserved slot for the per-anchor 'Break tangent' control so
-              the bar layout doesn't shift when an anchor is selected. */}
-          <label
+        {extraToolbar && (
+          <div
+            className="mz-glyphsetter__toolbar"
             style={{
-              fontSize: 12,
+              position: 'absolute',
+              left: '50%',
+              bottom: 8,
+              transform: 'translateX(-50%)',
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 4,
-              width: 110,
+              justifyContent: 'center',
+              gap: 10,
+              padding: '4px 10px',
+              background: 'var(--mz-paper)',
+              border: '1px solid var(--mz-line)',
+              borderRadius: 4,
+              boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+              fontSize: 13,
               flexShrink: 0,
-              visibility:
-                selectedAnchor && selection.kind === 'anchor'
-                  ? 'visible'
-                  : 'hidden',
+              boxSizing: 'border-box',
+              minHeight: 32,
+              zIndex: 5,
             }}
           >
-            <input
-              type="checkbox"
-              checked={selectedAnchor?.breakTangent === true}
-              disabled={!(selectedAnchor && selection.kind === 'anchor')}
-              onChange={(e) => {
-                if (selection.kind !== 'anchor') return;
-                onChange((g) =>
-                  setBreakTangent(g, selection.strokeIdx, selection.vIdx, e.target.checked),
-                );
-              }}
-            />
-            <MoritzLabel text="Break tangent" size={11} />
-          </label>
-          {extraToolbar}
-          <span
-            style={{ color: 'var(--mz-text-mute)', fontSize: 11 }}
-            title="Drag anchors / handles. Drag stroke body = move whole stroke. Alt-click stroke = insert anchor. Alt-click anchor = toggle corner/smooth."
-          >
-            (?)
-          </span>
-        </div>
+            {extraToolbar}
+          </div>
+        )}
         <div
           ref={wrapRef}
           className={
