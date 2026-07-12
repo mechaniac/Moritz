@@ -55,8 +55,7 @@ Tested with Node 20+.
 ## Moritz Suite
 
 Moritz contributes one Christof product module: `moritz`. The host workbench
-topbar also registers sibling product modules from Luise: `sigrid`, `luise`,
-`magdalena`, and `anita`.
+topbar also registers shared Christof package modules: `sigrid`, `magdalena`, and `anita`.
 
 Inside Moritz, the four editor work areas are internal documents/views:
 
@@ -65,8 +64,7 @@ Inside Moritz, the four editor work areas are internal documents/views:
 - `moritz.stylePreview`: StyleSetter.
 - `moritz.page`: TypeSetter.
 
-The global topbar is for products such as Sigrid, Luise, Magdalena, Anita, and
-Moritz. GlyphSetter, BubbleSetter, StyleSetter, and TypeSetter stay inside the
+The global topbar is for products such as Sigrid, Magdalena, Anita, and Moritz. GlyphSetter, BubbleSetter, StyleSetter, and TypeSetter stay inside the
 Moritz leftbar/view switcher until they are intentionally split into reusable
 packages.
 

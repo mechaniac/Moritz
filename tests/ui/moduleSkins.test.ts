@@ -26,7 +26,6 @@ describe('moritz module skins', () => {
     expect(moritzModules.map((module) => module.id)).toEqual([
       'moritz',
       'sigrid',
-      'luise',
       'magdalena',
       'anita',
     ]);

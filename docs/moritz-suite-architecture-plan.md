@@ -4,7 +4,7 @@ Status: implemented
 Date: 2026-06-21
 
 Moritz is one loadable Christof product. The global workbench topbar should
-show Moritz once, next to products such as Sigrid, Luise, Magdalena, and Anita.
+show Moritz once, next to products such as Sigrid, Magdalena, and Anita.
 GlyphSetter, BubbleSetter, StyleSetter, and TypeSetter are Moritz-internal
 work areas until they are deliberately split into independently reusable
 packages.
@@ -12,8 +12,7 @@ packages.
 ## Target Shape
 
 - [x] Register exactly one Moritz `cModule` with id `moritz`.
-- [x] Register sibling product modules `sigrid`, `luise`, `magdalena`, and
-  `anita` in the same topbar.
+- [x] Register sibling package modules `sigrid`, `magdalena`, and `anita` in the same topbar.
 - [x] Keep four Moritz documents/views:
   - `moritz.font` for GlyphSetter.
   - `moritz.bubbleFont` for BubbleSetter.
@@ -48,4 +47,4 @@ tests, no hidden Zustand coupling to the suite, and a clear consumer story.
   warning.
 - `npm.cmd run check:luise-migration`: passed.
 - Browser smoke at `http://127.0.0.1:5177/`: HTTP 200; screenshot confirmed
-  topbar modules `moritz`, `sigrid`, `luise`, `magdalena`, and `anita`.
+  topbar modules `moritz`, `sigrid`, `magdalena`, and `anita`.

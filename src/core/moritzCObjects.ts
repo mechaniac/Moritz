@@ -1,4 +1,11 @@
 import { cNodeById, createCObject, type cObject } from '@christof/sigrid/core';
+import {
+  createGlyph,
+  createStroke,
+  type SplineVertex,
+  type StrokeCap,
+  type StrokeWidthProfile,
+} from '@christof/sigrid/glyph';
 import type {
   Block,
   BlockBubble,
@@ -9,6 +16,7 @@ import type {
   Glyph,
   Stroke,
 } from './types.js';
+import type { CapShape, Vertex, WidthProfile } from './types.js';
 
 export type GlyphObjectSelection =
   | { kind: 'none' }
@@ -604,9 +612,12 @@ function glyphToCObjectAtBase(
     readonly data: Readonly<Record<string, unknown>>;
   },
 ): cObject {
-  return groupObject(
-    baseId,
-    [
+  return createGlyph({
+    cId: baseId,
+    grapheme: glyph.char,
+    width: glyph.box.w,
+    height: glyph.box.h,
+    strokes: [
       ...(glyph.animator
         ? [
             groupObject(
@@ -623,60 +634,19 @@ function glyphToCObjectAtBase(
         : []),
       ...glyph.strokes.map((stroke, strokeIdx) => strokeToCObject(baseId, stroke, strokeIdx)),
     ],
-    {
-      role: 'glyph',
-      label: input.label,
-      componentKind: 'moritz.glyph',
-      data: input.data,
-    },
-  );
+    tags: ['moritz', 'moritz.glyph'],
+  });
 }
 
 function strokeToCObject(baseId: string, stroke: Stroke, strokeIdx: number): cObject {
-  return groupObject(
-    strokeCObjectIdForBase(baseId, strokeIdx),
-    stroke.vertices.map((_, vIdx) => anchorToCObject(baseId, strokeIdx, vIdx)),
-    {
-      role: 'stroke',
-      label: `Stroke ${strokeIdx + 1}`,
-      componentKind: 'moritz.stroke',
-      data: { strokeIdx },
-    },
-  );
-}
-
-function anchorToCObject(baseId: string, strokeIdx: number, vIdx: number): cObject {
-  return groupObject(
-    anchorCObjectIdForBase(baseId, strokeIdx, vIdx),
-    [
-      groupObject(
-        handleCObjectIdForBase(baseId, strokeIdx, vIdx, 'in'),
-        [],
-        {
-          role: 'handle',
-          label: `In handle ${strokeIdx + 1}.${vIdx + 1}`,
-          componentKind: 'moritz.handle',
-          data: { strokeIdx, vIdx, side: 'in' },
-        },
-      ),
-      groupObject(
-        handleCObjectIdForBase(baseId, strokeIdx, vIdx, 'out'),
-        [],
-        {
-          role: 'handle',
-          label: `Out handle ${strokeIdx + 1}.${vIdx + 1}`,
-          componentKind: 'moritz.handle',
-          data: { strokeIdx, vIdx, side: 'out' },
-        },
-      ),
-    ],
-    {
-      role: 'anchor',
-      label: `Anchor ${strokeIdx + 1}.${vIdx + 1}`,
-      componentKind: 'moritz.anchor',
-      data: { strokeIdx, vIdx },
-    },
-  );
+  return createStroke({
+    cId: strokeCObjectIdForBase(baseId, strokeIdx),
+    vertices: stroke.vertices.map((v) => vertexToSplineVertex(v)),
+    width: stroke.width ? widthProfileToSigrid(stroke.width) : undefined,
+    capStart: stroke.capStart ? capShapeToSigrid(stroke.capStart) : undefined,
+    capEnd: stroke.capEnd ? capShapeToSigrid(stroke.capEnd) : undefined,
+    tags: ['moritz', 'moritz.stroke'],
+  });
 }
 
 function glyphAnimatorCObjectIdForBase(baseId: string): string {
@@ -688,11 +658,14 @@ function strokeCObjectIdForBase(baseId: string, strokeIdx: number): string {
 }
 
 function anchorCObjectIdForBase(baseId: string, strokeIdx: number, vIdx: number): string {
-  return `${strokeCObjectIdForBase(baseId, strokeIdx)}.anchor.${vIdx}`;
+  // Matches sigrid's createStroke vertex ID scheme: `<strokeId>:vertex:<index>`
+  return `${strokeCObjectIdForBase(baseId, strokeIdx)}:vertex:${vIdx}`;
 }
 
 function handleCObjectIdForBase(baseId: string, strokeIdx: number, vIdx: number, side: 'in' | 'out'): string {
-  return `${anchorCObjectIdForBase(baseId, strokeIdx, vIdx)}.handle.${side}`;
+  // Handles are not separate cObjects in sigrid, but we keep the convention
+  // for Moritz's selection model (the editor differentiates handle vs anchor).
+  return `${anchorCObjectIdForBase(baseId, strokeIdx, vIdx)}:handle:${side}`;
 }
 
 function groupObject(
@@ -964,4 +937,25 @@ function labelForChar(char: string): string {
 
 function encodeIdPart(value: string): string {
   return encodeURIComponent(value).replace(/\./g, '%2E');
+}
+
+// --- Moritz → Sigrid type converters ---
+
+function vertexToSplineVertex(v: Vertex): SplineVertex {
+  return {
+    point: v.p,
+    inHandle: v.inHandle,
+    outHandle: v.outHandle,
+    ...(v.breakTangent ? { breakTangent: true } : {}),
+    ...(v.normalOverride ? { normalOverride: v.normalOverride } : {}),
+  };
+}
+
+function widthProfileToSigrid(profile: WidthProfile): StrokeWidthProfile {
+  return { samples: profile.samples };
+}
+
+function capShapeToSigrid(cap: CapShape): StrokeCap {
+  if (cap === 'round' || cap === 'flat' || cap === 'tapered') return cap;
+  return { kind: 'custom', vertices: cap.path.map(vertexToSplineVertex) };
 }

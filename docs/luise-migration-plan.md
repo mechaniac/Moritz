@@ -19,8 +19,7 @@ page, and editor behavior.
 - [x] Register Moritz as one real `cModule`; keep GlyphSetter, BubbleSetter,
   StyleSetter, and TypeSetter as Moritz-internal documents/views bound into
   workbench slots.
-- [x] Register sibling product modules `sigrid`, `luise`, `magdalena`, and
-  `anita` alongside Moritz in the workbench topbar.
+- [x] Register sibling package modules `sigrid`, `magdalena`, and `anita` alongside Moritz in the workbench topbar.
 - [x] Build workspace word weights through Magdalena and pass them into the
   workbench props.
 - [x] Keep Zustand only for editor-internal domain state during this migration
@@ -51,4 +50,4 @@ page, and editor behavior.
   `node_modules/@christof/sigrid`
   resolve to junctions under `C:\cWORK\Luise\packages`.
 - Browser smoke at `http://127.0.0.1:5177/`: HTTP 200; screenshot confirmed
-  topbar modules `moritz`, `sigrid`, `luise`, `magdalena`, and `anita`.
+  topbar modules `moritz`, `sigrid`, `magdalena`, and `anita`.

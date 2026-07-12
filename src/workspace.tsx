@@ -6,7 +6,7 @@ import {
   makeMagdalena,
 } from '@christof/magdalena';
 import { createDefaultRegistry } from '@christof/magdalena/registry';
-import type { MBinding, MWorkspaceManifest } from '@christof/magdalena/workspace';
+import { createDefaultSkins } from '@christof/magdalena/skins';
 import {
   AnitaTreesView,
   anitaDefaultScope,
@@ -22,6 +22,7 @@ import {
   cToggleCollapse,
   createCObject,
   createCWorkbench,
+  type cBinding,
   type cBindingContext,
   type cModule,
   type cObject,
@@ -79,11 +80,6 @@ export const moritzModule: cModule = {
   gateway: {},
 };
 
-export const luiseModule: cModule = {
-  id: 'luise',
-  skin: { bg: '#1f8a3d', fg: '#ff7ad0' },
-  gateway: {},
-};
 
 const sigridModule = makeSigrid();
 const magdalenaModule = makeMagdalena();
@@ -92,56 +88,63 @@ const anitaModule = makeAnita(loadAnitaManifest);
 export const moritzModules: readonly cModule[] = [
   moritzModule,
   sigridModule,
-  luiseModule,
   magdalenaModule,
   anitaModule,
 ];
 
-const moritzViewportBinding: MBinding = {
+/**
+ * Moritz bindings produce React virtual elements (not DOM nodes). The runtime
+ * in app-mount.ts casts the manifest to `MWorkspaceRuntimeManifest<ReactElement>`
+ * so the generic plumbing is consistent. We use a local alias here instead of
+ * magdalena's `MBinding` which now expects `HTMLElement | null`.
+ */
+type MoritzBinding = cBinding<ReactElement>;
+
+const moritzViewportBinding: MoritzBinding = {
   id: 'moritz.viewport',
   slot: 'viewport',
   activeWhen: cActiveWhenModule(MORITZ_MODULE_ID),
   render: (ctx) => <MoritzViewport viewId={activeMoritzView(ctx)} />,
 };
 
-const moritzLeftbarBinding: MBinding = {
+const moritzLeftbarBinding: MoritzBinding = {
   id: 'moritz.leftbar',
   slot: 'leftbar',
   activeWhen: cActiveWhenModule(MORITZ_MODULE_ID),
   render: (ctx) => <MoritzLeftbar ctx={ctx} />,
 };
 
-const moritzWorkbenchSettingsBinding: MBinding = {
+const moritzWorkbenchSettingsBinding: MoritzBinding = {
   id: 'moritz.workbenchSettings',
   slot: 'workbenchSettings',
   activeWhen: cActiveWhenModule(MORITZ_MODULE_ID),
   render: (ctx) => <MoritzWorkbenchSettings viewId={activeMoritzView(ctx)} />,
 };
 
-const anitaViewportBinding: MBinding = {
+const anitaViewportBinding: MoritzBinding = {
   id: 'anita.viewport',
   slot: 'viewport',
   activeWhen: cActiveWhenModule('anita'),
   render: (ctx) => <AnitaViewport ctx={ctx} />,
 };
 
-const productGraphViewportBinding: MBinding = {
+const productGraphViewportBinding: MoritzBinding = {
   id: 'christof.productGraph.viewport',
   slot: 'viewport',
   activeWhen: (ctx) => productGraphModules.has(ctx.state.activeModuleId),
   render: (ctx) => <ProductGraphViewport ctx={ctx} />,
 };
 
-const productTreeBrowserBinding: MBinding = {
+const productTreeBrowserBinding: MoritzBinding = {
   id: 'christof.productTreeBrowser.leftbar',
   slot: 'leftbar',
   activeWhen: (ctx) => ctx.state.activeModuleId !== MORITZ_MODULE_ID,
   render: (ctx) => <ProductTreeBrowser ctx={ctx} />,
 };
 
-const productGraphModules = new Set(['sigrid', 'luise', 'magdalena']);
+const productGraphModules = new Set(['sigrid', 'magdalena']);
 
-const moritzBindings: readonly MBinding[] = [
+const moritzBindings: readonly MoritzBinding[] = [
   moritzViewportBinding,
   moritzLeftbarBinding,
   moritzWorkbenchSettingsBinding,
@@ -229,7 +232,6 @@ const moritzWorkspaceConfig: cWorkspaceConfig = {
     documentByModule: {
       [MORITZ_MODULE_ID]: moritzDocumentIds.glyphsetter,
       sigrid: moritzDocumentIds.glyphsetter,
-      luise: PRODUCT_REGISTRY_DOCUMENT_ID,
       magdalena: APP_DOCUMENT_ID,
       anita: anitaProjectStatus.ok
         ? ANITA_FUNCTIONAL_DOCUMENT_ID
@@ -239,10 +241,10 @@ const moritzWorkspaceConfig: cWorkspaceConfig = {
   },
 };
 
-export const moritzWorkspace: MWorkspaceManifest = {
+export const moritzWorkspace = {
   config: moritzWorkspaceConfig,
   bindings: moritzBindings,
-};
+} satisfies { config: cWorkspaceConfig; bindings: readonly MoritzBinding[] };
 
 function buildFunctionalGraphDocument(): cObject {
   const manifest = loadAnitaManifest();
@@ -277,7 +279,7 @@ function createProductRegistry(): cObject {
     cId: 'moritz:products',
     kind: 'moritz.products',
     description: 'Product-level cModules registered in the Moritz host workbench.',
-    tags: ['moritz', 'luise'],
+    tags: ['moritz', 'christof'],
     children: moritzModules.map((module) =>
       createCObject({
         cId: `product:${module.id}`,
@@ -314,20 +316,7 @@ function createMoritzAppTree(): cObject {
 }
 
 function createMoritzSkins(): cObject {
-  return createCObject({
-    cId: 'magdalena:skins',
-    kind: 'magdalena.skins',
-    description: 'Magdalena skin records for the product modules Moritz registers.',
-    tags: ['magdalena', 'moritz'],
-    children: moritzModules.map((module) =>
-      createCObject({
-        cId: `magdalena:skin:${module.id}`,
-        kind: 'magdalena.skin',
-        tags: ['magdalena', module.id],
-        extras: module.skin,
-      }),
-    ),
-  });
+  return createDefaultSkins([moritzModule, 'sigrid', 'magdalena', 'anita']);
 }
 
 function createMoritzRegistry(): cObject {
@@ -529,7 +518,6 @@ const LEFTBAR_BY_MODULE: Readonly<Record<string, LeftbarSpec>> = {
     ],
     defaultDocId: moritzDocumentIds.glyphsetter,
   },
-  luise: { docIds: [PRODUCT_REGISTRY_DOCUMENT_ID], defaultDocId: PRODUCT_REGISTRY_DOCUMENT_ID },
   magdalena: {
     docIds: [APP_DOCUMENT_ID, 'skins', REGISTRY_DOCUMENT_ID],
     defaultDocId: APP_DOCUMENT_ID,
