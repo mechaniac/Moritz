@@ -141,21 +141,13 @@ cObjects (step 1–2 of the notice). Parity fixtures written in
 - Tapered caps: narrower than flat at endpoints
 - Variable width profiles: widen/narrow correctly
 
-**Gaps in `outlineSplineStroke` (donation candidates from Moritz):**
+**Gaps in `outlineSplineStroke` — updated 2026-07-12:**
 
-1. **Miter/bevel join** — sigrid reaches correct extent (maxX=105 for 90° corner)
-   but does not produce a single clean miter intersection point. Moritz
-   `stroke.ts` has miter join with bevel fallback for acute angles.
+1. ~~**Miter/bevel join**~~ — resolved in sigrid `4d1298f`. No longer a gap.
 
-2. **Normal-override in outlining** — sigrid stores `normalOverride` on
-   `SplineVertex` (data accepted) but `outlineSplineStroke` ignores it. Width at
-   start stays at default half-width (5) instead of the override magnitude (8).
-   Moritz `stroke.ts` interpolates normalOverride's angle and magnitude along
-   segments with smooth blending.
+2. ~~**Normal-override in outlining**~~ — resolved in sigrid `4d1298f`. No longer a gap.
 
-**Ready to donate (with fixtures):**
-- Miter/bevel join logic (`stroke.ts` lines ~380–480)
-- Normal-override interpolation along segments (`stroke.ts` vertexFrameAt + blending)
+**Optional donations (not gaps, just nice-to-have):**
 - Adaptive sampling / flatness tolerance (reduces vertex count for straight sections)
 - World-blend orientation (hybrid tangent/world nib direction)
 
