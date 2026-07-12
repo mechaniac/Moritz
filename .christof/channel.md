@@ -61,6 +61,73 @@ sigrid document if there were accepted facet kind names.
 The missing target package was resolved by `@christof/sigrid/glyph`. Moritz can
 now start fixture-gated extraction using the notice below.
 
+### 2026-07-12 | Workbench chrome needs binding slots — per-module suppression
+
+Moritz provides its own viewport, leftbar, and workbenchSettings via bindings.
+But three pieces of workbench chrome are hardcoded in magdalena and cannot be
+controlled per-module:
+
+1. **HUD** (2D/q/e/r/object/debug toolbar) — always renders when any viewport
+   is shown. Moritz doesn't use sigrid's transform tools; the HUD is noise.
+2. **Floating attributes inspector** (cObject position/rotation/scale fields) —
+   always renders for any selected node. When Moritz is active, this overlaps
+   the Moritz settings bar and shows transform properties that don't apply to
+   glyphs, bubbles, or pages.
+3. **Rightbar "workbench" tab** (VIEW/GEOMETRY/SKIN functions) — always shows.
+   These are scene-graph manipulation verbs. Moritz has its own editor verbs
+   in the settings bar and leftbar attrs; the workbench tab adds irrelevant
+   controls.
+
+**What Moritz tried and reverted:**
+
+We added `props.viewport !== undefined` guards to suppress all three in
+magdalena's `shell.tsx`. This fixed Moritz but broke sigrid — sigrid also
+provides a viewport binding (`productGraphViewportBinding`) and still needs the
+HUD. The condition was too coarse; `viewport !== undefined` ≠ "suppress chrome".
+
+**What we need from sigrid/magdalena:**
+
+The correct mechanism is per-module chrome policy on `cModule` or as a binding:
+
+```ts
+// Option A: per-module chrome flags on cModule
+type cModule = {
+  id: string;
+  skin: cModuleSkin;
+  gateway: Record<string, cGatewayFunction>;
+  chrome?: {
+    hud?: boolean;              // default true — show 2D/3D/transform toolbar
+    floatingAttributes?: boolean; // default true — show cObject transform inspector
+    workbenchTab?: boolean;     // default true — show rightbar "workbench" tab
+  };
+};
+
+// Option B: binding slots (consistent with viewport/leftbar/workbenchSettings)
+// Register a binding with slot 'hud' or 'floatingAttributes' that replaces
+// or returns null to suppress.
+```
+
+Option A is simpler and sufficient. Option B is more flexible (allows custom
+HUDs) but we don't need that yet. Either way, the rule is: **each c app
+mutates the outliner, the workbench (including its chrome), and the rightbar
+to its liking.** The workbench is a canvas — modules paint on it. Moritz would
+set `hud: false, floatingAttributes: false` and expose its own tools through
+the existing `workbenchSettings` binding slot.
+
+**What can be donated to sigrid (used by 2+ apps):**
+
+The concept of a `workbenchSettings` bar (bottom toolbar with app-specific
+controls) is Moritz-specific today but generalizable. Any app that provides a
+custom viewport likely wants its own settings bar. The binding slot already
+exists in magdalena — just needs to be documented as the standard pattern.
+
+**Current workaround in Moritz:**
+
+None — the floating attributes and HUD show unconditionally and overlap. We
+accept the visual noise until magdalena adds per-module chrome policy.
+
+---
+
 ### 2026-07-12 | Integration done + parity gaps documented
 
 Moritz adapter now emits `sigrid.glyph`, `sigrid.stroke`, `sigrid.splineVertex`

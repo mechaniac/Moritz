@@ -1,9 +1,7 @@
 import {
   createMWorkspaceRuntime,
-  type MWorkspaceRuntimeManifest,
 } from '@christof/magdalena/workspace';
 import { mountWorkbench, type MountedWorkbench } from '@christof/magdalena/mounts';
-import type { ReactElement } from 'react';
 import type { cObject, Vec3 } from '@christof/sigrid/core';
 import { MORITZ_MODULE_ID } from './moduleSkins.js';
 import { subscribeGlyphSetterSelection } from './modules/glyphsetter/GlyphSetter.js';
@@ -33,9 +31,7 @@ export function mountMoritzApp(host: HTMLElement): MountedMoritzApp {
 
   let workbench: MountedWorkbench | undefined;
   let interfaceTree: cObject | undefined;
-  const runtime = createMWorkspaceRuntime<ReactElement>(
-    moritzWorkspace as unknown as MWorkspaceRuntimeManifest<ReactElement>,
-  );
+  const runtime = createMWorkspaceRuntime(moritzWorkspace);
 
   const unsubscribeRuntime = runtime.subscribe(render);
   const unsubscribeApp = useAppStore.subscribe(render);

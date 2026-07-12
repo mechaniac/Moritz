@@ -48,10 +48,11 @@ import type {
   StyleSettings,
   Vec2,
 } from '../../core/types.js';
+import { DomBridge } from '../../ui/DomBridge.js';
 
 const MoritzMOutliner = MOutliner as unknown as (
   props: Parameters<typeof MOutliner>[0],
-) => JSX.Element;
+) => HTMLElement | null;
 
 /**
  * Editing target consumed by the BubbleSetter editor (LayerList,
@@ -512,13 +513,13 @@ function BubbleCObjectOutliner(props: {
   );
   if (!bubbleNode) return null;
   return (
-    <MoritzMOutliner
-      root={bubbleNode}
-      selectedId={props.selection.selected?.cId}
-      onSelect={(id) => {
+    <DomBridge node={MoritzMOutliner({
+      root: bubbleNode,
+      selectedId: props.selection.selected?.cId,
+      onSelect: (id) => {
         if (id) props.onSelect(id);
-      }}
-    />
+      },
+    })} />
   );
 }
 

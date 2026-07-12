@@ -1,4 +1,3 @@
-import type { ReactElement } from 'react';
 import type { MFunctionCallHandler } from '@christof/magdalena/panels';
 import type { MWorkbenchProps } from '@christof/magdalena';
 import { mBuildWordWeightsForScope } from '@christof/magdalena/word-weight';
@@ -14,7 +13,7 @@ import {
   moritzViewIds,
 } from './workspaceTrees.js';
 
-type MoritzWorkspaceSnapshot = MWorkspaceRuntimeSnapshot<ReactElement>;
+type MoritzWorkspaceSnapshot = MWorkspaceRuntimeSnapshot<HTMLElement | null>;
 
 export interface MoritzWorkbenchHandlers {
   readonly onTreeChange: (next: cObject) => void;

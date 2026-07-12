@@ -1,9 +1,12 @@
 import type { CSSProperties, ReactElement } from 'react';
+import { createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import {
   MProjectAlert,
   MTreeBrowser,
   MTreeGraph,
   makeMagdalena,
+  type MWorkspaceManifest,
 } from '@christof/magdalena';
 import { createDefaultRegistry } from '@christof/magdalena/registry';
 import { createDefaultSkins } from '@christof/magdalena/skins';
@@ -24,6 +27,7 @@ import {
   createCWorkbench,
   type cBinding,
   type cBindingContext,
+  type cBindingSlot,
   type cModule,
   type cObject,
   type cWorkspaceConfig,
@@ -93,58 +97,95 @@ export const moritzModules: readonly cModule[] = [
 ];
 
 /**
- * Moritz bindings produce React virtual elements (not DOM nodes). The runtime
- * in app-mount.ts casts the manifest to `MWorkspaceRuntimeManifest<ReactElement>`
- * so the generic plumbing is consistent. We use a local alias here instead of
- * magdalena's `MBinding` which now expects `HTMLElement | null`.
+ * Moritz-internal bindings produce React virtual elements. Magdalena's shell
+ * expects real HTMLElements. `reactBinding` bridges the two: it creates a
+ * persistent container + React root, and on each `render()` call updates
+ * the React tree inside it, returning the same container element every time.
  */
-type MoritzBinding = cBinding<ReactElement>;
+type MoritzDomBinding = cBinding<HTMLElement | null>;
 
-const moritzViewportBinding: MoritzBinding = {
-  id: 'moritz.viewport',
-  slot: 'viewport',
-  activeWhen: cActiveWhenModule(MORITZ_MODULE_ID),
-  render: (ctx) => <MoritzViewport viewId={activeMoritzView(ctx)} />,
-};
+function reactBinding(
+  id: string,
+  slot: cBindingSlot | string,
+  activeWhen: ((ctx: cBindingContext) => boolean) | undefined,
+  renderFn: (ctx: cBindingContext) => ReactElement,
+): MoritzDomBinding {
+  let container: HTMLElement | undefined;
+  let root: Root | undefined;
+  return {
+    id,
+    slot,
+    activeWhen,
+    render(ctx) {
+      if (!container) {
+        container = document.createElement('div');
+        container.className = `mz-binding mz-binding--${id.replace(/\./g, '-')}`;
+        container.style.display = 'contents';
+        root = createRoot(container);
+      }
+      root!.render(renderFn(ctx));
+      return container;
+    },
+  };
+}
 
-const moritzLeftbarBinding: MoritzBinding = {
-  id: 'moritz.leftbar',
-  slot: 'leftbar',
-  activeWhen: cActiveWhenModule(MORITZ_MODULE_ID),
-  render: (ctx) => <MoritzLeftbar ctx={ctx} />,
-};
+/**
+ * Wrap a magdalena function (returns HTMLElement) as a MoritzDomBinding.
+ */
+function domBinding(
+  id: string,
+  slot: cBindingSlot | string,
+  activeWhen: ((ctx: cBindingContext) => boolean) | undefined,
+  renderFn: (ctx: cBindingContext) => HTMLElement | null,
+): MoritzDomBinding {
+  return { id, slot, activeWhen, render: renderFn };
+}
 
-const moritzWorkbenchSettingsBinding: MoritzBinding = {
-  id: 'moritz.workbenchSettings',
-  slot: 'workbenchSettings',
-  activeWhen: cActiveWhenModule(MORITZ_MODULE_ID),
-  render: (ctx) => <MoritzWorkbenchSettings viewId={activeMoritzView(ctx)} />,
-};
+const moritzViewportBinding = reactBinding(
+  'moritz.viewport',
+  'viewport',
+  cActiveWhenModule(MORITZ_MODULE_ID),
+  (ctx) => createElement(MoritzViewport, { viewId: activeMoritzView(ctx) }),
+);
 
-const anitaViewportBinding: MoritzBinding = {
-  id: 'anita.viewport',
-  slot: 'viewport',
-  activeWhen: cActiveWhenModule('anita'),
-  render: (ctx) => <AnitaViewport ctx={ctx} />,
-};
+const moritzLeftbarBinding = reactBinding(
+  'moritz.leftbar',
+  'leftbar',
+  cActiveWhenModule(MORITZ_MODULE_ID),
+  (ctx) => createElement(MoritzLeftbar, { ctx }),
+);
 
-const productGraphViewportBinding: MoritzBinding = {
-  id: 'christof.productGraph.viewport',
-  slot: 'viewport',
-  activeWhen: (ctx) => productGraphModules.has(ctx.state.activeModuleId),
-  render: (ctx) => <ProductGraphViewport ctx={ctx} />,
-};
+const moritzWorkbenchSettingsBinding = reactBinding(
+  'moritz.workbenchSettings',
+  'workbenchSettings',
+  cActiveWhenModule(MORITZ_MODULE_ID),
+  (ctx) => createElement(MoritzWorkbenchSettings, { viewId: activeMoritzView(ctx) }),
+);
 
-const productTreeBrowserBinding: MoritzBinding = {
-  id: 'christof.productTreeBrowser.leftbar',
-  slot: 'leftbar',
-  activeWhen: (ctx) => ctx.state.activeModuleId !== MORITZ_MODULE_ID,
-  render: (ctx) => <ProductTreeBrowser ctx={ctx} />,
-};
+const anitaViewportBinding = domBinding(
+  'anita.viewport',
+  'viewport',
+  cActiveWhenModule('anita'),
+  (ctx) => AnitaViewport({ ctx }),
+);
+
+const productGraphViewportBinding = domBinding(
+  'christof.productGraph.viewport',
+  'viewport',
+  (ctx) => productGraphModules.has(ctx.state.activeModuleId),
+  (ctx) => ProductGraphViewport({ ctx }),
+);
+
+const productTreeBrowserBinding = domBinding(
+  'christof.productTreeBrowser.leftbar',
+  'leftbar',
+  (ctx) => ctx.state.activeModuleId !== MORITZ_MODULE_ID,
+  (ctx) => ProductTreeBrowser({ ctx }),
+);
 
 const productGraphModules = new Set(['sigrid', 'magdalena']);
 
-const moritzBindings: readonly MoritzBinding[] = [
+const moritzBindings: readonly MoritzDomBinding[] = [
   moritzViewportBinding,
   moritzLeftbarBinding,
   moritzWorkbenchSettingsBinding,
@@ -241,10 +282,10 @@ const moritzWorkspaceConfig: cWorkspaceConfig = {
   },
 };
 
-export const moritzWorkspace = {
+export const moritzWorkspace: MWorkspaceManifest = {
   config: moritzWorkspaceConfig,
   bindings: moritzBindings,
-} satisfies { config: cWorkspaceConfig; bindings: readonly MoritzBinding[] };
+};
 
 function buildFunctionalGraphDocument(): cObject {
   const manifest = loadAnitaManifest();
@@ -457,11 +498,11 @@ function MoritzWorkbenchSettings(props: { viewId: ModuleId }): ReactElement {
   );
 }
 
-function ProductGraphViewport(props: { ctx: cBindingContext }): ReactElement {
+function ProductGraphViewport(props: { ctx: cBindingContext }): HTMLElement | null {
   const doc = props.ctx.displayedDocument;
-  if (!doc) return <></>;
+  if (!doc) return null;
   const skins = cDocumentById(props.ctx.state, 'skins')?.tree;
-  return asLocalReactElement(MTreeGraph({
+  return MTreeGraph({
     tree: doc.tree,
     selectedId: props.ctx.state.selectionId,
     onSelect: (id) => props.ctx.dispatch({ type: 'setSelection', cObjectId: id }),
@@ -475,17 +516,17 @@ function ProductGraphViewport(props: { ctx: cBindingContext }): ReactElement {
     onSetImportance: (id, value) =>
       props.ctx.dispatch({ type: 'updateActiveTree', tree: cSetImportance(doc.tree, id, value) }),
     skins,
-  }));
+  });
 }
 
-function AnitaViewport(props: { ctx: cBindingContext }): ReactElement {
+function AnitaViewport(props: { ctx: cBindingContext }): HTMLElement | null {
   const doc = props.ctx.displayedDocument;
-  if (!doc) return <></>;
+  if (!doc) return null;
   const skins = cDocumentById(props.ctx.state, 'skins')?.tree;
   if (!anitaProjectStatus.ok && doc.id === ANITA_ALERT_DOCUMENT_ID) {
-    return asLocalReactElement(MProjectAlert({ alert: doc.tree, skins }));
+    return MProjectAlert({ alert: doc.tree, skins });
   }
-  return asLocalReactElement(AnitaTreesView({
+  return AnitaTreesView({
     tree: doc.tree,
     selectedCObjectId: props.ctx.state.selectionId,
     onSelectCObject: (id) => props.ctx.dispatch({ type: 'setSelection', cObjectId: id }),
@@ -499,7 +540,7 @@ function AnitaViewport(props: { ctx: cBindingContext }): ReactElement {
     onSetImportance: (id, value) =>
       props.ctx.dispatch({ type: 'updateActiveTree', tree: cSetImportance(doc.tree, id, value) }),
     skins,
-  }) ?? <></>);
+  }) ?? null;
 }
 
 interface LeftbarSpec {
@@ -527,7 +568,7 @@ const LEFTBAR_BY_MODULE: Readonly<Record<string, LeftbarSpec>> = {
     : { ownerTag: 'anita', docIds: [ANITA_ALERT_DOCUMENT_ID], defaultDocId: ANITA_ALERT_DOCUMENT_ID },
 };
 
-function ProductTreeBrowser(props: { ctx: cBindingContext }): ReactElement {
+function ProductTreeBrowser(props: { ctx: cBindingContext }): HTMLElement | null {
   const moduleId = props.ctx.state.activeModuleId;
   const spec = LEFTBAR_BY_MODULE[moduleId] ?? {};
   const docIds = spec.docIds;
@@ -544,7 +585,7 @@ function ProductTreeBrowser(props: { ctx: cBindingContext }): ReactElement {
     spec.defaultDocId ??
     visible[0]?.id ??
     '';
-  return asLocalReactElement(MTreeBrowser({
+  return MTreeBrowser({
     trees: visible,
     ownerTag: spec.ownerTag,
     pickedId,
@@ -575,9 +616,5 @@ function ProductTreeBrowser(props: { ctx: cBindingContext }): ReactElement {
     },
     skins,
     registry,
-  }));
-}
-
-function asLocalReactElement(node: unknown): ReactElement {
-  return node as ReactElement;
+  });
 }

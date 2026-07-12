@@ -96,10 +96,11 @@ import { useAppStore } from '../../state/store.js';
 import { StyleControls } from '../stylesetter/StyleControls.js';
 import { MoritzLabel } from '../../ui/MoritzText.js';
 import { MoritzSelect } from '../../ui/MoritzSelect.js';
+import { DomBridge } from '../../ui/DomBridge.js';
 
 const MoritzMOutliner = MOutliner as unknown as (
   props: Parameters<typeof MOutliner>[0],
-) => JSX.Element;
+) => HTMLElement | null;
 
 // Module-level clipboard for copied strokes. Persists across glyph switches
 // (the GlyphEditor remounts when `selectedGlyph` changes) and even module
@@ -800,16 +801,16 @@ function GlyphCObjectOutliner(props: {
         borderTop: '1px solid var(--mz-line)',
       }}
     >
-      <MoritzMOutliner
-        root={nodes[0]!}
-        selectedId={props.cObjectSelection.selected?.cId}
-        onSelect={(id) => {
+      <DomBridge node={MoritzMOutliner({
+        root: nodes[0]!,
+        selectedId: props.cObjectSelection.selected?.cId,
+        onSelect: (id) => {
           if (!id) return;
           props.onSelectionChange(
             moritzGlyphObjectSelectionFromCObjectId(props.font, props.selectedChar, id),
           );
-        }}
-      />
+        },
+      })} />
     </div>
   );
 }

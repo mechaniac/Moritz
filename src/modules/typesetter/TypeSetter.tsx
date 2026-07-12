@@ -7,7 +7,7 @@
  * and `italic` (added slant). The same SVG is what gets exported.
  */
 
-import { useLayoutEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { MOutliner } from '@christof/magdalena/panels';
 import type { cObject } from '@christof/sigrid/core';
 import { layout } from '../../core/layout.js';
@@ -54,6 +54,7 @@ import { Section, StyleControls } from '../stylesetter/StyleControls.js';
 import { StrokeOverlay, type Selection } from '../glyphsetter/GlyphSetter.js';
 import { MoritzLabel } from '../../ui/MoritzText.js';
 import { MoritzSelect } from '../../ui/MoritzSelect.js';
+import { DomBridge } from '../../ui/DomBridge.js';
 import {
   moritzTypeSetterObjectSelectionFromCObjectId,
   moritzTypeSetterPageCObjectSelection,
@@ -62,7 +63,7 @@ import {
 
 const MoritzMOutliner = MOutliner as unknown as (
   props: Parameters<typeof MOutliner>[0],
-) => JSX.Element;
+) => HTMLElement | null;
 
 /**
  * Legacy `block.shape` strings ('speech', 'cloud', 'rect') predate the
@@ -114,64 +115,52 @@ export function TypeSetterStage(): JSX.Element {
   const [cam, setCamState] = useState({ zoom: 1, panX: 0, panY: 0 });
   const setCam = (patch: Partial<typeof cam>): void =>
     setCamState((c) => ({ ...c, ...patch }));
-  // Auto-fit until the user touches the camera (wheel, pinch, pan or
-  // explicit Fit). After that we leave the camera alone.
-  const userTouchedRef = useRef(false);
 
-  // Auto-fit page into the surface. Reruns on surface or page resize
-  // until the user takes over.
-  useLayoutEffect(() => {
-    if (userTouchedRef.current) return;
+  /** Compute fit-to-viewport camera for the current surface dimensions. */
+  const computeFit = useCallback((): { zoom: number; panX: number; panY: number } | null => {
     const el = surfaceRef.current;
-    if (!el || pageW <= 0 || pageH <= 0) return;
-    const fit = (): void => {
-      if (userTouchedRef.current) return;
-      const pad = 24;
-      const cw = el.clientWidth;
-      const ch = el.clientHeight;
-      const aw = Math.max(0, cw - pad * 2);
-      const ah = Math.max(0, ch - pad * 2);
-      if (aw <= 0 || ah <= 0) return;
-      const z = Math.min(aw / pageW, ah / pageH);
-      if (!(z > 0) || !Number.isFinite(z)) return;
-      setCamState({
-        zoom: z,
-        panX: (cw - pageW * z) / 2,
-        panY: (ch - pageH * z) / 2,
-      });
-    };
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [pageW, pageH]);
-
-  // Public "Fit" — reset auto-fit so the next layout pass re-centres
-  // the page. We just clear the user-touched flag and force a re-run
-  // by nudging state (no-op patch is enough because the effect's
-  // ResizeObserver will fire on the next frame; for snappier feel we
-  // also recompute now).
-  const onFit = (): void => {
-    userTouchedRef.current = false;
-    const el = surfaceRef.current;
-    if (!el || pageW <= 0 || pageH <= 0) return;
+    if (!el || pageW <= 0 || pageH <= 0) return null;
+    const pad = 24;
     const cw = el.clientWidth;
     const ch = el.clientHeight;
-    const pad = 24;
     const aw = Math.max(0, cw - pad * 2);
     const ah = Math.max(0, ch - pad * 2);
+    if (aw <= 0 || ah <= 0) return null;
     const z = Math.min(aw / pageW, ah / pageH);
-    if (!(z > 0) || !Number.isFinite(z)) return;
-    setCamState({
-      zoom: z,
-      panX: (cw - pageW * z) / 2,
-      panY: (ch - pageH * z) / 2,
+    if (!(z > 0) || !Number.isFinite(z)) return null;
+    return { zoom: z, panX: (cw - pageW * z) / 2, panY: (ch - pageH * z) / 2 };
+  }, [pageW, pageH]);
+
+  // Fit once on mount. Uses a ResizeObserver that fires exactly once
+  // when the surface reaches a usable size (handles async binding
+  // layout), then disconnects. No continuous re-fitting.
+  const fittedRef = useRef(false);
+  useEffect(() => {
+    if (fittedRef.current) return;
+    const el = surfaceRef.current;
+    if (!el || pageW <= 0 || pageH <= 0) return;
+    const tryFit = (): boolean => {
+      const fit = computeFit();
+      if (!fit || fit.zoom < 0.02) return false;
+      setCamState(fit);
+      fittedRef.current = true;
+      return true;
+    };
+    if (tryFit()) return;
+    const ro = new ResizeObserver(() => {
+      if (tryFit()) ro.disconnect();
     });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [computeFit]);
+
+  const onFit = (): void => {
+    const fit = computeFit();
+    if (fit) setCamState(fit);
   };
 
   const onZoomSlider = (nextZoom: number): void => {
     if (!(nextZoom > 0) || !Number.isFinite(nextZoom)) return;
-    userTouchedRef.current = true;
     setCam({ zoom: nextZoom });
   };
 
@@ -185,7 +174,6 @@ export function TypeSetterStage(): JSX.Element {
     maxZoom: 8,
     getCamera: () => camRef.current,
     setCamera: (patch) => {
-      userTouchedRef.current = true;
       setCam(patch);
     },
   });
@@ -210,7 +198,6 @@ export function TypeSetterStage(): JSX.Element {
       startPanY: camRef.current.panY,
     };
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
-    userTouchedRef.current = true;
   };
   const onSurfacePointerMove = (e: React.PointerEvent): void => {
     const d = panDragRef.current;
@@ -1524,13 +1511,13 @@ function TypeSetterCObjectOutliner(props: {
     );
   }
   return (
-    <MoritzMOutliner
-      root={root}
-      selectedId={props.selection.selected?.cId}
-      onSelect={(id) => {
+    <DomBridge node={MoritzMOutliner({
+      root,
+      selectedId: props.selection.selected?.cId,
+      onSelect: (id) => {
         if (id) props.onSelect(id);
-      }}
-    />
+      },
+    })} />
   );
 }
 
