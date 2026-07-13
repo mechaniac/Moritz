@@ -47,6 +47,14 @@ export type CanvasInputConfig = {
    *  - 'none'   — disable panning entirely (e.g. fixed-page workspaces)
    */
   readonly pan?: 'space' | 'middle' | 'both' | 'none';
+  /**
+   * Pan origin convention.
+   *  - 'center' — panX/panY are offsets from the viewport center
+   *               (GlyphSetter, BubbleSetter, StyleSetter).
+   *  - 'topLeft' — panX/panY are offsets from the viewport top-left
+   *                (TypeSetter). Default.
+   */
+  readonly panOrigin?: 'center' | 'topLeft';
 };
 
 /** Pure helper: clamp `zoom` to `[min, max]`. Exported for tests. */
@@ -122,13 +130,12 @@ export function useCanvasInput(
     const target: EventTarget = el;
 
     /**
-     * Cursor-anchored zoom. Keeps the world point under (clientX, clientY)
-     * fixed on screen while the zoom changes. Convention:
+     * Cursor-anchored zoom. Keeps the world point under (sx, sy)
+     * fixed on screen while the zoom changes. sx/sy must be in the
+     * same coordinate frame as panX/panY (center-relative or top-left,
+     * selected by `panOrigin`).
      *   world = (screen - pan) / zoom
      * Solving (s - p) / z = (s - p') / z'  →  p' = s - (s - p) * z'/z.
-     * So we shift pan by `(s - p) * (1 - z'/z)`. Falls back to plain
-     * zoom if the camera has no pan (panX/Y are missing or both 0 and the
-     * caller's setter ignores them).
      */
     const applyAt = (nextZoom: number, sx: number, sy: number): void => {
       const cam = cfgRef.current.getCamera();
@@ -149,8 +156,9 @@ export function useCanvasInput(
       const w = e as WheelEvent;
       w.preventDefault();
       const rect = (el as Element).getBoundingClientRect();
-      const sx = w.clientX - rect.left;
-      const sy = w.clientY - rect.top;
+      const origin = cfgRef.current.panOrigin ?? 'topLeft';
+      const sx = w.clientX - rect.left - (origin === 'center' ? rect.width / 2 : 0);
+      const sy = w.clientY - rect.top - (origin === 'center' ? rect.height / 2 : 0);
       applyAt(
         cfgRef.current.getCamera().zoom * wheelZoomFactor(w.deltaY),
         sx,
@@ -190,8 +198,9 @@ export function useCanvasInput(
         p.preventDefault();
         const arr = Array.from(pts.values());
         const rect = (el as Element).getBoundingClientRect();
-        const mx = (arr[0]!.x + arr[1]!.x) / 2 - rect.left;
-        const my = (arr[0]!.y + arr[1]!.y) / 2 - rect.top;
+        const origin = cfgRef.current.panOrigin ?? 'topLeft';
+        const mx = (arr[0]!.x + arr[1]!.x) / 2 - rect.left - (origin === 'center' ? rect.width / 2 : 0);
+        const my = (arr[0]!.y + arr[1]!.y) / 2 - rect.top - (origin === 'center' ? rect.height / 2 : 0);
         applyAt(startZoom * (dist() / startDist), mx, my);
       }
     };

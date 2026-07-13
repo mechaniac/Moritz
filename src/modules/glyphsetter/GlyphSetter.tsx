@@ -1552,6 +1552,7 @@ export function GlyphEditor(props: {
     minZoom: MIN_EDITOR_SCALE,
     maxZoom: MAX_EDITOR_SCALE,
     pan: 'both',
+    panOrigin: 'center',
   });
 
   return (

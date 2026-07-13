@@ -469,30 +469,10 @@ function MoritzAttrs(props: { viewId: ModuleId }): ReactElement {
 }
 
 function MoritzWorkbenchSettings(props: { viewId: ModuleId }): ReactElement {
-  const editorScale = useAppStore((s) => s.glyphView.editorScale);
-  const setGlyphView = useAppStore((s) => s.setGlyphView);
   return (
     <div className={`mz-workbench-settings mz-workbench-settings--${props.viewId}`}>
       {props.viewId === 'glyphsetter' && (
         <>
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              color: 'var(--mz-text-mute)',
-            }}
-          >
-            <MoritzLabel text="Zoom" size={12} />
-            <input
-              type="range"
-              min={0.5}
-              max={2.5}
-              step={0.05}
-              value={editorScale}
-              onChange={(event) => setGlyphView({ editorScale: Number(event.target.value) })}
-            />
-          </label>
           <FontBar />
           <GlyphEditorToolbar />
         </>

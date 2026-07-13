@@ -45,6 +45,7 @@ export type WorkspaceProps = {
   readonly camera: CameraSnapshot;
   readonly setCamera: (patch: Partial<CameraSnapshot>) => void;
   readonly panMode?: WorkspacePanMode;
+  readonly panOrigin?: 'center' | 'topLeft';
   readonly minZoom?: number;
   readonly maxZoom?: number;
   readonly className?: string;
@@ -69,6 +70,7 @@ export function Workspace(props: WorkspaceProps): JSX.Element {
 
   const { spaceDown } = useCanvasInput(wrapRef, {
     pan: props.panMode ?? 'both',
+    panOrigin: props.panOrigin,
     minZoom: props.minZoom ?? 0.1,
     maxZoom: props.maxZoom ?? 30,
     getCamera: () => cameraRef.current,

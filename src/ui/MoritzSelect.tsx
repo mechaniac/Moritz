@@ -5,6 +5,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { MoritzLabel } from './MoritzText.js';
 
 export type MoritzSelectOption = {
@@ -38,7 +39,12 @@ export function MoritzSelect(props: {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
       const root = rootRef.current;
-      if (root && !root.contains(event.target as Node)) setOpen(false);
+      if (root && !root.contains(event.target as Node)) {
+        // Also check if click is inside the portal listbox
+        const listbox = listboxRef.current;
+        if (listbox && listbox.contains(event.target as Node)) return;
+        setOpen(false);
+      }
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false);
@@ -49,6 +55,21 @@ export function MoritzSelect(props: {
       document.removeEventListener('pointerdown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
+  }, [open]);
+
+  const listboxRef = useRef<HTMLDivElement | null>(null);
+  const [menuPos, setMenuPos] = useState<{ left: number; bottom: number; width: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) { setMenuPos(null); return; }
+    const btn = rootRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    setMenuPos({
+      left: rect.left,
+      bottom: window.innerHeight - rect.top + 2,
+      width: Math.max(rect.width, 180),
+    });
   }, [open]);
 
   return (
@@ -94,16 +115,17 @@ export function MoritzSelect(props: {
           }}
         />
       </button>
-      {open && (
+      {open && menuPos && createPortal(
         <div
+          ref={listboxRef}
           role="listbox"
           style={{
-            position: 'absolute',
-            zIndex: 1000,
-            left: 0,
-            right: 0,
-            top: 'calc(100% + 2px)',
-            maxHeight: 220,
+            position: 'fixed',
+            zIndex: 10000,
+            left: menuPos.left,
+            bottom: menuPos.bottom,
+            width: menuPos.width,
+            maxHeight: 320,
             overflowY: 'auto',
             padding: 3,
             border: '1px solid var(--mg-line)',
@@ -146,7 +168,8 @@ export function MoritzSelect(props: {
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
