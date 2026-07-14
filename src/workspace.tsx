@@ -42,9 +42,13 @@ import {
   moritzModuleSkin,
   moritzViewSkins,
 } from './moduleSkins.js';
+import { buildMoritzGateway } from './core/gateway/moritzGateway.js';
+
+// Side-effect: register Moritz cObject kind schemas for the floating inspector
+import './core/gateway/moritzKindSchemas.js';
 import { loadAnitaManifest, readAnitaProjectStatus, type AnitaProjectStatus } from './codebase.js';
 import { BubbleSetterAttrs, BubbleSetterOutliner, BubbleSetterStage } from './modules/bubblesetter/BubbleSetter.js';
-import { GlyphEditorToolbar, GlyphSetterAttrs, GlyphSetterItemAttrs, GlyphSetterOutliner, GlyphSetterStage } from './modules/glyphsetter/GlyphSetter.js';
+import { GlyphSetterAttrs, GlyphSetterItemAttrs, GlyphSetterOutliner, GlyphSetterStage } from './modules/glyphsetter/GlyphSetter.js';
 import { StyleSetterAttrs, StyleSetterOutliner, StyleSetterStage } from './modules/stylesetter/StyleSetter.js';
 import { TypeSetterAttrs, TypeSetterOutliner, TypeSetterStage } from './modules/typesetter/TypeSetter.js';
 import {
@@ -56,10 +60,6 @@ import {
   moritzViewIds,
 } from './workspaceTrees.js';
 import { useAppStore, type ModuleId } from './state/store.js';
-import { FontBar } from './ui/FontBar.js';
-import { BubbleBar } from './ui/BubbleBar.js';
-import { StyleBar } from './ui/StyleBar.js';
-import { PageBar } from './ui/PageBar.js';
 import { MoritzLabel } from './ui/MoritzText.js';
 
 const VIEW_LABELS: Readonly<Record<ModuleId, string>> = {
@@ -81,13 +81,21 @@ const anitaProjectStatus = readAnitaProjectStatus();
 export const moritzModule: cModule = {
   id: MORITZ_MODULE_ID,
   skin: moritzModuleSkin,
-  gateway: {},
+  gateway: buildMoritzGateway('glyphsetter'),
   chrome: {
     hud: false,
-    floatingAttributes: false,
+    floatingAttributes: true,
     workbenchTab: false,
   },
 };
+
+/**
+ * Rebuild the gateway for the active Moritz view. Called on view switch
+ * so the rightbar shows only functions relevant to the current view.
+ */
+export function updateMoritzGateway(viewId: import('./state/store.js').ModuleId): void {
+  (moritzModule as { gateway: Record<string, unknown> }).gateway = buildMoritzGateway(viewId);
+}
 
 
 const sigridModule = makeSigrid();
@@ -160,13 +168,6 @@ const moritzLeftbarBinding = reactBinding(
   (ctx) => createElement(MoritzLeftbar, { ctx }),
 );
 
-const moritzWorkbenchSettingsBinding = reactBinding(
-  'moritz.workbenchSettings',
-  'workbenchSettings',
-  cActiveWhenModule(MORITZ_MODULE_ID),
-  (ctx) => createElement(MoritzWorkbenchSettings, { viewId: activeMoritzView(ctx) }),
-);
-
 const anitaViewportBinding = domBinding(
   'anita.viewport',
   'viewport',
@@ -193,7 +194,6 @@ const productGraphModules = new Set(['sigrid', 'magdalena']);
 const moritzBindings: readonly MoritzDomBinding[] = [
   moritzViewportBinding,
   moritzLeftbarBinding,
-  moritzWorkbenchSettingsBinding,
   anitaViewportBinding,
   productGraphViewportBinding,
   productTreeBrowserBinding,
@@ -356,7 +356,6 @@ function createMoritzAppTree(): cObject {
       createCObject({ cId: 'moritz:leftbar', kind: 'magdalena.leftbar', tags: ['magdalena'] }),
       createCObject({ cId: 'moritz:viewport', kind: 'magdalena.viewport', tags: ['magdalena'] }),
       createCObject({ cId: 'moritz:rightbar', kind: 'magdalena.rightbar', tags: ['magdalena'] }),
-      createCObject({ cId: 'moritz:settings', kind: 'magdalena.workbenchSettings', tags: ['magdalena'] }),
     ],
   });
 }
@@ -464,22 +463,6 @@ function MoritzAttrs(props: { viewId: ModuleId }): ReactElement {
     <div className="mz-suite-leftbar__glyph-attrs">
       <GlyphSetterAttrs />
       <GlyphSetterItemAttrs />
-    </div>
-  );
-}
-
-function MoritzWorkbenchSettings(props: { viewId: ModuleId }): ReactElement {
-  return (
-    <div className={`mz-workbench-settings mz-workbench-settings--${props.viewId}`}>
-      {props.viewId === 'glyphsetter' && (
-        <>
-          <FontBar />
-          <GlyphEditorToolbar />
-        </>
-      )}
-      {props.viewId === 'bubblesetter' && <BubbleBar />}
-      {props.viewId === 'stylesetter' && <StyleBar />}
-      {props.viewId === 'typesetter' && <PageBar />}
     </div>
   );
 }

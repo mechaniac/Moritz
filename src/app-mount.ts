@@ -17,7 +17,7 @@ import {
   moritzSelectedIdForView,
   moritzViewForDocumentId,
 } from './workspaceTrees.js';
-import { moritzWorkspace } from './workspace.js';
+import { moritzWorkspace, updateMoritzGateway } from './workspace.js';
 
 export interface MountedMoritzApp {
   unmount(): void;
@@ -62,6 +62,7 @@ export function mountMoritzApp(host: HTMLElement): MountedMoritzApp {
     );
     if (useAppStore.getState().module !== viewId) {
       useAppStore.getState().setModule(viewId);
+      updateMoritzGateway(viewId);
     }
     const props = buildMoritzWorkbenchProps({
       snapshot: ws,

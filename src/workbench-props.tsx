@@ -49,7 +49,6 @@ export function buildMoritzWorkbenchProps(
   const viewportBinding = ws.resolvedBindings.get('viewport');
   const leftbarBinding = ws.resolvedBindings.get('leftbar');
   const floatingBinding = ws.resolvedBindings.get('floating');
-  const settingsBinding = ws.resolvedBindings.get('workbenchSettings');
 
   return {
     tree,
@@ -81,7 +80,6 @@ export function buildMoritzWorkbenchProps(
     viewport: viewportBinding?.render(ws.bindingContext),
     leftbar: leftbarBinding?.render(ws.bindingContext),
     floating: floatingBinding?.render(ws.bindingContext),
-    workbenchSettings: settingsBinding?.render(ws.bindingContext),
     skins: skinsTree,
     chrome: chromeTree,
     onChromeChange: handlers.onChromeChange,
@@ -89,7 +87,7 @@ export function buildMoritzWorkbenchProps(
   };
 }
 
-export const moritzFunctionCallHandler: MFunctionCallHandler = () => false;
+export { moritzFunctionCallHandler } from './core/gateway/moritzFunctionCallHandler.js';
 
 export function toggleMoritzChromeBar(chrome: cObject, id: string): cObject {
   return cToggleCollapse(chrome, id);
