@@ -1,128 +1,26 @@
+@import './sift/sift.css';
+
 /* ---------------------------------------------------------------------------
    Moritz UI — global styles.
 
-   Transitional contract: module internals still consume Moritz `--mz-*`
-   aliases while the shell migrates to Magdalena `--mg-*` tokens. The
-   rendered glyphs are black ink on white paper, so the editor chrome stays
-   dark around them. The compatibility palette defines module aliases
-   (glyph / bubble / glyphfont / style / type) where:
-
-     --mz-{mod}-bg      deep tinted ground
-     --mz-{mod}-panel   one step up — the floating-window surface
-     --mz-{mod}-line    mid-tone divider (subtle on its own panel)
-     --mz-{mod}-accent  bright saturated hue — used for active text /
-                        highlights / primary buttons; the brand colour
-                        that says "this thing is orange / blue / green".
-
-   `.mz-mod--{id}` wrappers alias these onto the generic
-   `--mz-bg / --mz-panel / --mz-line / --mz-accent` so any subtree
-   inherits the current compatibility palette until the module internals move
-   to `--mg-*`.
+   Uses Magdalena `--mg-*` tokens as the canonical theme; `--mz-*` variables
+   are kept only as fallback aliases until all module internals are migrated.
    --------------------------------------------------------------------------- */
 
-/* ---------- Legacy compatibility palette + shared tokens ------------------ */
-
-/* Module internals still read `--mz-*` while they migrate to Magdalena tokens.
-   The shell no longer offers app-local theme switching. */
-
 :root {
-  /* Glyph — cool blue, slate ground. */
-  --mz-glyph-bg:     #1a2433;
-  --mz-glyph-panel:  #243349;
-  --mz-glyph-line:   #3b557a;
-  --mz-glyph-accent: #8ab8ec;
-
-  /* Bubble — slightly cooler / desaturated steel. */
-  --mz-bubble-bg:     #161e2a;
-  --mz-bubble-panel:  #202b3c;
-  --mz-bubble-line:   #344660;
-  --mz-bubble-accent: #a3c0db;
-
-  /* Per-font glyph defaults — deeper, denser blue (a separate "chassis"). */
-  --mz-glyphfont-bg:     #11192a;
-  --mz-glyphfont-panel:  #1a2640;
-  --mz-glyphfont-line:   #2f4974;
-  --mz-glyphfont-accent: #b8d4f4;
-
-  /* Style — warm amber. */
-  --mz-style-bg:     #2a1f12;
-  --mz-style-panel:  #3a2c19;
-  --mz-style-line:   #6a4d28;
-  --mz-style-accent: #f0b370;
-
-  /* Type — warm mustard. */
-  --mz-type-bg:      #2a2410;
-  --mz-type-panel:   #3a3217;
-  --mz-type-line:    #6a5b22;
-  --mz-type-accent:  #ecd06b;
-
-  --mz-text:         #e8ecf1;
-  --mz-text-mute:    #a8b0bd;
-  --mz-text-faint:   #707888;
-
-  --mz-modified:      var(--mz-warn);
-  /* The rendered glyphs are always real ink on real paper. */
+  --mz-text:         var(--mg-text, #e8ecf1);
+  --mz-text-mute:    var(--mg-text-muted, #a8b0bd);
+  --mz-text-faint:   var(--mg-text-faint, #707888);
+  --mz-bg:           var(--mg-bg, #1e1e1e);
+  --mz-panel:        var(--mg-surface-1, #2a2a2a);
+  --mz-line:         var(--mg-line, #3b3b3b);
+  --mz-accent:       var(--mg-tone-relevant, #8ab8ec);
   --mz-paper:        #ffffff;
   --mz-ink:          #000000;
-}
-
-/* Universal-across-themes tokens. */
-:root {
-  --mz-warn:        var(--mg-tone-changed, #ff5a3c);
-  --mz-warn-strong: color-mix(in srgb, var(--mg-tone-changed, #ff5a3c) 78%, black);
-  --mz-warn-soft:   color-mix(in srgb, var(--mg-tone-changed, #ff5a3c) 36%, black);
-}
-
-/* ---------- Module-scope mixins ------------------------------------------ */
-
-.mz-mod--glyphsetter {
-  --mz-bg:     var(--mz-glyph-bg);
-  --mz-panel:  var(--mz-glyph-panel);
-  --mz-line:   var(--mz-glyph-line);
-  --mz-accent: var(--mz-glyph-accent);
-}
-.mz-mod--bubblesetter {
-  --mz-bg:     var(--mz-bubble-bg);
-  --mz-panel:  var(--mz-bubble-panel);
-  --mz-line:   var(--mz-bubble-line);
-  --mz-accent: var(--mz-bubble-accent);
-}
-.mz-mod--stylesetter {
-  --mz-bg:     var(--mz-style-bg);
-  --mz-panel:  var(--mz-style-panel);
-  --mz-line:   var(--mz-style-line);
-  --mz-accent: var(--mz-style-accent);
-  /* Soften text on the warm amber ground — pure white feels surgical;
-     a slightly warm off-white sits inside the palette. */
-  --mz-text:       #e6d8c2;
-  --mz-text-mute:  #a8957a;
-  --mz-text-faint: #6e5e48;
-}
-.mz-mod--typesetter {
-  --mz-bg:     var(--mz-type-bg);
-  --mz-panel:  var(--mz-type-panel);
-  --mz-line:   var(--mz-type-line);
-  --mz-accent: var(--mz-type-accent);
-  --mz-text:       #e8dcb8;
-  --mz-text-mute:  #a89870;
-  --mz-text-faint: #6e6240;
-}
-/* Per-font glyph defaults (calligraphy lines, sidebearings) — deeper blue,
-   reads as a separate chassis from per-glyph blue. Wrap any panel that
-   edits font-wide glyph settings in `.mz-mod--glyphfont` to inherit it. */
-.mz-mod--glyphfont {
-  --mz-bg:     var(--mz-glyphfont-bg);
-  --mz-panel:  var(--mz-glyphfont-panel);
-  --mz-line:   var(--mz-glyphfont-line);
-  --mz-accent: var(--mz-glyphfont-accent);
-}
-
-/* Generic-name fallback so things outside any module-scope still resolve. */
-:root {
-  --mz-bg:     var(--mz-glyph-bg);
-  --mz-panel:  var(--mz-glyph-panel);
-  --mz-line:   var(--mz-glyph-line);
-  --mz-accent: var(--mz-glyph-accent);
+  --mz-warn:         var(--mg-tone-changed, #ff5a3c);
+  --mz-warn-strong:  color-mix(in srgb, var(--mz-warn) 78%, black);
+  --mz-warn-soft:    color-mix(in srgb, var(--mz-warn) 36%, black);
+  --mz-modified:     var(--mz-warn);
 }
 
 /* ---------- Body / global form controls ---------------------------------- */
@@ -319,25 +217,14 @@ input[type='range']::-moz-range-thumb {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--mg-bg, var(--mz-bg));
-  color: var(--mg-text, var(--mz-text));
-}
-
-.mz-workbench-settings {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  overflow: auto;
-  padding: 4px 6px;
 }
 
 .mz-suite-leftbar {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  height: 100%;
+  flex: 1 1 0;
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -349,23 +236,18 @@ input[type='range']::-moz-range-thumb {
   min-width: 0;
 }
 
-.mz-suite-leftbar__panel {
+.mz-suite-leftbar__body {
+  flex: 1 1 0;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 4px 0;
 }
 
-.mz-suite-leftbar__panel--attrs {
-  border-top: 1px solid var(--mg-line, var(--mz-line));
-  padding-top: 8px;
-}
-
-.mz-suite-leftbar__glyph-attrs {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.mz-suite-leftbar__attrs {
+  border-top: 1px solid var(--mg-line, #333);
 }
 
 /* ---------- Universal canvas (Illustrator-like infinite workspace) -------- *
@@ -381,27 +263,9 @@ input[type='range']::-moz-range-thumb {
   min-width: 0;
   overflow: auto;
   position: relative;
-  background-color: var(--mz-paper);
-  /* Subtle radial vignette + the dot raster on top. The vignette is
-     darker at the edges than in the centre so a paper-white fill (e.g.
-     a bubble's interior) reads as brighter than the surrounding
-     workspace. Both layers are screen-space — they don't follow
-     content zoom. */
-  background-image:
-    radial-gradient(circle, rgba(0, 0, 0, 0.07) 1px, transparent 1.6px),
-    radial-gradient(
-      ellipse at center,
-      rgba(255, 255, 255, 0) 0%,
-      rgba(0, 0, 0, 0.04) 55%,
-      rgba(0, 0, 0, 0.09) 100%
-    );
-  background-size: 24px 24px, 100% 100%;
-  background-position: 0 0, center center;
-  background-repeat: repeat, no-repeat;
+  background-color: var(--mg-bg, #1e1e1e);
   display: grid;
   place-items: center;
-  /* Slight inner padding so content never butts up against the drawer
-     borders even when the work area is very small. */
   padding: 16px;
   box-sizing: border-box;
 }

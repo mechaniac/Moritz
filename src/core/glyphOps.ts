@@ -3,11 +3,14 @@
  * returns a new object. The state layer composes these to update `Font.glyphs`.
  */
 
-import { vertexPairToSegment, pointAt } from './bezier.js';
 import type { Glyph, Stroke, Vec2, Vertex } from './types.js';
 
 const add = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x + b.x, y: a.y + b.y });
 const sub = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x - b.x, y: a.y - b.y });
+const lerp = (a: Vec2, b: Vec2, t: number): Vec2 => ({
+  x: a.x + (b.x - a.x) * t,
+  y: a.y + (b.y - a.y) * t,
+});
 const ZERO: Vec2 = { x: 0, y: 0 };
 
 let idCounter = 0;
@@ -127,13 +130,45 @@ export function insertAnchor(
   const a = s.vertices[segIdx];
   const b = s.vertices[segIdx + 1];
   if (!a || !b) return g;
-  const seg = vertexPairToSegment(a, b);
-  const p = pointAt(seg, t);
-  const inserted: Vertex = { p, inHandle: ZERO, outHandle: ZERO };
+
+  // De Casteljau split: compute the two sub-curves' control points.
+  const p0 = a.p;
+  const c1 = add(a.p, a.outHandle);
+  const c2 = add(b.p, b.inHandle);
+  const p1 = b.p;
+
+  // First level
+  const m01 = lerp(p0, c1, t);
+  const m12 = lerp(c1, c2, t);
+  const m23 = lerp(c2, p1, t);
+  // Second level
+  const m012 = lerp(m01, m12, t);
+  const m123 = lerp(m12, m23, t);
+  // Split point
+  const mid = lerp(m012, m123, t);
+
+  // Left sub-curve: p0 → m01 → m012 → mid
+  // Right sub-curve: mid → m123 → m23 → p1
+  const newA: Vertex = {
+    ...a,
+    outHandle: sub(m01, p0), // a keeps its position, new outHandle
+  };
+  const inserted: Vertex = {
+    p: mid,
+    inHandle: sub(m012, mid),
+    outHandle: sub(m123, mid),
+  };
+  const newB: Vertex = {
+    ...b,
+    inHandle: sub(m23, p1), // b keeps its position, new inHandle
+  };
+
   const vertices = [
-    ...s.vertices.slice(0, segIdx + 1),
+    ...s.vertices.slice(0, segIdx),
+    newA,
     inserted,
-    ...s.vertices.slice(segIdx + 1),
+    newB,
+    ...s.vertices.slice(segIdx + 2),
   ];
   return replaceStroke(g, strokeIdx, { ...s, vertices });
 }

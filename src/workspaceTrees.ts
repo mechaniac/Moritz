@@ -1,4 +1,5 @@
 import type { cObject } from '@christof/sigrid/core';
+import { createCObject } from '@christof/sigrid/core';
 import {
   moritzBubbleCObjectSelection,
   moritzBubbleFontCObject,
@@ -47,6 +48,7 @@ export function isMoritzViewId(value: string): value is ModuleId {
 export function moritzTreeForView(viewId: ModuleId): cObject {
   if (viewId === 'bubblesetter') return moritzBubbleTree();
   if (viewId === 'typesetter') return moritzTypeSetterTree();
+  if (viewId === 'stylesetter') return moritzStyleTree();
   return moritzFontTree();
 }
 
@@ -132,12 +134,72 @@ export function typeSetterInput(): TypeSetterCObjectInput {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Memoized tree builders — return the same cObject reference if the
+// underlying store data hasn't changed. This prevents magdalena from
+// re-mounting the floating attributes panel on every render.
+// ---------------------------------------------------------------------------
+
+let cachedFont: import('./core/types.js').Font | undefined;
+let cachedFontTree: cObject | undefined;
+
 function moritzFontTree(): cObject {
-  return moritzFontCObject(useAppStore.getState().font);
+  const font = useAppStore.getState().font;
+  if (font === cachedFont && cachedFontTree) return cachedFontTree;
+  cachedFont = font;
+  cachedFontTree = moritzFontCObject(font);
+  return cachedFontTree;
 }
 
+const STYLE_DOCUMENT_CID = 'moritz.style.root';
+
+let cachedStyle: import('./core/types.js').StyleSettings | undefined;
+let cachedStyleTree: cObject | undefined;
+
+export function moritzStyleTree(): cObject {
+  const style = useAppStore.getState().style;
+  if (style === cachedStyle && cachedStyleTree) return cachedStyleTree;
+  cachedStyle = style;
+  cachedStyleTree = createCObject({
+    cId: STYLE_DOCUMENT_CID,
+    kind: 'cnode.moritz.style',
+    tags: ['moritz', 'moritz.style'],
+    extras: {
+      displayName: 'Style',
+      style,
+    },
+  });
+  return cachedStyleTree;
+}
+
+let cachedBubbleFont: import('./core/types.js').BubbleFont | undefined;
+let cachedBubbleTree: cObject | undefined;
+
 function moritzBubbleTree(): cObject {
-  return moritzBubbleFontCObject(useBubbleStore.getState().font);
+  const font = useBubbleStore.getState().font;
+  if (font === cachedBubbleFont && cachedBubbleTree) return cachedBubbleTree;
+  cachedBubbleFont = font;
+  cachedBubbleTree = moritzBubbleFontCObject(font);
+  return cachedBubbleTree;
+}
+
+/** Read StyleSettings from a style document tree. */
+export function readStyleFromTree(tree: cObject): import('./core/types.js').StyleSettings | undefined {
+  return tree.extras?.['style'] as import('./core/types.js').StyleSettings | undefined;
+}
+
+/** Patch StyleSettings on a style document tree and return the new tree. */
+export function patchStyleOnTree(tree: cObject, patch: Partial<import('./core/types.js').StyleSettings>): cObject {
+  const current = (tree.extras?.['style'] ?? {}) as Record<string, unknown>;
+  return createCObject({
+    cId: tree.cId,
+    kind: tree.kind,
+    tags: [...tree.tags],
+    extras: {
+      ...tree.extras,
+      style: { ...current, ...patch },
+    },
+  });
 }
 
 function moritzTypeSetterTree(): cObject {

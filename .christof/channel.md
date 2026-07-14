@@ -3,6 +3,77 @@
 
 ## Requests (child -> mother)
 
+### 2026-07-14 | Module isolation guarantees — CRITICAL
+
+Sigrid behaves incorrectly when switched to in the Moritz workspace. It shows
+a 2D graph of Moritz font data instead of its native 3D scene. Root causes:
+
+- Moritz was registering viewport/leftbar bindings that activated when sigrid
+  was the active module (fixed on Moritz side — removed from binding set)
+- Sigrid had no native document in the workspace (fixed — now points to a
+  neutral `products` tree instead of `moritz.font`)
+
+**Remaining platform request:**
+
+The architecture should make this class of bug structurally impossible:
+
+1. **Binding priority** — a module's own bindings should always win over
+   third-party bindings for the same slot when that module is active.
+2. **Default documents** — if a workspace doesn't provide a document for a
+   platform module, the runtime should create one from the module's defaults.
+3. **Validation** — `initial.documentByModule[moduleId]` should be validated
+   (or typed) so a child app can't accidentally assign incompatible documents
+   to platform modules.
+
+### 2026-07-14 | Leftbar layout contract
+
+When a leftbar binding returns a single scrollable container with
+`flex: 1 1 0; min-height: 0; overflow-y: auto`, it renders at zero height.
+Splitting into multiple flex children with `overflow: auto` works.
+
+The `.m-workbench-bar__body` is `display: flex; flex-direction: column;
+flex: 1 1 auto; overflow: hidden`. A single flex child with `flex: 1 1 0`
+should fill it, but doesn't reliably.
+
+**Request:** Document the sizing contract for binding content, or investigate
+why a single `flex: 1 1 0` child inside the bar body collapses to zero height.
+Moritz works around this with two flex children sharing space.
+
+### 2026-07-14 | Floating attributes position persistence
+
+The floating attributes panel resets its dragged position on every tree change.
+Moritz tree memoization mostly fixes this, but any real data change (selection,
+slider) still causes a jump.
+
+**Request:** Store the floating panel's position on the chrome tree (or a
+persistent state outside component-local React state) so it survives re-renders.
+
+### 2026-07-14 | `ParamKind: 'file'` for import operations (low priority)
+
+File import (font/style/page JSON) needs a file-picker gateway parameter.
+Currently kept in the custom leftbar. Not blocking.
+
+### 2026-07-14 | Gateway scoping beyond `"2d"`/`"3d"` (low priority)
+
+`spaces` only matches `"2d"`/`"3d"`. Moritz works around this by mutating
+`moritzModule.gateway` on view switch. A `visibleWhen` predicate or
+`computeGateway` callback would be cleaner. Not blocking.
+
+---
+
+### RESOLVED | 2026-07-12 | Per-module chrome suppression
+
+**Resolved.** `cModule.chrome` with `{ hud, floatingAttributes, workbenchTab }`
+is implemented and Moritz uses it. HUD and workbench tab are suppressed;
+floating attributes is enabled with registered kind schemas.
+
+### RESOLVED | 2026-07-14 | Undo/redo runtime API
+
+**Resolved** in commits `31000f9` and `bae77e4`. Per-document undo/redo with
+history grouping API. Moritz Phase 5 (authoritative tree) is unblocked.
+
+---
+
 ### 2026-07-11 | Typed 2D glyph/spline primitives needed
 
 Moritz wants to be a thin editor shell where glyphs and splines are real sigrid
@@ -61,7 +132,12 @@ sigrid document if there were accepted facet kind names.
 The missing target package was resolved by `@christof/sigrid/glyph`. Moritz can
 now start fixture-gated extraction using the notice below.
 
-### 2026-07-12 | Workbench chrome needs binding slots — per-module suppression
+### RESOLVED | 2026-07-12 | Workbench chrome needs binding slots — per-module suppression
+
+Resolved. `cModule.chrome` with `{ hud, floatingAttributes, workbenchTab }`
+flags was implemented in magdalena. Moritz sets `hud: false, workbenchTab: false,
+floatingAttributes: true` (with registered kind schemas). Original request below
+for reference.
 
 Moritz provides its own viewport, leftbar, and workbenchSettings via bindings.
 But three pieces of workbench chrome are hardcoded in magdalena and cannot be
@@ -154,6 +230,15 @@ cObjects (step 1–2 of the notice). Parity fixtures written in
 ---
 
 ## Notices (mother -> child)
+
+### 2026-07-14 | Undo/redo runtime delivered
+
+Per-document undo/redo is available. Commits `31000f9`, `bae77e4`.
+- `runtime.undo(documentId)` / `runtime.redo(documentId)`
+- `runtime.beginHistoryGroup(documentId)` / `runtime.endHistoryGroup(documentId)`
+- Ctrl/Cmd+Z / Ctrl/Cmd+Shift+Z keyboard routing
+- Configurable history limit (default 100)
+- Moritz should wrap slider/drag gestures in history groups
 
 ### 2026-07-12 | Sigrid glyph/spline target is available
 

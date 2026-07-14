@@ -12,6 +12,7 @@ import type { cObject } from '@christof/sigrid/core';
 import type { ModuleId } from '../../state/store.js';
 import { useAppStore } from '../../state/store.js';
 import { useBubbleStore } from '../../state/bubbleStore.js';
+import { patchStyleOnTree } from '../../workspaceTrees.js';
 import { listFontIds } from '../../state/persistence.js';
 import { listBubbleFontIds } from '../../state/bubblePersistence.js';
 import { listStyleIds } from '../../state/stylePersistence.js';
@@ -53,6 +54,7 @@ function liveSlider(
   max: number,
   step: number,
   computeDefault?: () => unknown,
+  call?: (tree: cObject, args: Readonly<Record<string, unknown>>) => cObject,
 ): PublicFn {
   return {
     callMode: 'live',
@@ -65,7 +67,7 @@ function liveSlider(
       step,
       computeDefault: computeDefault ? () => computeDefault() : undefined,
     }],
-    call: identity,
+    call: call ?? identity,
   };
 }
 
@@ -73,6 +75,7 @@ function liveEnum(
   summary: string,
   options: readonly string[],
   computeDefault?: () => unknown,
+  call?: (tree: cObject, args: Readonly<Record<string, unknown>>) => cObject,
 ): PublicFn {
   return {
     callMode: 'live',
@@ -83,7 +86,7 @@ function liveEnum(
       options,
       computeDefault: computeDefault ? () => computeDefault() : undefined,
     }],
-    call: identity,
+    call: call ?? identity,
   };
 }
 
@@ -174,6 +177,29 @@ function bubbleSetterGateway(): Record<string, PublicFn> {
 function styleSetterGateway(): Record<string, PublicFn> {
   const s = () => useAppStore.getState().style;
   const cap = (c: unknown) => (c === 'round' || c === 'flat' || c === 'tapered' ? c : 'round');
+
+  // Style sliders are REAL tree transforms — they patch StyleSettings on the
+  // document tree. Magdalena executes call() → onTreeChange → runtime records
+  // undo automatically. The handler does NOT intercept these.
+  const stylePatch = (field: string) =>
+    (tree: cObject, args: Readonly<Record<string, unknown>>) =>
+      patchStyleOnTree(tree, { [field]: args['value'] });
+
+  const strokeWidthPatch = (tree: cObject, args: Readonly<Record<string, unknown>>) => {
+    const v = Number(args['value']);
+    return patchStyleOnTree(tree, {
+      defaultWidth: { samples: [{ t: 0, width: v }, { t: 1, width: v }] },
+    });
+  };
+
+  const worldBlendPatch = (tree: cObject, args: Readonly<Record<string, unknown>>) => {
+    const v = Number(args['value']);
+    return patchStyleOnTree(tree, {
+      worldBlend: v,
+      widthOrientation: v >= 1 ? 'world' : 'tangent',
+    });
+  };
+
   return {
     saveStyle: {
       callMode: 'manual',
@@ -189,27 +215,27 @@ function styleSetterGateway(): Record<string, PublicFn> {
     loadStyle: enumLoader('Load a style', styleOptions),
     deleteStyle: enumLoader('Delete a saved style', styleOptions),
     exportStyle: manualAction('Export the active style as JSON'),
-    // Geometry
-    setSlant: liveSlider('Italic shear (radians)', -0.5, 0.5, 0.01, () => s().slant),
-    setScaleX: liveSlider('Horizontal stretch', 0.4, 2, 0.01, () => s().scaleX),
-    setScaleY: liveSlider('Vertical stretch', 0.4, 2, 0.01, () => s().scaleY),
-    // Stroke
-    setStrokeWidth: liveSlider('Default stroke width', 1, 28, 0.5, () => s().defaultWidth.samples[0]?.width ?? 8),
-    setWorldBlend: liveSlider('World blend (tangent→world nib)', 0, 1, 0.01, () => s().worldBlend ?? (s().widthOrientation === 'world' ? 1 : 0)),
-    setWorldContract: liveSlider('World contract', 0, 1, 0.01, () => s().worldContract ?? 0),
-    setWorldAngle: liveSlider('World blend angle (rad)', -1.57, 1.57, 0.01, () => s().worldAngle),
-    setWorldContractAngle: liveSlider('World contract angle (rad)', -1.57, 1.57, 0.01, () => s().worldContractAngle ?? s().worldAngle),
-    setCapStart: liveEnum('Start cap shape', ['round', 'flat', 'tapered'], () => cap(s().capStart)),
-    setCapEnd: liveEnum('End cap shape', ['round', 'flat', 'tapered'], () => cap(s().capEnd)),
-    setCapBulge: liveSlider('Cap roundness', 0, 2, 0.05, () => s().capRoundBulge ?? 1),
-    // Spacing
-    setTracking: liveSlider('Extra space between glyphs', -30, 60, 1, () => s().tracking ?? 0),
-    setSpaceWidth: liveSlider('Space character width', 0, 200, 1, () => s().spaceWidth ?? 56),
-    setLineHeight: liveSlider('Line height multiplier', 0.8, 2.5, 0.05, () => s().lineHeight ?? 1.2),
-    // Smoothing
-    setRelaxCurves: liveSlider('Relax curves (Laplacian smoothing)', 0, 1, 0.01, () => s().relaxCurves ?? 0),
-    setRelaxTangents: liveSlider('Relax tangents (edge equalize)', 0, 1, 0.01, () => s().relaxTangents ?? 0),
-    setVertexEvenness: liveSlider('Vertex evenness', 0, 1, 0.01, () => s().vertexEvenness ?? 0),
+    // Geometry — real tree transforms
+    setSlant: liveSlider('Italic shear (radians)', -0.5, 0.5, 0.01, () => s().slant, stylePatch('slant')),
+    setScaleX: liveSlider('Horizontal stretch', 0.4, 2, 0.01, () => s().scaleX, stylePatch('scaleX')),
+    setScaleY: liveSlider('Vertical stretch', 0.4, 2, 0.01, () => s().scaleY, stylePatch('scaleY')),
+    // Stroke — real tree transforms
+    setStrokeWidth: liveSlider('Default stroke width', 1, 28, 0.5, () => s().defaultWidth.samples[0]?.width ?? 8, strokeWidthPatch),
+    setWorldBlend: liveSlider('World blend (tangent→world nib)', 0, 1, 0.01, () => s().worldBlend ?? (s().widthOrientation === 'world' ? 1 : 0), worldBlendPatch),
+    setWorldContract: liveSlider('World contract', 0, 1, 0.01, () => s().worldContract ?? 0, stylePatch('worldContract')),
+    setWorldAngle: liveSlider('World blend angle (rad)', -1.57, 1.57, 0.01, () => s().worldAngle, stylePatch('worldAngle')),
+    setWorldContractAngle: liveSlider('World contract angle (rad)', -1.57, 1.57, 0.01, () => s().worldContractAngle ?? s().worldAngle, stylePatch('worldContractAngle')),
+    setCapStart: liveEnum('Start cap shape', ['round', 'flat', 'tapered'], () => cap(s().capStart), stylePatch('capStart')),
+    setCapEnd: liveEnum('End cap shape', ['round', 'flat', 'tapered'], () => cap(s().capEnd), stylePatch('capEnd')),
+    setCapBulge: liveSlider('Cap roundness', 0, 2, 0.05, () => s().capRoundBulge ?? 1, stylePatch('capRoundBulge')),
+    // Spacing — real tree transforms
+    setTracking: liveSlider('Extra space between glyphs', -30, 60, 1, () => s().tracking ?? 0, stylePatch('tracking')),
+    setSpaceWidth: liveSlider('Space character width', 0, 200, 1, () => s().spaceWidth ?? 56, stylePatch('spaceWidth')),
+    setLineHeight: liveSlider('Line height multiplier', 0.8, 2.5, 0.05, () => s().lineHeight ?? 1.2, stylePatch('lineHeight')),
+    // Smoothing — real tree transforms
+    setRelaxCurves: liveSlider('Relax curves (Laplacian smoothing)', 0, 1, 0.01, () => s().relaxCurves ?? 0, stylePatch('relaxCurves')),
+    setRelaxTangents: liveSlider('Relax tangents (edge equalize)', 0, 1, 0.01, () => s().relaxTangents ?? 0, stylePatch('relaxTangents')),
+    setVertexEvenness: liveSlider('Vertex evenness', 0, 1, 0.01, () => s().vertexEvenness ?? 0, stylePatch('vertexEvenness')),
   };
 }
 

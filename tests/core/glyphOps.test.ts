@@ -54,6 +54,40 @@ describe('glyphOps', () => {
     expect(inserted.p.y).toBeCloseTo(25);
   });
 
+  it('insertAnchor preserves curved handles via de Casteljau split', () => {
+    const curved: Glyph = {
+      char: 'C',
+      box: { w: 100, h: 100 },
+      strokes: [{
+        id: 's1',
+        vertices: [
+          { p: v2(0, 0), inHandle: ZERO, outHandle: v2(30, 0) },
+          { p: v2(100, 100), inHandle: v2(-30, 0), outHandle: ZERO },
+        ],
+      }],
+    };
+    const out = insertAnchor(curved, 0, 0, 0.5);
+    const verts = out.strokes[0]!.vertices;
+    expect(verts).toHaveLength(3);
+
+    // The split point should lie on the original curve
+    const mid = verts[1]!;
+    // With these handles the cubic is: p0=(0,0), c1=(30,0), c2=(70,100), p1=(100,100)
+    // At t=0.5 the point is ((1-t)^3*p0 + 3*(1-t)^2*t*c1 + 3*(1-t)*t^2*c2 + t^3*p1)
+    // = 0.125*(0,0) + 0.375*(30,0) + 0.375*(70,100) + 0.125*(100,100)
+    // = (0+11.25+26.25+12.5, 0+0+37.5+12.5) = (50, 50)
+    expect(mid.p.x).toBeCloseTo(50);
+    expect(mid.p.y).toBeCloseTo(50);
+
+    // The inserted vertex should have non-zero handles (not corner)
+    expect(Math.hypot(mid.inHandle.x, mid.inHandle.y)).toBeGreaterThan(0);
+    expect(Math.hypot(mid.outHandle.x, mid.outHandle.y)).toBeGreaterThan(0);
+
+    // The original vertices should have adjusted handles
+    expect(verts[0]!.outHandle.x).not.toBe(30); // changed from original
+    expect(verts[2]!.inHandle.x).not.toBe(-30); // changed from original
+  });
+
   it('deleteAnchor reduces vertex count', () => {
     const out = deleteAnchor(baseGlyph, 0, 1);
     expect(out.strokes[0]!.vertices).toHaveLength(2);

@@ -83,7 +83,7 @@ export const moritzModule: cModule = {
   skin: moritzModuleSkin,
   gateway: buildMoritzGateway('glyphsetter'),
   chrome: {
-    hud: false,
+    transformTools: false,
     floatingAttributes: true,
     workbenchTab: false,
   },
@@ -133,7 +133,11 @@ function reactBinding(
       if (!container) {
         container = document.createElement('div');
         container.className = `mz-binding mz-binding--${id.replace(/\./g, '-')}`;
-        container.style.display = 'contents';
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.flex = '1 1 0';
+        container.style.minHeight = '0';
+        container.style.overflow = 'hidden';
         root = createRoot(container);
       }
       root!.render(renderFn(ctx));
@@ -185,11 +189,11 @@ const productGraphViewportBinding = domBinding(
 const productTreeBrowserBinding = domBinding(
   'christof.productTreeBrowser.leftbar',
   'leftbar',
-  (ctx) => ctx.state.activeModuleId !== MORITZ_MODULE_ID,
+  (ctx) => ctx.state.activeModuleId === 'magdalena',
   (ctx) => ProductTreeBrowser({ ctx }),
 );
 
-const productGraphModules = new Set(['sigrid', 'magdalena']);
+const productGraphModules = new Set(['magdalena']);
 
 const moritzBindings: readonly MoritzDomBinding[] = [
   moritzViewportBinding,
@@ -277,7 +281,7 @@ const moritzWorkspaceConfig: cWorkspaceConfig = {
     moduleId: MORITZ_MODULE_ID,
     documentByModule: {
       [MORITZ_MODULE_ID]: moritzDocumentIds.glyphsetter,
-      sigrid: moritzDocumentIds.glyphsetter,
+      sigrid: PRODUCT_REGISTRY_DOCUMENT_ID,
       magdalena: APP_DOCUMENT_ID,
       anita: anitaProjectStatus.ok
         ? ANITA_FUNCTIONAL_DOCUMENT_ID
@@ -403,10 +407,10 @@ function MoritzLeftbar(props: { ctx: cBindingContext }): ReactElement {
         viewId={viewId}
         onSelect={(nextView) => setActiveMoritzView(props.ctx, nextView)}
       />
-      <div className="mz-suite-leftbar__panel">
+      <div className="mz-suite-leftbar__body">
         <MoritzOutliner viewId={viewId} />
       </div>
-      <div className="mz-suite-leftbar__panel mz-suite-leftbar__panel--attrs">
+      <div className="mz-suite-leftbar__body mz-suite-leftbar__attrs">
         <MoritzAttrs viewId={viewId} />
       </div>
     </div>
@@ -460,10 +464,10 @@ function MoritzAttrs(props: { viewId: ModuleId }): ReactElement {
   if (props.viewId === 'stylesetter') return <StyleSetterAttrs />;
   if (props.viewId === 'typesetter') return <TypeSetterAttrs />;
   return (
-    <div className="mz-suite-leftbar__glyph-attrs">
+    <>
       <GlyphSetterAttrs />
       <GlyphSetterItemAttrs />
-    </div>
+    </>
   );
 }
 

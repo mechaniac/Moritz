@@ -16,8 +16,10 @@ import {
   applyMoritzSelection,
   moritzSelectedIdForView,
   moritzViewForDocumentId,
+  readStyleFromTree,
 } from './workspaceTrees.js';
 import { moritzWorkspace, updateMoritzGateway } from './workspace.js';
+import { moritzDocumentIds } from './workspaceTrees.js';
 
 export interface MountedMoritzApp {
   unmount(): void;
@@ -68,8 +70,16 @@ export function mountMoritzApp(host: HTMLElement): MountedMoritzApp {
       snapshot: ws,
       interfaceTree,
       handlers: {
-        onTreeChange: (next) =>
-          ws.dispatch({ type: 'updateActiveTree', tree: next }),
+        onTreeChange: (next) => {
+          ws.dispatch({ type: 'updateActiveTree', tree: next });
+          // Sync style document changes to Zustand so the renderer picks
+          // them up (dual-write until Phase 5 completes for all views).
+          const activeDocId = ws.state.activeDocumentByModule[MORITZ_MODULE_ID];
+          if (activeDocId === moritzDocumentIds.stylesetter) {
+            const style = readStyleFromTree(next);
+            if (style) useAppStore.getState().setStyle(style);
+          }
+        },
         onFunctionCall: moritzFunctionCallHandler,
         onSetActiveModule: (id) => {
           const nextDocumentId = ws.state.activeDocumentByModule[id];

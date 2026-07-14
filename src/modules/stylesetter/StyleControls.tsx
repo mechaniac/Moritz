@@ -7,7 +7,7 @@
  * `original` to mark sliders red when their value differs from the baseline.
  */
 
-import { useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import {
   ribbonCapSubdivOf,
   ribbonSpineLengthAwareOf,
@@ -904,54 +904,27 @@ export function Section(props: {
   /** When set, header shows a reset button. `modified` controls its color. */
   reset?: { onClick: () => void; modified: boolean } | null;
 }): JSX.Element {
-  const [open, setOpen] = useState(props.defaultOpen ?? true);
   const reset = props.reset ?? null;
   return (
-    <section className="mz-section">
-      <h3
-        className="mz-section__title"
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          cursor: 'pointer',
-          userSelect: 'none',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-        }}
-      >
-        <span aria-hidden style={{ fontSize: 10, width: 10, display: 'inline-block' }}>
-          {open ? '▾' : '▸'}
-        </span>
-        <span style={{ flex: 1 }}>
+    <details className="sf-section mz-section" open={props.defaultOpen || undefined}>
+      <summary className="sf-section-title">
+        <span className="sf-section-title__text">
           <MoritzLabel text={props.title} size={12} />
         </span>
         {reset && (
           <button
             type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              reset.onClick();
-            }}
+            className={`sf-section-reset${reset.modified ? ' is-modified' : ''}`}
+            onClick={(e) => { e.preventDefault(); reset.onClick(); }}
             disabled={!reset.modified}
             title={reset.modified ? 'Reset all in this section' : 'Nothing to reset'}
-            style={{
-              border: 'none',
-              background: 'transparent',
-              color: reset.modified
-                ? 'var(--mg-tone-changed, var(--mz-modified))'
-                : 'var(--mg-text-faint, var(--mz-text-faint))',
-              cursor: reset.modified ? 'pointer' : 'default',
-              fontSize: 13,
-              lineHeight: 1,
-              padding: '0 2px',
-            }}
           >
             ↻
           </button>
         )}
-      </h3>
-      {open && props.children}
-    </section>
+      </summary>
+      {props.children}
+    </details>
   );
 }
 
@@ -968,12 +941,8 @@ export function InlineSelect(props: {
   const modified =
     props.defaultValue !== undefined && props.value !== props.defaultValue;
   return (
-    <div
-      title={props.tooltip}
-      className={modified ? 'mz-modified' : undefined}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}
-    >
-      <span style={{ width: 90, flexShrink: 0 }}>
+    <label className={`sf-slider${modified ? ' is-modified' : ''}`} title={props.tooltip}>
+      <span className="sf-slider-label">
         <MoritzLabel text={props.label} size={11} />
       </span>
       <MoritzSelect
@@ -982,7 +951,7 @@ export function InlineSelect(props: {
         onChange={props.onChange}
         style={{ flex: 1, minWidth: 0 }}
       />
-    </div>
+    </label>
   );
 }
 
@@ -1000,12 +969,8 @@ export function Slider(props: {
     props.defaultValue !== undefined &&
     Math.abs(props.value - props.defaultValue) > 1e-9;
   return (
-    <div
-      title={props.tooltip}
-      className={modified ? 'mz-modified' : undefined}
-      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}
-    >
-      <span style={{ width: 90, flexShrink: 0, color: 'inherit' }}>
+    <label className={`sf-slider${modified ? ' is-modified' : ''}`} title={props.tooltip}>
+      <span className="sf-slider-label">
         <MoritzLabel text={props.label} size={11} />
       </span>
       <input
@@ -1015,10 +980,10 @@ export function Slider(props: {
         step={props.step}
         value={props.value}
         onChange={(e) => props.onChange(parseFloat(e.target.value))}
-        style={{ flex: 1, minWidth: 0 }}
       />
       <input
         type="number"
+        className="sf-slider-num"
         min={props.min}
         max={props.max}
         step={props.step}
@@ -1027,15 +992,8 @@ export function Slider(props: {
           const v = parseFloat(e.target.value);
           if (Number.isFinite(v)) props.onChange(v);
         }}
-        style={{
-          width: 44,
-          textAlign: 'right',
-          fontVariantNumeric: 'tabular-nums',
-          color: modified ? 'inherit' : 'var(--mg-text-muted, var(--mz-text-mute))',
-          padding: '1px 2px',
-        }}
       />
-    </div>
+    </label>
   );
 }
 

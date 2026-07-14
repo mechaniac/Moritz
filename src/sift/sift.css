@@ -1,0 +1,120 @@
+/* ============================================================
+ * Sift — extractable interface primitives
+ * Minimal CSS. Uses CSS custom properties for theming.
+ * Prefix: sf-
+ * ============================================================ */
+
+/* --- IconGrid --- */
+.sf-icon-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.sf-icon-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--sf-line, var(--mg-line, #333));
+  border-radius: 4px;
+  background: var(--sf-paper, var(--mg-surface-1, #fff));
+  color: var(--sf-ink, var(--mg-text, #000));
+  cursor: pointer;
+}
+.sf-icon-cell.is-active {
+  border-color: var(--sf-accent, var(--mg-tone-relevant, #4af));
+  box-shadow: 0 0 0 1px var(--sf-accent, var(--mg-tone-relevant, #4af)) inset;
+}
+.sf-icon-label {
+  font-size: 9px;
+  line-height: 1;
+  font-family: monospace;
+  color: var(--sf-text-faint, var(--mg-text-faint, #666));
+}
+
+/* --- Section (details/summary) --- */
+.sf-section {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+.sf-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 0;
+  color: var(--sf-text, var(--mg-text, inherit));
+  list-style: none;
+}
+.sf-section-title::-webkit-details-marker { display: none; }
+.sf-section-title::before {
+  content: '▸';
+  font-size: 10px;
+  width: 10px;
+  display: inline-block;
+}
+details.sf-section[open] > .sf-section-title::before {
+  content: '▾';
+}
+.sf-section-title__text {
+  flex: 1;
+}
+.sf-section-reset {
+  border: none;
+  background: transparent;
+  color: var(--sf-text-faint, var(--mg-text-faint, #666));
+  cursor: default;
+  font-size: 13px;
+  padding: 0 2px;
+}
+.sf-section-reset.is-modified {
+  color: var(--sf-changed, var(--mg-tone-changed, #f80));
+  cursor: pointer;
+}
+
+/* --- Slider --- */
+.sf-slider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.sf-slider-label {
+  flex: 0 0 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--sf-text, var(--mg-text, inherit));
+}
+.sf-slider input[type=range] {
+  flex: 1;
+  min-width: 0;
+}
+.sf-slider-num {
+  width: 48px;
+  text-align: right;
+  font-size: 10px;
+  font-family: monospace;
+}
+.sf-slider.is-modified .sf-slider-label {
+  color: var(--sf-changed, var(--mg-tone-changed, #f80));
+}
+
+/* --- Check --- */
+.sf-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.sf-check-label {
+  color: var(--sf-text, var(--mg-text, inherit));
+}

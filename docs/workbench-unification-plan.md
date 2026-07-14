@@ -93,8 +93,237 @@ c. **Arbitrary `spaces` values** — let `readWorkbenchView` accept strings
 
 ---
 
-**TL;DR for mother:** Undo/redo delivered — thank you. Phase 5 is now
-unblocked. Only `ParamKind: 'file'` (low priority) remains outstanding.
+**TL;DR for mother:** Undo/redo delivered — thank you. The leftbar layout
+contract and DOM nesting concerns below are now the active blockers for UI
+simplification. Additionally: sigrid/magdalena/anita must be loaded as
+**sealed, self-contained modules** — child apps must not be able to override
+their viewport, leftbar, or documents. See § "Module Isolation" below.
+
+---
+
+## Module Isolation — CRITICAL ARCHITECTURAL ISSUE
+
+### The problem
+
+Sigrid, when switched to in the Moritz workspace, does not behave like sigrid.
+It shows a 2D graph of Moritz's font data instead of its native 3D scene.
+The outliner shows Moritz documents. There is no 3D viewport.
+
+**This is structurally wrong.** It must be impossible for a child app to
+accidentally or intentionally break the behavior of platform modules.
+
+### Root cause (6 interference points)
+
+1. **No sigrid document exists.** `moritzWorkspaceConfig.documents` contains
+   only Moritz documents + anita graphs. Sigrid has no scene tree.
+   
+2. **Sigrid's initial document is `moritz.font`.** The config sets
+   `initial.documentByModule.sigrid = moritzDocumentIds.glyphsetter` — a
+   Moritz glyph tree that sigrid cannot meaningfully interpret.
+
+3. **Moritz overrides sigrid's viewport.** `productGraphViewportBinding`
+   activates when `activeModuleId ∈ {'sigrid', 'magdalena'}` and renders
+   `MTreeGraph` (a 2D graph viewer) instead of sigrid's native viewport.
+
+4. **Moritz overrides sigrid's leftbar.** `productTreeBrowserBinding`
+   activates for ALL non-Moritz modules and renders `MTreeBrowser` showing
+   only Moritz's font/bubble/style/page documents.
+
+5. **Mode is always 2D.** `readWorkbenchView(tree)` reads from the Moritz
+   font tree which has no `workbenchView` annotation → defaults to `"2d"`.
+
+6. **Selection on module switch** points to the Moritz font root cId, not
+   a sigrid-meaningful node.
+
+### The principle (must be enforced architecturally)
+
+**Platform modules (sigrid, magdalena, anita) are sealed units.** A child
+app workspace:
+
+- MUST NOT register bindings that activate when platform modules are active
+  (unless explicitly extending them with platform-sanctioned extension points)
+- MUST NOT assign its own documents as the active document for platform modules
+- MUST provide platform modules with their own default documents OR let the
+  platform create them automatically
+- MUST NOT filter the platform module's document list to show only child-app data
+
+### What should happen instead
+
+When the user clicks "sigrid" in the topbar:
+- Sigrid's own viewport renders (3D scene or its default)
+- Sigrid's own leftbar renders (its tree browser with sigrid documents)
+- Sigrid's own gateway functions appear in the rightbar
+- Sigrid's own documents are available (a default scene, makeWorkbench outputs)
+- No Moritz code executes or intercepts
+
+### Required changes
+
+#### In Moritz (we will fix):
+
+1. Remove sigrid from `productGraphModules`:
+   ```ts
+   const productGraphModules = new Set(['magdalena']);
+   // or remove the binding entirely
+   ```
+
+2. Change `productTreeBrowserBinding.activeWhen` to only activate for
+   magdalena (or remove it — let each module handle its own leftbar):
+   ```ts
+   (ctx) => ctx.state.activeModuleId === 'magdalena'
+   ```
+
+3. Remove `sigrid` from `initial.documentByModule` (let the platform
+   assign sigrid's default document).
+
+4. Add sigrid's own default document to the workspace (or let sigrid
+   create one internally via its module contract).
+
+#### In the platform (requested):
+
+5. **Prevent binding override.** Platform modules should register their own
+   bindings with higher priority than child-app bindings. Or: bindings from
+   the active module should take precedence over bindings from other modules.
+   A child-app binding with `activeWhen: (ctx) => ctx.activeModuleId === 'sigrid'`
+   should never beat sigrid's own binding for the same slot.
+
+6. **Default documents for platform modules.** If a workspace config doesn't
+   provide a document for sigrid, the runtime should create one from sigrid's
+   module defaults (sigrid already has `makeSigrid()` which could include a
+   default scene builder). Platform modules should never be left without a
+   meaningful document.
+
+7. **Module isolation guarantees.** The contract should state:
+   - A module's bindings are authoritative for its own slots when it's active
+   - A child app cannot register a binding that fires `activeWhen` a platform
+     module is selected (or if it does, the platform module's binding wins)
+   - `initial.documentByModule[platformModuleId]` must point to a document
+     compatible with that module (type-checked or validated at runtime)
+
+### Severity
+
+This is not a cosmetic issue. If sigrid behaves differently in every child
+app, it's not a shared platform — it's a copy-paste starting point. The
+whole value of the sigrid/magdalena/anita stack is that they provide stable,
+identical behavior everywhere. Child apps add their own module alongside them,
+never inside or on top of them.
+
+## Leftbar Layout Contract & DOM Simplification (NEW — for mother)
+
+### The problem
+
+Moritz wants to flatten its leftbar from 7 nesting levels down to 4. But when
+we reduce to a single scrollable `<div class="mz-suite-leftbar__body">` with
+`flex: 1 1 0; min-height: 0; overflow-y: auto`, it renders at **zero height**.
+
+The current workaround (two separate `__body` divs sharing flex space) works
+but adds structural nesting we want to eliminate.
+
+### Root cause analysis
+
+The rendering chain from shell root to Moritz content:
+
+```
+div.c-workbench                                 ← CSS grid (sigrid)
+  aside.c-workbench__leftbar                    ← grid-area: left; display: flex; flex-direction: column
+    div.m-workbench-bar__handle                 ← flex: 0 0 auto (drag handle)
+    div.m-workbench-bar__body                   ← flex: 1 1 auto; display: flex; flex-direction: column; overflow: hidden
+      div.mz-binding (display: contents)        ← Moritz binding container (invisible to layout)
+        div.mz-suite-leftbar                    ← OUR ROOT — needs to fill bar body
+          div.mz-suite-tabs                     ← flex: 0 0 auto (view tabs)
+          div.mz-suite-leftbar__body            ← flex: 1 1 0; overflow-y: auto ← THIS GETS ZERO HEIGHT
+```
+
+With `display: contents` on the binding container, `mz-suite-leftbar` is a
+direct flex child of `m-workbench-bar__body`. `flex: 1 1 0` on the leftbar
+SHOULD give it all remaining height. The inner `__body` with `flex: 1 1 0`
+SHOULD then fill the leftbar.
+
+But empirically it doesn't — the leftbar renders empty. When we split into
+two `__body` divs (each `flex: 1 1 0`), they DO render with content. The
+single-body configuration fails.
+
+**Hypothesis:** `overflow: hidden` on `m-workbench-bar__body` combined with
+`display: contents` on the binding container creates a situation where the
+flex algorithm doesn't propagate height correctly through the contents
+element. Two flex children with their own `overflow: auto` work because each
+creates a BFC that forces height resolution.
+
+### What we need from the platform
+
+#### A. Document the leftbar sizing contract
+
+Module authors need to know: what CSS should the root element of a leftbar
+binding use? Currently there's no documentation. The answer appears to be
+`flex: 1 1 0; min-height: 0` but this doesn't reliably work with a single
+scrollable child.
+
+#### B. Consider removing `display: contents` from binding containers
+
+If the binding container were `display: flex; flex-direction: column; flex: 1 1 0; min-height: 0`
+instead of `display: contents`, it would be a proper layout participant and
+children would size correctly. The `display: contents` pattern was presumably
+chosen to avoid an extra DOM level, but it creates layout inheritance issues.
+
+Alternatively, the binding container could be a `<slot>` or just removed
+entirely (let the module's root element BE the direct child of the bar body).
+
+#### C. The bigger picture: DOM nesting audit
+
+Moritz is trying to minimize DOM nesting. Our goal:
+
+```
+m-workbench-bar__body                           ← magdalena (1)
+  mz-suite-leftbar                              ← Moritz root (2)
+    mz-suite-tabs (view tabs)                   ← flex: 0 0 auto (3)
+    [content — scrollable]                      ← flex: 1 1 0; overflow-y: auto (3)
+      details.sf-section × N                    ← collapsible sections (4)
+        label.sf-slider                         ← slider input (5)
+```
+
+5 levels from bar body to interactive control. Currently it's 7+ due to:
+- The binding container (`display: contents` — but causes layout issues)
+- Duplicate `__body` divs (workaround for the above)
+- Tone wrappers and stacking divs (removed in this session)
+
+We want to get the DOM to exactly mirror the logical tree that magdalena
+manages. Every extra `<div>` that exists only for CSS workarounds is a
+deviation from this goal.
+
+#### D. Shared Sift components
+
+We've begun extracting minimal UI primitives into `src/sift/`:
+
+| Component | DOM depth | Notes |
+|-----------|-----------|-------|
+| `IconGrid` | 2 | `div.sf-icon-grid` → `button.sf-icon-cell` |
+| `Section` | 2 | `details.sf-section` → `summary` + children |
+| `Slider` | 2 | `label.sf-slider` → range + number inputs |
+| `Check` | 2 | `label.sf-check` → checkbox + label |
+
+These are ready for donation to sigrid when the time comes. They use:
+- Native `<details>/<summary>` for collapse (zero JS)
+- `<label>` as flex container (semantic + minimal)
+- CSS class (`sf-*`) instead of inline styles
+- CSS custom properties (`--sf-*`) for theming, falling back to `--mg-*`
+
+The `IconGrid` pattern (flex-wrap grid of selectable thumbnail buttons) is
+the same pattern needed by shapeAndPose for pose/shape thumbnails. It should
+live in sigrid's shared library once the layout contract is stable.
+
+#### E. Floating attributes position stability
+
+The floating attributes panel resets its drag position on every tree change.
+This happens because Moritz rebuilds its cObject tree from Zustand on every
+render (the dual-state problem). We've added memoization to return the same
+tree reference when store data hasn't changed, which mostly fixes it. But
+any actual data change (slider drag, selection change) still produces a new
+tree → panel jumps.
+
+**Ask:** Could the floating panel store its position on the chrome tree (or
+a separate persistent state) rather than in component-local React state?
+That way it survives tree changes and even component re-mounts.
+
+---
 
 ## Current State (working tree, uncommitted)
 

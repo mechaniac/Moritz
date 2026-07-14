@@ -1,7 +1,6 @@
-import { describe, expect, it, vi, beforeEach, beforeAll, afterAll } from 'vitest';
+import { describe, expect, it, beforeAll, afterAll } from 'vitest';
 import { moritzFunctionCallHandler } from '../../src/core/gateway/moritzFunctionCallHandler.js';
 import { useAppStore } from '../../src/state/store.js';
-import { useBubbleStore } from '../../src/state/bubbleStore.js';
 import type { PublicFn } from '@christof/sigrid/core';
 
 // Stub browser APIs for tests that trigger persistence/export side effects
@@ -96,47 +95,18 @@ describe('moritzFunctionCallHandler', () => {
   });
 
   describe('style operations', () => {
-    it('handleSetSlant updates style', () => {
-      const before = useAppStore.getState().style.slant;
-      moritzFunctionCallHandler(makeCall('setSlant', { value: 0.25 }));
-      expect(useAppStore.getState().style.slant).toBe(0.25);
-      // Restore
-      useAppStore.getState().setStyle({ slant: before });
+    it('style slider calls are NOT intercepted (return false)', () => {
+      // Style sliders are real tree transforms — the handler should NOT
+      // intercept them, allowing magdalena to execute fn.call() directly.
+      expect(moritzFunctionCallHandler(makeCall('setSlant', { value: 0.25 }))).toBe(false);
+      expect(moritzFunctionCallHandler(makeCall('setScaleX', { value: 1.5 }))).toBe(false);
+      expect(moritzFunctionCallHandler(makeCall('setStrokeWidth', { value: 12 }))).toBe(false);
+      expect(moritzFunctionCallHandler(makeCall('setCapStart', { value: 'flat' }))).toBe(false);
     });
 
-    it('handleSetScaleX updates style', () => {
-      moritzFunctionCallHandler(makeCall('setScaleX', { value: 1.5 }));
-      expect(useAppStore.getState().style.scaleX).toBe(1.5);
-      useAppStore.getState().setStyle({ scaleX: 1 });
-    });
-
-    it('handleSetStrokeWidth updates defaultWidth samples', () => {
-      moritzFunctionCallHandler(makeCall('setStrokeWidth', { value: 12 }));
-      const samples = useAppStore.getState().style.defaultWidth.samples;
-      expect(samples[0]?.width).toBe(12);
-      expect(samples[1]?.width).toBe(12);
-    });
-
-    it('handleSetCapStart updates capStart', () => {
-      moritzFunctionCallHandler(makeCall('setCapStart', { value: 'flat' }));
-      expect(useAppStore.getState().style.capStart).toBe('flat');
-      useAppStore.getState().setStyle({ capStart: 'round' });
-    });
-
-    it('handleSetWorldBlend sets orientation to world at 1', () => {
-      moritzFunctionCallHandler(makeCall('setWorldBlend', { value: 1 }));
-      const s = useAppStore.getState().style;
-      expect(s.worldBlend).toBe(1);
-      expect(s.widthOrientation).toBe('world');
-      useAppStore.getState().setStyle({ worldBlend: 0, widthOrientation: 'tangent' });
-    });
-
-    it('handleSetWorldBlend sets orientation to tangent below 1', () => {
-      moritzFunctionCallHandler(makeCall('setWorldBlend', { value: 0.5 }));
-      const s = useAppStore.getState().style;
-      expect(s.worldBlend).toBe(0.5);
-      expect(s.widthOrientation).toBe('tangent');
-      useAppStore.getState().setStyle({ worldBlend: 0, widthOrientation: 'tangent' });
+    it('style persistence IS intercepted', () => {
+      expect(moritzFunctionCallHandler(makeCall('saveStyle', { name: 'x' }))).toBe(true);
+      expect(moritzFunctionCallHandler(makeCall('exportStyle', {}))).toBe(true);
     });
   });
 
@@ -167,11 +137,7 @@ describe('moritzFunctionCallHandler', () => {
       'addStroke', 'addAnchor', 'deleteSelected', 'flipH', 'flipV',
       'saveBubbleFont', 'loadBubbleFont', 'deleteBubbleFont', 'exportBubbleFont',
       'saveStyle', 'loadStyle', 'deleteStyle', 'exportStyle',
-      'setSlant', 'setScaleX', 'setScaleY', 'setStrokeWidth',
-      'setWorldBlend', 'setWorldContract', 'setWorldAngle', 'setWorldContractAngle',
-      'setCapStart', 'setCapEnd', 'setCapBulge',
-      'setTracking', 'setSpaceWidth', 'setLineHeight',
-      'setRelaxCurves', 'setRelaxTangents', 'setVertexEvenness',
+      // Style sliders are NOT intercepted — they are real tree transforms
       'savePage', 'loadPage', 'deletePage', 'exportPage',
     ];
 

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * SVG-based glyph editor.
  *
  * Layout is a fixed 3-column shell (grid | canvas | inspector) so first-level
@@ -15,7 +15,7 @@
  * here. Everything else (caps, triangulation, ribbon density, etc.) lives in
  * `font.style` and is the typeface's intrinsic baseline.
  *
- * Pipeline order is glyphsetter â†’ stylesetter â†’ typesetter. The GlyphSetter
+ * Pipeline order is glyphsetter → stylesetter → typesetter. The GlyphSetter
  * always renders from `font.style` directly; it deliberately ignores the
  * StyleSetter's overlay (`styleOverrides`). Edits made here are the new
  * baseline that StyleSetter and TypeSetter modulate downstream.
@@ -50,6 +50,7 @@ import { GuidesPanel } from './GuidesPanel.js';
 import { measureFontMetrics, measureGlyphMetrics, measurePairAdvance } from './fontMetrics.js';
 import { isPanGesture, useCanvasInput } from '../../ui/canvas/useCanvasInput.js';
 import { useCanvasSize } from '../../ui/canvas/useCanvasSize.js';
+import { IconGrid } from '../../sift/IconGrid.js';
 import {
   addStroke,
   clearNormalOverride,
@@ -118,7 +119,7 @@ let strokeClipboard:
 const MIN_EDITOR_SCALE = 1;
 const MAX_EDITOR_SCALE = 30;
 
-// Reference frame inside the glyph editor â€” a fixed square the user can
+// Reference frame inside the glyph editor — a fixed square the user can
 // always see, so adjustments to a glyph's own box read as deviations from
 // this default. Picked to match defaultFont's BOX_H (140) so most glyphs
 // fit naturally inside it.
@@ -164,12 +165,12 @@ function importGlyphMetrics(g: Glyph, char: string, family: string): Glyph {
  * glyphs the Moritz font already has. For each (a, b) we measure the
  * pair advance and subtract the sum of single advances; the leftover is
  * the kerning the reference font applies, converted to Moritz font units
- * via the same emâ†’units scale `importGlyphMetrics` uses (driven by the
+ * via the same em→units scale `importGlyphMetrics` uses (driven by the
  * target glyph's `box.h`).
  *
  * Returns a flat `Record<a+b, delta-in-units>`. Pairs whose absolute
  * delta falls below `threshold` (in font units) are omitted to keep
- * the table sparse â€” most Latin pairs have zero kerning in most fonts.
+ * the table sparse — most Latin pairs have zero kerning in most fonts.
  */
 function extractKerningFromReference(
   font: Font,
@@ -194,7 +195,7 @@ function extractKerningFromReference(
       const pair = measurePairAdvance(family, a, b);
       if (pair == null) continue;
       const deltaEm = pair - (ma.advance + mb.advance);
-      // Use the average of both glyphs' box heights as the emâ†’units scale,
+      // Use the average of both glyphs' box heights as the em→units scale,
       // so a kerning delta written here will be applied at the same visual
       // size as the imported per-glyph advances.
       const emToUnits = ((ga.box.h + gb.box.h) / 2) / emDen;
@@ -230,7 +231,7 @@ export function subscribeGlyphSetterSelection(listener: () => void): () => void 
 }
 
 /**
- * Standalone glyph editing toolbar — reads from stores so it can be rendered
+ * Standalone glyph editing toolbar � reads from stores so it can be rendered
  * anywhere (e.g. in the workbench settings bar). Contains Add stroke, Add anchor,
  * Delete, Flip H/V, Break tangent, help hint.
  */
@@ -472,38 +473,36 @@ export function GlyphSetterOutliner(props: {
   return (
     <>
       <LeftTabBar value={leftTab} onChange={setLeftTab} />
-      <div style={{ marginTop: 'calc(var(--mg-pad) * 0.5)' }}>
-        {leftTab === 'glyphs' ? (
-          <>
-            <GlyphGrid
-              chars={Object.keys(font.glyphs)}
-              selected={selectedChar}
-              onSelect={selectGlyph}
-              font={font}
-              view={view}
-            />
-            <GlyphCObjectOutliner
-              font={font}
-              selectedChar={selectedChar}
-              cObjectSelection={cObjectSelection}
-              onSelectionChange={onSelectionChange}
-            />
-          </>
-        ) : leftTab === 'kerning' ? (
-          <KerningList
+      {leftTab === 'glyphs' ? (
+        <>
+          <GlyphGrid
+            chars={Object.keys(font.glyphs)}
+            selected={selectedChar}
+            onSelect={selectGlyph}
             font={font}
-            pairs={font.kerning ?? {}}
-            onChange={setKerning}
-            refFontFamily={view.refFontFamily}
-          />
-        ) : (
-          <SettingsPanel
             view={view}
-            setView={setGlyphView}
-            setFontGuides={setFontGuides}
           />
-        )}
-      </div>
+          <GlyphCObjectOutliner
+            font={font}
+            selectedChar={selectedChar}
+            cObjectSelection={cObjectSelection}
+            onSelectionChange={onSelectionChange}
+          />
+        </>
+      ) : leftTab === 'kerning' ? (
+        <KerningList
+          font={font}
+          pairs={font.kerning ?? {}}
+          onChange={setKerning}
+          refFontFamily={view.refFontFamily}
+        />
+      ) : (
+        <SettingsPanel
+          view={view}
+          setView={setGlyphView}
+          setFontGuides={setFontGuides}
+        />
+      )}
     </>
   );
 }
@@ -513,13 +512,11 @@ export function GlyphSetterAttrs(): JSX.Element {
   const style = useAppStore((s) => s.style);
   const loadedStyleSettings = useAppStore((s) => s.loadedStyleSettings);
   return (
-    <div className="mz-mod--stylesetter">
-      <StyleControls
-        style={style}
-        setStyle={setStyleOverride}
-        {...(loadedStyleSettings ? { original: loadedStyleSettings } : {})}
-      />
-    </div>
+    <StyleControls
+      style={style}
+      setStyle={setStyleOverride}
+      {...(loadedStyleSettings ? { original: loadedStyleSettings } : {})}
+    />
   );
 }
 
@@ -967,9 +964,7 @@ function GlyphCObjectOutliner(props: {
 }
 
 /** Pixels per font unit in the grid thumbnails. Fixed so all glyphs render at
- *  the same zoom level â€” the grid wraps and tiles take their natural size. */
-const GRID_PX_PER_UNIT = 0.35;
-
+ *  the same zoom level — the grid wraps and tiles take their natural size. */
 function GlyphGrid(props: {
   chars: string[];
   selected: string;
@@ -977,79 +972,21 @@ function GlyphGrid(props: {
   font: Font;
   view: GlyphViewOptions;
 }): JSX.Element {
+  const items = useMemo(
+    () => props.chars.map((c) => ({ id: c, label: c })),
+    [props.chars],
+  );
   return (
-    <aside
-      className="mz-glyphsetter__grid"
-      style={{
-        width: '100%',
-        padding: 0,
-        boxSizing: 'border-box',
+    <IconGrid
+      items={items}
+      selected={props.selected}
+      onSelect={(item) => props.onSelect(item.id)}
+      className="mz-glyph-grid"
+      renderThumb={(item) => {
+        const g = props.font.glyphs[item.id]!;
+        return <ThumbSvg glyph={g} font={props.font} view={props.view} />;
       }}
-    >
-      <div
-        className="mz-glyph-grid"
-        style={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'flex-end',
-          gap: 4,
-        }}
-      >
-        {props.chars.map((c) => {
-          const g = props.font.glyphs[c]!;
-          const active = c === props.selected;
-          // True-to-scale pixel dimensions; +2px padding inside button.
-          const w = g.box.w * GRID_PX_PER_UNIT;
-          const h = g.box.h * GRID_PX_PER_UNIT;
-          return (
-            <div
-              key={c}
-              className="mz-glyph-cell"
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: 2,
-                flex: '0 0 auto',
-              }}
-            >
-              <button
-                className={`mz-glyph-thumb${active ? ' mz-glyph-thumb--active' : ''}`}
-                data-char={c}
-                onClick={() => props.onSelect(c)}
-                title={c}
-                style={{
-                  width: w + 4,
-                  background: 'var(--mz-paper)',
-                  color: 'var(--mz-ink)',
-                  border: `1px solid ${active ? 'var(--mz-accent)' : 'var(--mz-line)'}`,
-                  borderRadius: 4,
-                  cursor: 'pointer',
-                  padding: 2,
-                  display: 'block',
-                  boxShadow: active ? '0 0 0 1px var(--mz-accent) inset' : 'none',
-                }}
-              >
-                <div style={{ width: w, height: h }}>
-                  <ThumbSvg glyph={g} font={props.font} view={props.view} />
-                </div>
-              </button>
-              <div
-                className="mz-glyph-cell__label"
-                style={{
-                  fontSize: 9,
-                  lineHeight: 1,
-                  color: 'var(--mz-text-faint)',
-                  fontFamily: 'monospace',
-                }}
-              >
-                {c}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </aside>
+    />
   );
 }
 
@@ -1116,7 +1053,7 @@ export function GlyphEditor(props: {
    *  fixed world-coord box (e.g. the bubble), the edited glyph is
    *  positioned inside that world via `(tx, ty, s)`, and the underlay
    *  is rendered in world coords. Switching layers only changes
-   *  `(tx, ty, s)` â€” the world box, pan and zoom stay anchored, so the
+   *  `(tx, ty, s)` — the world box, pan and zoom stay anchored, so the
    *  view does not jump. The default-box / glyph-box reference rects
    *  are hidden (they relate to a single glyph, not the world). */
   world?: {
@@ -1126,7 +1063,7 @@ export function GlyphEditor(props: {
     ty: number;
     s: number;
     /** Spacing of the horizontal lined-paper grid, in world units. When
-     *  omitted the grid falls back to font-line-height Ã— glyph-box-h. */
+     *  omitted the grid falls back to font-line-height × glyph-box-h. */
     lineHeight?: number;
   };
 }): JSX.Element {
@@ -1157,7 +1094,7 @@ export function GlyphEditor(props: {
   // Glyph as it would render in the StyleSetter / TypeSetter, i.e. with the
   // style's affine (slant, scaleX, scaleY) and per-glyph spline jitter
   // applied. The raw `glyph` is still used for editing handles / hit
-  // testing â€” only the visual previews (fill, debug border, triangulation
+  // testing — only the visual previews (fill, debug border, triangulation
   // overlay) use this transformed copy so the user sees the final look.
   const displayGlyph = useMemo(
     () => previewGlyph(glyph, font.style, { instanceIndex: 0, char }),
@@ -1203,7 +1140,7 @@ export function GlyphEditor(props: {
   const viewH = Math.max(size.h, 1);
 
   // The glyph's strokes are anchored to the glyph's own box (so the artwork
-  // always sits inside the solid rectangle in the editor â€” same as the grid
+  // always sits inside the solid rectangle in the editor — same as the grid
   // and the StyleSetter preview). The default-box outline is a separate
   // reference frame, drawn centred on the canvas for orientation.
   // World-space model: the canvas is a window onto a world rectangle.
@@ -1259,7 +1196,7 @@ export function GlyphEditor(props: {
     const drag = dragRef.current;
     if (!drag) return;
     if (drag.kind === 'pan') {
-      // Pan moves the artwork by raw screen-pixel delta â€” no glyph-coord
+      // Pan moves the artwork by raw screen-pixel delta — no glyph-coord
       // conversion (we *change* the origin, so converting now would
       // chase its own tail).
       const dx = e.clientX - drag.startClientX;
@@ -1308,7 +1245,7 @@ export function GlyphEditor(props: {
       const maxX = Math.max(drag.startX, drag.curX);
       const minY = Math.min(drag.startY, drag.curY);
       const maxY = Math.max(drag.startY, drag.curY);
-      // Treat tiny zero-area drags as a plain background click â†’ deselect.
+      // Treat tiny zero-area drags as a plain background click → deselect.
       const TINY = 1; // glyph units
       if (maxX - minX < TINY && maxY - minY < TINY) {
         setSelection({ kind: 'none' });
@@ -1316,7 +1253,7 @@ export function GlyphEditor(props: {
         const hits: number[] = [];
         for (let i = 0; i < glyph.strokes.length; i++) {
           const bb = strokeAnchorBBox(glyph.strokes[i]!);
-          // AABB intersection (inclusive) â€” pick a stroke if its anchor
+          // AABB intersection (inclusive) — pick a stroke if its anchor
           // bbox overlaps the marquee at all.
           if (
             bb.maxX >= minX && bb.minX <= maxX &&
@@ -1557,7 +1494,7 @@ export function GlyphEditor(props: {
 
   return (
     <>
-      {/* Canvas — fills remaining space. The editing toolbar is anchored
+      {/* Canvas � fills remaining space. The editing toolbar is anchored
           to (and exactly the width of) the .mz-glyph-canvas SVG so it
           tracks the artwork rather than the column. The SVG itself sits
           in its own scroll-and-center wrapper so the glyph's centre
@@ -1624,7 +1561,7 @@ export function GlyphEditor(props: {
           onPointerUp={onPointerUp}
           onPointerLeave={onPointerUp}
         >
-          {/* background â€” pointer-down starts a marquee selection. A
+          {/* background — pointer-down starts a marquee selection. A
               zero-area release (i.e. a plain click) just deselects.
               Middle-mouse button or space+left-mouse pans instead. */}
           <rect
@@ -1665,7 +1602,7 @@ export function GlyphEditor(props: {
               (e.target as Element).setPointerCapture(e.pointerId);
             }}
           />
-          {/* default box â€” a fixed square reference frame so adjustments
+          {/* default box — a fixed square reference frame so adjustments
               to the current glyph box read as deviations from default.
               Hidden in world mode (BubbleSetter): the world IS the
               reference frame there. */}
@@ -1683,8 +1620,8 @@ export function GlyphEditor(props: {
               pointerEvents="none"
             />
           )}
-          {/* glyph box â€” the 'sheet' the character sits on. Hidden in
-              world mode â€” the underlay draws the world (e.g. bubble)
+          {/* glyph box — the 'sheet' the character sits on. Hidden in
+              world mode — the underlay draws the world (e.g. bubble)
               outline instead, which doesn't jump on layer change. */}
           {!props.world && (
             <rect
@@ -1707,7 +1644,7 @@ export function GlyphEditor(props: {
               {props.underlay}
             </g>
           )}
-          {/* Lined-paper grid â€” horizontal lines at the active style's
+          {/* Lined-paper grid — horizontal lines at the active style's
               line-height interval, extending across the whole canvas.
               In world mode the grid is anchored to the world box bottom
               (so it doesn't jump on layer switch); otherwise it's
@@ -1715,7 +1652,7 @@ export function GlyphEditor(props: {
           {view.showLineGrid && (() => {
             const lineMul = font.style.lineHeight ?? 1.2;
             // World mode: spacing is `world.lineHeight` if provided,
-            // else fall back to font-line-height Ã— glyph-box-h Ã—
+            // else fall back to font-line-height × glyph-box-h ×
             // glyph-to-world scale (so it tracks the layer's size).
             const lineUnitsWorld = props.world
               ? (props.world.lineHeight ?? lineMul * glyph.box.h * worldGlyphS)
@@ -1752,9 +1689,9 @@ export function GlyphEditor(props: {
           {/* reference font (system/web font) traced behind the ink. The
               baseline + cap- or x-height are read from the first visible
               calligraphy guide layer (if any); otherwise it falls back to
-              the glyph box. We assume the browser font has cap-height â‰ˆ
-              0.70em and x-height â‰ˆ 0.50em, which is true for nearly all
-              the curated families. Skipped in world mode â€” bubbles
+              the glyph box. We assume the browser font has cap-height ≈
+              0.70em and x-height ≈ 0.50em, which is true for nearly all
+              the curated families. Skipped in world mode — bubbles
               don't have a single "glyph" baseline to trace against. */}
           {!props.world && view.refFontFamily && (() => {
             const calli = view.guides.layers.find(
@@ -1807,7 +1744,7 @@ export function GlyphEditor(props: {
               </text>
             );
           })()}
-          {/* sidebearing guides â€” vertical lines indicating advance edges.
+          {/* sidebearing guides — vertical lines indicating advance edges.
               Glyph-only concept; hidden in world (bubble) mode. */}
           {!props.world && (() => {
             const lsb = glyph.sidebearings?.left ?? 0;
@@ -1840,12 +1777,12 @@ export function GlyphEditor(props: {
               </g>
             );
           })()}
-          {/* guides â€” anchored to the *default* box reference frame, so they
+          {/* guides — anchored to the *default* box reference frame, so they
               never slide when the glyph's own box.{w,h} changes. Lines are
               extruded along their own direction to a huge multiple of the
               default box so they read as infinite rules across the whole
               workspace (matches Illustrator-style guides). Hidden in world
-              (bubble) mode â€” bubbles use only the lined-paper grid. */}
+              (bubble) mode — bubbles use only the lined-paper grid. */}
           {!props.world && view.guides.enabled && (
             <g
               transform={`translate(${defBoxX} ${defBoxY}) scale(${SCALE})`}
@@ -1905,9 +1842,9 @@ export function GlyphEditor(props: {
               })}
             </g>
           )}
-          {/* other glyphs of the set, faint red â€” to see how shapes overlap.
+          {/* other glyphs of the set, faint red — to see how shapes overlap.
               Each glyph is drawn at 5% on its own <g> so opacities accumulate.
-              Hidden in world (bubble) mode â€” the bubble's own siblings
+              Hidden in world (bubble) mode — the bubble's own siblings
               already render via the underlay. */}
           {!props.world && view.showOtherGlyphs && (
             <g
@@ -1933,7 +1870,7 @@ export function GlyphEditor(props: {
               })}
             </g>
           )}
-          {/* outlined preview (faded) — fill comes from the triangulated mesh */}
+          {/* outlined preview (faded) � fill comes from the triangulated mesh */}
           {view.showFillPreview && (
             <g
               transform={xform}
@@ -2390,9 +2327,9 @@ export function SettingsPanel(props: {
 
 /**
  * Per-glyph metrics panel (box, side bearings, baseline, per-glyph world
- * angle offsets). Rendered inside the bare floating "Glyph" window — no
+ * angle offsets). Rendered inside the bare floating "Glyph" window � no
  * extra titles, no extra borders. Mass-actions (import metrics, zero
- * bearings) live behind a small "⋯" popover so the panel stays sliders-only
+ * bearings) live behind a small "?" popover so the panel stays sliders-only
  * by default.
  */
 function GlyphMetricsPanel(props: {
@@ -2431,7 +2368,7 @@ function GlyphMetricsPanel(props: {
           cursor: 'pointer',
         }}
       >
-        ⋯
+        ?
       </button>
       {actionsOpen && (
         <ActionsPopover onClose={() => setActionsOpen(false)}>
@@ -2576,7 +2513,7 @@ function GlyphMetricsPanel(props: {
         tooltip="Extra horizontal padding after the glyph (font units). Negative tightens the next glyph against this one."
       />
       <NumSlider
-        label="Baseline ↕"
+        label="Baseline ?"
         min={-60}
         max={60}
         step={1}
@@ -2585,7 +2522,7 @@ function GlyphMetricsPanel(props: {
         tooltip="Vertical offset relative to the baseline. Positive moves the glyph down."
       />
       <NumSlider
-        label="World blend Δ"
+        label="World blend ?"
         min={-Math.PI / 2}
         max={Math.PI / 2}
         step={0.01}
@@ -2594,7 +2531,7 @@ function GlyphMetricsPanel(props: {
         tooltip="Per-glyph offset added to the typeface's World blend angle. Saved with the font."
       />
       <NumSlider
-        label="World contract Δ"
+        label="World contract ?"
         min={-Math.PI / 2}
         max={Math.PI / 2}
         step={0.01}
@@ -2797,16 +2734,10 @@ function KerningList(props: {
     <div
       className="mz-kerning-list"
       style={{
-        position: 'absolute',
-        inset: 0,
-        padding: 8,
-        boxSizing: 'border-box',
+        position: 'static',
         display: 'flex',
         flexDirection: 'column',
         gap: 6,
-        // Outer container no longer scrolls â€” only the entries list does,
-        // so the "+ Pair" input stays pinned at the top.
-        overflow: 'hidden',
       }}
     >
       <div
@@ -3041,7 +2972,7 @@ function KerningEntry(props: {
           title="Remove this pair."
           style={{ padding: '0 6px', fontSize: 11 }}
         >
-          Ã—
+          ×
         </button>
       </div>
       {previewSvg}
@@ -3056,64 +2987,28 @@ function Section(props: {
   children: React.ReactNode;
   defaultOpen?: boolean;
 }): JSX.Element {
-  const isStyle = props.tone === 'style';
-  const isFont = props.tone === 'glyphfont';
-  const modClass = isStyle
+  const toneClass = props.tone === 'style'
     ? ' mz-mod--stylesetter'
-    : isFont
+    : props.tone === 'glyphfont'
       ? ' mz-mod--glyphfont'
       : '';
-  const [open, setOpen] = useState(props.defaultOpen ?? true);
   return (
-    <section
-      className={`mz-inspector__section mz-inspector__section--${props.tone}${modClass}`}
-      style={{
-        border: `1px solid var(--mz-line)`,
-        borderRadius: 4,
-        background: isStyle || isFont ? 'var(--mz-panel)' : 'var(--mz-panel)',
-        padding: 8,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 6,
-      }}
+    <details
+      className={`sf-section mz-inspector__section mz-inspector__section--${props.tone}${toneClass}`}
+      open={props.defaultOpen || undefined}
     >
-      <header
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          display: 'flex',
-          alignItems: 'baseline',
-          gap: 8,
-          cursor: 'pointer',
-          userSelect: 'none',
-        }}
-      >
-        <span
-          aria-hidden
-          style={{
-            fontSize: 10,
-            color: isStyle || isFont ? 'var(--mz-accent)' : 'var(--mz-text-mute)',
-            width: 10,
-            display: 'inline-block',
-          }}
-        >
-          {open ? 'â–¾' : 'â–¸'}
-        </span>
-        <strong
-          style={{
-            fontSize: 12,
-            color: isStyle || isFont ? 'var(--mz-accent)' : 'var(--mz-text)',
-          }}
-        >
+      <summary className="sf-section-title">
+        <span className="sf-section-title__text">
           <MoritzLabel text={props.title} size={12} />
-        </strong>
-        {props.subtitle && (
-          <span style={{ fontSize: 11, color: 'var(--mz-text-mute)' }}>
-            <MoritzLabel text={props.subtitle} size={11} />
-          </span>
-        )}
-      </header>
-      {open && props.children}
-    </section>
+          {props.subtitle && (
+            <span style={{ fontSize: 11, color: 'var(--mz-text-mute)', marginLeft: 8 }}>
+              <MoritzLabel text={props.subtitle} size={11} />
+            </span>
+          )}
+        </span>
+      </summary>
+      {props.children}
+    </details>
   );
 }
 
@@ -3124,16 +3019,15 @@ function Check(props: {
   tooltip?: string;
 }): JSX.Element {
   return (
-    <label
-      title={props.tooltip}
-      style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-    >
+    <label className="sf-check" title={props.tooltip}>
       <input
         type="checkbox"
         checked={props.checked}
         onChange={(e) => props.onChange(e.target.checked)}
       />
-      <MoritzLabel text={props.label} size={11} />
+      <span className="sf-check-label">
+        <MoritzLabel text={props.label} size={11} />
+      </span>
     </label>
   );
 }
@@ -3302,10 +3196,10 @@ export function StrokeOverlay(props: {
   const HANDLE = 6 / scale;
   const HAIR = 2 / scale;
 
-  // Per-vertex default normal handle position (perp(tangent) Ã— bare default
+  // Per-vertex default normal handle position (perp(tangent) × bare default
   // half-width at that anchor's arc-length parameter). When a vertex has a
   // normalOverride, the handle sits at p + override; otherwise at the
-  // default. Pure function of (segs, profile) â€” no React state.
+  // default. Pure function of (segs, profile) — no React state.
   const normalHandles = useMemo<readonly Vec2[]>(() => {
     if (segs.length === 0) return stroke.vertices.map((v) => ({ x: v.p.x, y: v.p.y }));
     const lens = segs.map(
@@ -3492,7 +3386,7 @@ function polygonD(poly: readonly Vec2[]): string {
  *
  * When `ctx` is supplied, the polygon is also passed through shape-jitter
  * (matching the StyleSetter / TypeSetter SVG path). Spline jitter and the
- * affine `transformGlyph` step happen at the GLYPH level â€” see
+ * affine `transformGlyph` step happen at the GLYPH level — see
  * `previewGlyph()` below.
  */
 function triangulateForStyle(

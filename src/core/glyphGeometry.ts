@@ -161,7 +161,7 @@ export function transformGlyphVertex2d<T extends GlyphSplineVertex>(
     inHandle: transformVector2d(m, vertex.inHandle),
     outHandle: transformVector2d(m, vertex.outHandle),
     ...(vertex.normalOverride
-      ? { normalOverride: normalizeWithFallback(transformVector2d(m, vertex.normalOverride), vertex.normalOverride) }
+      ? { normalOverride: transformNormalOverride(m, vertex.normalOverride) }
       : {}),
   };
 }
@@ -443,6 +443,23 @@ function sub(a: Vec2, b: Vec2): Vec2 {
 
 function cross(a: Vec2, b: Vec2): number {
   return a.x * b.y - a.y * b.x;
+}
+
+/**
+ * Transform a normalOverride vector through an affine. Preserves the original
+ * magnitude (which encodes per-anchor half-width) while rotating the direction
+ * through the affine's linear part. Without this, the half-width information
+ * is lost and the stroke always renders thin.
+ */
+function transformNormalOverride(m: Affine2d, ov: Vec2): Vec2 {
+  const originalLen = Math.hypot(ov.x, ov.y);
+  if (originalLen <= 1e-9) return ov;
+  const transformed = transformVector2d(m, ov);
+  const transformedLen = Math.hypot(transformed.x, transformed.y);
+  if (transformedLen <= 1e-9) return ov;
+  // Re-scale to preserve the original magnitude
+  const scale = originalLen / transformedLen;
+  return { x: transformed.x * scale, y: transformed.y * scale };
 }
 
 function normalizeWithFallback(v: Vec2, fallback: Vec2): Vec2 {

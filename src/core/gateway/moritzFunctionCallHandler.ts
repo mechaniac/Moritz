@@ -345,102 +345,6 @@ function handleExportPage(): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// Style slider handlers
-// ---------------------------------------------------------------------------
-
-function handleSetSlant(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ slant: Number(args['value']) });
-  return true;
-}
-
-function handleSetScaleX(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ scaleX: Number(args['value']) });
-  return true;
-}
-
-function handleSetScaleY(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ scaleY: Number(args['value']) });
-  return true;
-}
-
-function handleSetStrokeWidth(args: Readonly<Record<string, unknown>>): boolean {
-  const v = Number(args['value']);
-  useAppStore.getState().setStyle({
-    defaultWidth: { samples: [{ t: 0, width: v }, { t: 1, width: v }] },
-  });
-  return true;
-}
-
-function handleSetWorldBlend(args: Readonly<Record<string, unknown>>): boolean {
-  const v = Number(args['value']);
-  useAppStore.getState().setStyle({
-    worldBlend: v,
-    widthOrientation: v >= 1 ? 'world' : 'tangent',
-  });
-  return true;
-}
-
-function handleSetWorldContract(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ worldContract: Number(args['value']) });
-  return true;
-}
-
-function handleSetWorldAngle(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ worldAngle: Number(args['value']) });
-  return true;
-}
-
-function handleSetWorldContractAngle(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ worldContractAngle: Number(args['value']) });
-  return true;
-}
-
-function handleSetCapStart(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ capStart: String(args['value']) as 'round' | 'flat' | 'tapered' });
-  return true;
-}
-
-function handleSetCapEnd(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ capEnd: String(args['value']) as 'round' | 'flat' | 'tapered' });
-  return true;
-}
-
-function handleSetCapBulge(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ capRoundBulge: Number(args['value']) });
-  return true;
-}
-
-function handleSetTracking(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ tracking: Number(args['value']) });
-  return true;
-}
-
-function handleSetSpaceWidth(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ spaceWidth: Number(args['value']) });
-  return true;
-}
-
-function handleSetLineHeight(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ lineHeight: Number(args['value']) });
-  return true;
-}
-
-function handleSetRelaxCurves(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ relaxCurves: Number(args['value']) });
-  return true;
-}
-
-function handleSetRelaxTangents(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ relaxTangents: Number(args['value']) });
-  return true;
-}
-
-function handleSetVertexEvenness(args: Readonly<Record<string, unknown>>): boolean {
-  useAppStore.getState().setStyle({ vertexEvenness: Number(args['value']) });
-  return true;
-}
-
-// ---------------------------------------------------------------------------
 // Glyph editing handlers
 // ---------------------------------------------------------------------------
 
@@ -564,23 +468,9 @@ const handlers: Readonly<Record<string, (args: Readonly<Record<string, unknown>>
   loadStyle: handleLoadStyle,
   deleteStyle: handleDeleteStyle,
   exportStyle: handleExportStyle,
-  setSlant: handleSetSlant,
-  setScaleX: handleSetScaleX,
-  setScaleY: handleSetScaleY,
-  setStrokeWidth: handleSetStrokeWidth,
-  setWorldBlend: handleSetWorldBlend,
-  setWorldContract: handleSetWorldContract,
-  setWorldAngle: handleSetWorldAngle,
-  setWorldContractAngle: handleSetWorldContractAngle,
-  setCapStart: handleSetCapStart,
-  setCapEnd: handleSetCapEnd,
-  setCapBulge: handleSetCapBulge,
-  setTracking: handleSetTracking,
-  setSpaceWidth: handleSetSpaceWidth,
-  setLineHeight: handleSetLineHeight,
-  setRelaxCurves: handleSetRelaxCurves,
-  setRelaxTangents: handleSetRelaxTangents,
-  setVertexEvenness: handleSetVertexEvenness,
+  // Style sliders are NOT intercepted — they are real tree transforms.
+  // Magdalena executes fn.call(tree, args) → onTreeChange → runtime records undo.
+  // Sync to Zustand happens in the onTreeChange handler (app-mount.ts).
   savePage: handleSavePage,
   loadPage: handleLoadPage,
   deletePage: handleDeletePage,
