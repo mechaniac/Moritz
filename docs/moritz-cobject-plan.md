@@ -91,7 +91,7 @@ regions.
 ## Next Slices
 
 1. Add renderer equivalence fixtures for the glyph-system donation candidates
-   in [glyph-system-donation-map.md](glyph-system-donation-map.md).
+   in [glyph-system-donation-map.md](archive/glyph-system-donation-map.md).
 2. Promote TypeSetter's live legacy `TextBlock` state to the canonical
    `Page -> Block -> TextRun` runtime model so the cObject tree no longer needs
    a compatibility adapter.
@@ -101,3 +101,49 @@ regions.
    rather than app-local envelopes.
 5. Replace shell call sites with an mObject tree once the current direct React
    shell is stable.
+
+## Platform Donation Direction (2026-07-23)
+
+### Glyph primitives → `@christof/sigrid/glyph`
+
+The sigrid glyph target is available since 2026-07-12 (channel). Moritz should:
+- Import shared `Vertex`, `Stroke`, `WidthProfile`, `CapShape` from sigrid
+- Run outline parity suite against sigrid's implementation
+- Once parity confirmed, drop local duplicates in `src/core/types.ts`
+- Donate adaptive flattening, miter/bevel joins, caps, and edge-case fixtures
+- The glyph → cObject tree shape (`font → glyph → stroke → anchor`) becomes
+  a sigrid-provided constructor, not a Moritz adapter
+
+### Bubble primitives → `@christof/sigrid/bubble` (new)
+
+Multi-layer spline model (`BubbleLayer`, offset/fill/effects) should move to
+a new sigrid package. This enables any comic/illustration child project to
+create and render speech bubbles without depending on Moritz.
+
+What moves: `BubbleLayer`, `Bubble`, `BubbleFont` types; `bubbleFill.ts`
+(loop/fill geometry); `bubbleRender.ts` (SVG render); bubble → cObject adapter.
+
+What stays: BubbleSetter UI, bubble persistence, bubble font management.
+
+### Grid outliner view-gate → platform convention
+
+The view-gate pattern (`gridViewGate` + `gridViewGateRender`) is already a
+platform feature. The remaining gap: **navigate-on-click** behavior should be
+platform-default for grid mode. Currently Moritz manually extracts the element
+ID from the clicked cell's cId and dispatches a selection change.
+
+### Debug overlays → gateway with `visibility: 'debug'`
+
+Moritz's debug overlays (borders, triangles, spline0, spline1) become gateway
+functions that only appear when the workbench debug toggle is active. This
+requires the platform to support `visibility: 'debug'` on `PublicFn` (or at
+minimum, expose `debugEnabled` in the binding context).
+
+### What stays in Moritz permanently
+
+- **Font** as a collection (glyphs + style + kerning + guides)
+- **Page composition** (Block, TextRun, page library)
+- **StyleSettings** (typeface-level modulation)
+- **TypeSetter** (page layout workspace)
+- **Persistence** (save/load/import/export)
+- **Font/style/bubble font management UI**

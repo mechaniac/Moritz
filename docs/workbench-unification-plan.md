@@ -325,45 +325,76 @@ That way it survives tree changes and even component re-mounts.
 
 ---
 
-## Current State (working tree, uncommitted)
+## Current State (working tree)
 
 ### What's implemented
 
 - **Per-view gateway** — `moritzModule.gateway` is rebuilt dynamically on view
   switch via `updateMoritzGateway(viewId)`. GlyphSetter gets persistence +
   editing commands; BubbleSetter/StyleSetter/TypeSetter get persistence;
-  StyleSetter gets 16 live sliders with `computeDefault`.
-- **Function call handler** — `moritzFunctionCallHandler` intercepts all
-  gateway calls and dispatches to Zustand. Returns `true` to suppress
-  magdalena's default tree-transform path.
+  StyleSetter gets 16 live sliders with `computeDefault` (real tree transforms).
+- **Function call handler** — `moritzFunctionCallHandler` intercepts persistence
+  and glyph-editing calls → Zustand dispatch. Style sliders are NOT intercepted
+  — they are real `(tree, args) → tree` transforms with automatic undo.
 - **Kind schemas** — 8 cObject kinds registered via `registerCKindSchema`.
-  Most fields are read-only; glyph box width/height have write adapters
-  targeting Zustand.
-- **Floating attributes enabled** — `chrome.floatingAttributes: true`.
-- **Chrome** — HUD and workbench tab remain suppressed.
+  Fields show in the floating attributes panel.
+- **Floating attributes** — enabled, positioned right-side via CSS override.
+- **Chrome** — `transformTools: false`, `workbenchTab: false`.
+- **Sift library** — `src/sift/` with IconGrid, Section, Slider, Check.
+  GlyphGrid and StyleControls sections migrated to sift components.
+- **Module isolation** — sigrid/anita no longer receive Moritz overrides.
+- **Bug fixes** — insertAnchor de Casteljau split, normalOverride magnitude
+  preservation, binding container `display: flex`.
+- **Word-weighting** — `MoritzLabel` scales by magdalena word-weight factors.
+- **Dark workbench** — canvas uses `--mg-bg` (dark), glyph fill is light.
+
+### Leftbar architecture (current — 2026-07-23)
+
+| View | Leftbar content |
+|------|----------------|
+| Glyphs | MOutliner grid mode (view-gate SVG thumbnails) + GlyphSetterItemAttrs |
+| Styles | StyleControls (full slider set) |
+| Bubbles | BubbleSetterOutliner + BubbleSetterAttrs |
+| Pages | TypeSetterOutliner + TypeSetterAttrs |
+
+Grid mode uses `gridViewGate` + `gridViewGateRender` (Phase A). Icons render
+as inline SVGs with `fill: rgba(220,220,220,1)` matching the workbench mesh.
+Click-to-select navigates the workbench to the clicked glyph.
+
+### Leftbar architecture (target)
+
+| View | Leftbar content |
+|------|----------------|
+| Glyphs | MOutliner (grid mode, navigate-on-click from platform) |
+| Styles | StyleControls (or gateway live sliders in rightbar) |
+| Bubbles | MOutliner (grid mode, same view-gate pattern) |
+| Pages | MOutliner (tree mode = page blocks) |
+
+Per-selection properties (box width, bearing, etc.) move exclusively to the
+floating attributes panel. No `*ItemAttrs` in the leftbar.
 
 ### What's NOT done
 
-- Leftbar attrs panels still exist (Phase 6 — needs UX parity confirmation)
-- Field writes still target Zustand (Phase 5 prerequisite)
-- No tests for gateway handler, view switching, or field schemas
-- Gateway switching via mutation is brittle (no focused tests)
+- Debug menu integration (platform needs `debugEnabled` exposure)
+- Navigate-on-grid-click at platform level (manual wiring works)
+- Field writes still target Zustand (Phase 5)
 - Import remains in the leftbar (no `ParamKind: 'file'`)
-- All work is uncommitted
+- GlyphSetterItemAttrs still in leftbar (remove once floating attrs covers all)
+- Bubble grid needs view-gate migration (still uses custom BubbleGrid)
 
 ### The dual-state model (unchanged)
 
 `buildMoritzWorkbenchProps` (workbench-props.tsx line 44) reconstructs the
 displayed tree from Zustand on every render. Tree mutations via `onTreeChange`
 are written to the workspace document but overwritten on the next render cycle.
-Gateway functions are therefore declaration-only; actual execution is always
-intercepted.
+Style sliders are the exception — they produce real tree transforms that the
+runtime records for undo automatically.
 
 ### Bindings
 
 Moritz registers **two** bindings:
 - `moritz.viewport` → custom glyph/bubble/style/page canvas
-- `moritz.leftbar` → custom outliner + view tabs + attrs panels
+- `moritz.leftbar` → view tabs + outliner/grid + per-view attrs
 
 ## Architecture (How The Platform Works)
 
@@ -520,11 +551,12 @@ render cycle. Gateway functions must either:
 
 Configured in `workspace.tsx` (line ~84):
 
-| Chrome element | Current | Notes |
-|---|---|---|
-| `hud` | **false** | Sigrid viewport transform verbs, irrelevant to Moritz. |
-| `floatingAttributes` | **true** | Enabled — kind schemas registered for glyph/stroke/anchor/bubble/page. |
-| `workbenchTab` | **false** | Sigrid layout/render verbs, irrelevant to Moritz. |
+| Chrome element | Current | Target | Notes |
+|---|---|---|---|
+| `transformTools` | **false** | false | Sigrid viewport transform verbs, irrelevant to Moritz custom viewport. |
+| `debug` | **false** | **true** | Enable once mother exposes `debugEnabled` to bindings. Moritz debug overlays (borders, triangles, splines) respond to the toggle. |
+| `floatingAttributes` | **true** | true | Kind schemas registered for glyph/stroke/anchor/bubble/page. |
+| `workbenchTab` | **false** | false | Sigrid layout/render verbs, irrelevant to Moritz. |
 
 ## Proposed Next Steps (Revised)
 
@@ -761,6 +793,156 @@ moritz     → viewport binding (custom canvas), leftbar binding (view tabs + ou
              pure domain math (bezier, stroke outline, layout, transform)
 ```
 
+## Debug Menu Integration (NEW — 2026-07-23)
+
+### The problem
+
+The workbench HUD debug button is disabled (`chrome: { debug: false }` in
+`workspace.tsx`). Moritz has its own debug visualization system
+(`GlyphViewOptions`: borders, triangles, spline0, spline1) but it lives in
+the GlyphSetter's Settings tab — completely disconnected from magdalena's
+workbench debug button.
+
+The debug button toggles `graphDebugEnabled` which only feeds into
+`MTreeGraph`'s `graphDebug` prop. Since Moritz replaces the viewport with
+its own canvas, the button has no effect.
+
+### What mother needs to provide
+
+1. **Expose `debugEnabled` to viewport bindings** — add `debugEnabled: boolean`
+   to the binding context or `MWorkbenchProps` so modules with custom viewports
+   can react to the debug toggle.
+
+2. **`visibility: 'debug'` on `PublicFn`** — gateway functions with this
+   visibility only render when debug mode is active. This lets modules declare
+   debug toggles as standard gateway functions that appear/disappear with the
+   debug button:
+   ```ts
+   interface PublicFn {
+     visibility?: 'public' | 'private' | 'debug';
+   }
+   ```
+   The rightbar filters: `fn.visibility !== 'private'` becomes
+   `fn.visibility !== 'private' && (fn.visibility !== 'debug' || debugEnabled)`.
+
+3. **Alternative (simpler):** If `visibility: 'debug'` is too much platform
+   work, just exposing `debugEnabled` in the binding context is enough — Moritz
+   can conditionally show/hide its own debug overlay checkboxes based on it.
+
+### What Moritz will do
+
+1. **Enable `chrome: { debug: true }`** on the moritz module.
+
+2. **Option A (preferred): Move debug toggles to gateway functions:**
+   ```ts
+   toggleBorders: { visibility: 'debug', callMode: 'toggle', ... }
+   toggleTriangles: { visibility: 'debug', callMode: 'toggle', ... }
+   toggleSpline0: { visibility: 'debug', callMode: 'toggle', ... }
+   toggleSpline1: { visibility: 'debug', callMode: 'toggle', ... }
+   ```
+   These appear in the rightbar only when debug mode is active.
+
+3. **Option B (fallback): Read `debugEnabled` from binding context** and
+   conditionally render the existing `GlyphViewOptions` checkboxes in the
+   viewport when debug mode is on (overlay panel).
+
+### Priority
+
+High — this unblocks daily workflow. The debug overlays (borders, triangles,
+splines) are essential for developing the rendering pipeline but currently
+buried in a settings tab that's easy to miss.
+
+---
+
+## Grid Outliner Standardization (NEW — 2026-07-23)
+
+### Current state
+
+Grid outliner with view-gate rendering is working in Moritz (Phase A shipped).
+Key components:
+
+- `glyphViewGate()` / `glyphViewGateRender()` — per-glyph bounding box + SVG paths
+- `charFromCObjectId()` — extracts glyph char from cObject ID
+- `GlyphSetterOutliner` — wires MOutliner grid mode with glyph-specific click → select
+- BubbleSetter has a parallel `BubbleGrid` + `BubbleSetterOutliner`
+
+**Fixed in commit `d874a41`:**
+- Grid cell fill color now matches workbench (`rgba(220,220,220,1)`)
+- Click-to-select properly extracts char from any glyph cId (not just the
+  currently selected one)
+
+### What should move to mother (platform-level reuse)
+
+1. **Navigate-on-grid-click as default behavior** — currently each module
+   manually wires `onSelect → extract element ID → call module select action`.
+   This pattern is universal: clicking a grid cell should load that element
+   into the viewport. Mother should provide:
+   ```ts
+   // Proposed addition to MOutlinerProps:
+   gridSelectBehavior?: 'navigate' | 'select-only';
+   ```
+   `'navigate'` (default) = clicking a cell switches the workbench's active
+   element to that item. `'select-only'` = just highlight, no viewport switch.
+
+2. **View-gate default fill from module skin** — `MViewGatePath.fill` defaults
+   to `var(--m-fg)` which is the UI text color, not the rendering color.
+   Options:
+   - (a) Modules always pass `fill` explicitly (Moritz does this now ✓)
+   - (b) Add `gridViewGateDefaultFill?: string` prop on MOutlinerProps
+   - (c) Phase B true miniatures (inherit workbench rendering)
+
+3. **Phase B: true workbench miniatures** — grid cells render the actual
+   workbench viewport content (background, guides, debug overlays). Already
+   requested in channel.md (2026-07-20). This eliminates the fill-color
+   mismatch entirely.
+
+### What stays in Moritz
+
+- The specific `glyphViewGate` bounding-box logic (domain-specific)
+- The specific `glyphViewGateRender` triangulation (domain-specific rendering)
+- The glyph-char extraction from cObject IDs (domain-specific ID format)
+
+---
+
+## Glyph & Bubble Donation to Mother (NEW — 2026-07-23)
+
+### Principle
+
+Moritz is responsible for **page composition** (creating pages, mixing fonts/
+styles/bubbles, and saving projects). The underlying glyph and bubble
+primitives should live in the platform so other child projects can reuse them.
+
+### What moves up
+
+| Component | Current location | Target | Reason |
+|-----------|-----------------|--------|--------|
+| Spline data model (Vertex, Stroke, WidthProfile, CapShape) | `src/core/types.ts` | `@christof/sigrid/glyph` | Already partially there (channel: "sigrid glyph target available") |
+| Stroke outline algorithm (variable-width, caps, joins) | `src/core/stroke.ts` | `@christof/sigrid/glyph` or `sigrid-curves` | Universal rendering primitive |
+| Glyph → cObject adapter (tree structure) | `src/core/moritzCObjects.ts` | `@christof/sigrid/glyph` | Any glyph-editing module needs this |
+| Bubble spline model (BubbleLayer, multi-layer offset/fill) | `src/core/bubble.ts` | `@christof/sigrid/bubble` (new) | Reusable in comic/illustration tools |
+| View-gate for glyphs (bounding box convention) | `GlyphSetter.tsx` | Platform convention on cObject kinds | Eliminates per-module boilerplate |
+
+### What stays in Moritz
+
+| Component | Reason |
+|-----------|--------|
+| `Font` (collection of glyphs + style + kerning) | Domain policy: how glyphs compose into a typeface |
+| `Page` / `Block` / `TextRun` | Domain policy: page layout and text composition |
+| `StyleSettings` (slant, scale, tracking, etc.) | Domain policy: typeface-level modulation |
+| Font/page/style persistence | App-level storage |
+| TypeSetter (page composition workspace) | App-level workflow |
+
+### Migration sequence
+
+1. **Glyph primitive migration** — already in flight per channel (sigrid glyph
+   target available since 2026-07-12). Moritz imports shared types at adapter
+   boundary, runs parity suite, then drops local duplicates.
+2. **Grid outliner standardization** — platform provides navigate-on-click.
+3. **Debug menu integration** — platform exposes `debugEnabled` + `visibility: 'debug'`.
+4. **Bubble primitive extraction** — once sigrid/bubble package is ready.
+
+---
+
 ## Blocking Dependencies
 
 | Dependency | Blocks | Resolution |
@@ -771,7 +953,9 @@ moritz     → viewport binding (custom canvas), leftbar binding (view tabs + ou
 | Persistence for document trees | Phase 5 | Moritz can self-serve via `onRuntimeDocumentChange` + localStorage adapter |
 | Tree change subscription | Phase 5 | Already works — `runtime.subscribe()` fires on document changes |
 | No `ParamKind: 'file'` | Import as gateway function | Keep import in custom leftbar |
-| No tests for gateway/handler/schemas | Commit readiness | Write tests before committing |
+| No `visibility: 'debug'` on PublicFn | Debug toggles in rightbar | Keep debug in Settings tab; or use binding-context `debugEnabled` |
+| No navigate-on-grid-click | Grid outliner standardization | Manual wiring per module (current) |
+| No `@christof/sigrid/bubble` | Bubble donation | Keep bubble model in Moritz for now |
 
 ## Principles Check
 
