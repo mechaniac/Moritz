@@ -50,7 +50,6 @@ import { GuidesPanel } from './GuidesPanel.js';
 import { measureFontMetrics, measureGlyphMetrics, measurePairAdvance } from './fontMetrics.js';
 import { isPanGesture, useCanvasInput } from '../../ui/canvas/useCanvasInput.js';
 import { useCanvasSize } from '../../ui/canvas/useCanvasSize.js';
-import { IconGrid } from '../../sift/IconGrid.js';
 import {
   addStroke,
   clearNormalOverride,
@@ -85,7 +84,8 @@ import {
 } from '../../core/types.js';
 import { animateGlyphWithAnimator } from '../../core/glyphAnimator.js';
 import {
-  moritzGlyphCObjectId,
+  moritzFontCObject,
+  moritzGlyphCObjectMetaFromId,
   moritzGlyphCObjectSelection,
   moritzGlyphObjectSelectionFromCObjectId,
   type GlyphObjectSelection,
@@ -474,21 +474,32 @@ export function GlyphSetterOutliner(props: {
     <>
       <LeftTabBar value={leftTab} onChange={setLeftTab} />
       {leftTab === 'glyphs' ? (
-        <>
-          <GlyphGrid
-            chars={Object.keys(font.glyphs)}
-            selected={selectedChar}
-            onSelect={selectGlyph}
-            font={font}
-            view={view}
-          />
-          <GlyphCObjectOutliner
-            font={font}
-            selectedChar={selectedChar}
-            cObjectSelection={cObjectSelection}
-            onSelectionChange={onSelectionChange}
-          />
-        </>
+        <DomBridge node={MoritzMOutliner({
+          root: cObjectSelection.root ?? moritzFontCObject(font),
+          selectedId: cObjectSelection.selected?.cId,
+          onSelect: (id) => {
+            if (!id) return;
+            // Grid cells carry glyph-level cIds — extract the char
+            // directly so clicking any glyph works, not just the
+            // currently selected one.
+            const clickedChar = charFromCObjectId(id, font);
+            if (clickedChar) {
+              selectGlyph(clickedChar);
+              return;
+            }
+            const meta = moritzGlyphCObjectMetaFromId(font, selectedChar, id);
+            if (meta?.glyphChar) {
+              selectGlyph(meta.glyphChar);
+            }
+            onSelectionChange(
+              moritzGlyphObjectSelectionFromCObjectId(font, selectedChar, id),
+            );
+          },
+          viewMode: 'grid',
+          gridCellSize: 36,
+          gridViewGate: (node) => glyphViewGate(node, font),
+          gridViewGateRender: (node) => glyphViewGateRender(node, font),
+        })} />
       ) : leftTab === 'kerning' ? (
         <KerningList
           font={font}
@@ -926,105 +937,46 @@ function AnimatorInstancePanel(props: {
 
 // ---------- Sidebar: glyph grid --------------------------------------------
 
-function GlyphCObjectOutliner(props: {
-  font: Font;
-  selectedChar: string;
-  cObjectSelection: MoritzGlyphCObjectSelection;
-  onSelectionChange: (selection: Selection) => void;
-}): JSX.Element | null {
-  const nodes = useMemo(() => {
-    const root = props.cObjectSelection.root;
-    if (!root) return [];
-    const glyphId = moritzGlyphCObjectId(props.font.id, props.selectedChar);
-    const glyphNode = root.children.find((node) => node.cId === glyphId);
-    return glyphNode ? [glyphNode] : [];
-  }, [props.cObjectSelection.root, props.font, props.selectedChar]);
-
-  if (nodes.length === 0) return null;
-  return (
-    <div
-      style={{
-        marginTop: 10,
-        paddingTop: 8,
-        borderTop: '1px solid var(--mz-line)',
-      }}
-    >
-      <DomBridge node={MoritzMOutliner({
-        root: nodes[0]!,
-        selectedId: props.cObjectSelection.selected?.cId,
-        onSelect: (id) => {
-          if (!id) return;
-          props.onSelectionChange(
-            moritzGlyphObjectSelectionFromCObjectId(props.font, props.selectedChar, id),
-          );
-        },
-      })} />
-    </div>
-  );
+/** Extract glyph character from a cObject ID. */
+function charFromCObjectId(nodeId: string, font: Font): string | undefined {
+  const parts = nodeId.split('.glyph.');
+  if (parts.length < 2) return undefined;
+  const char = decodeURIComponent(parts[parts.length - 1]!);
+  return char && font.glyphs[char] ? char : undefined;
 }
 
-/** Pixels per font unit in the grid thumbnails. Fixed so all glyphs render at
- *  the same zoom level — the grid wraps and tiles take their natural size. */
-function GlyphGrid(props: {
-  chars: string[];
-  selected: string;
-  onSelect: (c: string) => void;
-  font: Font;
-  view: GlyphViewOptions;
-}): JSX.Element {
-  const items = useMemo(
-    () => props.chars.map((c) => ({ id: c, label: c })),
-    [props.chars],
-  );
-  return (
-    <IconGrid
-      items={items}
-      selected={props.selected}
-      onSelect={(item) => props.onSelect(item.id)}
-      className="mz-glyph-grid"
-      renderThumb={(item) => {
-        const g = props.font.glyphs[item.id]!;
-        return <ThumbSvg glyph={g} font={props.font} view={props.view} />;
-      }}
-    />
-  );
+/** View-gate: returns a UNIFORM bounding box for all glyphs (world-space scale).
+ *  All cells get the same gate so they render at the same scale. */
+function glyphViewGate(
+  node: import('@christof/sigrid/core').cObject,
+  font: Font,
+): { x: number; y: number; w: number; h: number } | null {
+  const char = charFromCObjectId(node.cId, font);
+  if (!char) return null;
+  // Use a fixed standard box (the font's default glyph dimensions)
+  // so all glyphs render at the same world-space scale.
+  const defaultW = font.glyphs['A']?.box.w ?? 122;
+  const defaultH = font.glyphs['A']?.box.h ?? 140;
+  return { x: 0, y: 0, w: defaultW, h: defaultH };
 }
 
-function ThumbSvg(props: {
-  glyph: Glyph;
-  font: Font;
-  view: GlyphViewOptions;
-}): JSX.Element {
-  const { glyph, font } = props;
-  const gStyle = useMemo(() => effectiveStyleForGlyph(font.style, glyph), [font.style, glyph]);
-  const display = useMemo(
-    () => previewGlyph(glyph, font.style, { instanceIndex: 0, char: glyph.char }),
-    [glyph, font.style],
-  );
-  const paths = useMemo(
-    () =>
-      display.strokes.map((s, i) => {
-        const { polygon, triangles } = triangulateForStyle(s, gStyle, {
-          instanceIndex: i,
-          char: glyph.char,
-        }, glyph.box.h);
-        return trianglesD(polygon, triangles);
-      }),
-    [display, gStyle, glyph.char, glyph.box.h],
-  );
-  return (
-    <svg
-      viewBox={`0 0 ${glyph.box.w} ${glyph.box.h}`}
-      style={{ width: '100%', height: '100%', display: 'block' }}
-      preserveAspectRatio="xMidYMid meet"
-    >
-      <g fill="var(--mz-ink)">
-        {paths.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>
-    </svg>
-  );
+/** View-gate render: returns SVG path data for the glyph's strokes. */
+function glyphViewGateRender(
+  node: import('@christof/sigrid/core').cObject,
+  font: Font,
+): readonly { d: string; fill?: string }[] {
+  const char = charFromCObjectId(node.cId, font);
+  if (!char) return [];
+  const glyph = font.glyphs[char]!;
+  const gStyle = effectiveStyleForGlyph(font.style, glyph);
+  const display = previewGlyph(glyph, font.style, { instanceIndex: 0, char });
+  return display.strokes.map((s, i) => {
+    const { polygon, triangles } = triangulateForStyle(s, gStyle, {
+      instanceIndex: i,
+      char,
+    }, glyph.box.h);
+    return { d: trianglesD(polygon, triangles), fill: 'rgba(220,220,220,1)' };
+  });
 }
 
 // ---------- Editor (canvas column) -----------------------------------------
@@ -1570,9 +1522,9 @@ export function GlyphEditor(props: {
             width={viewW}
             height={viewH}
             // In world (bubble) mode the workspace is a flat grey so a
-            // bubble's paper-white fill stands out; in glyph mode it's
-            // the standard paper white.
-            fill={props.world ? '#e8e8e8' : 'var(--mz-paper)'}
+            // bubble's paper-white fill stands out; in glyph mode use
+            // the standard dark workbench background.
+            fill={'var(--mg-bg, var(--mz-bg))'}
             style={spaceDown ? { cursor: 'grab' } : undefined}
             onPointerDown={(e) => {
               const isPan = isPanGesture(e.button, spaceDown, 'both');
@@ -1877,8 +1829,8 @@ export function GlyphEditor(props: {
               // In world (bubble) mode this overlay *is* the active
               // layer's ink stroke, so it follows the Stroke-opacity
               // slider. In glyph mode it's the standalone fill preview
-              // and follows Fill-opacity.
-              fill={`rgba(0,0,0,${props.world ? view.strokeOpacity : view.fillOpacity})`}
+              // and follows Fill-opacity. Light on dark bg in all modes.
+              fill={`rgba(220,220,220,${props.world ? view.strokeOpacity : view.fillOpacity})`}
               pointerEvents="none"
             >
               {displayGlyph.strokes.map((s, i) => {
